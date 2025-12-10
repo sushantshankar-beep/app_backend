@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"app_backend/internal/domain"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -18,6 +20,7 @@ func NewProviderRepo(db *mongo.Database) *ProviderRepo {
 }
 
 func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.Provider, error) {
+	fmt.Println("Searching for provider with phone:", phone)
 	var p domain.Provider
 	err := r.col.FindOne(ctx, bson.M{"phone": phone}).Decode(&p)
 	if err == mongo.ErrNoDocuments {
@@ -27,8 +30,13 @@ func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.P
 }
 
 func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
+	oid, err := primitive.ObjectIDFromHex(string(id))
+	if err != nil {
+		return nil, err 
+	}
+
 	var p domain.Provider
-	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&p)
+	err = r.col.FindOne(ctx, bson.M{"_id": oid}).Decode(&p)
 	if err == mongo.ErrNoDocuments {
 		return nil, domain.ErrNotFound
 	}

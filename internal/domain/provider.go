@@ -30,7 +30,7 @@ type Provider struct {
 	ProviderBrands       []string     `bson:"providerBrands,omitempty" json:"providerBrands,omitempty"`
 	ProviderServices     []string     `bson:"providerServices,omitempty" json:"providerServices,omitempty"`
 	CompanyName          string       `bson:"companyName,omitempty" json:"companyName,omitempty"`
-	IsActive             string       `bson:"isActive,omitempty" json:"isActive,omitempty"`
+	IsActive             bool         `bson:"isActive,omitempty" json:"isActive,omitempty"`
 	CommissionPercentage float64      `bson:"commissionPercentage" json:"commissionPercentage"`
 	CreatedAt            time.Time    `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time    `bson:"updatedAt" json:"updatedAt"`
@@ -39,7 +39,7 @@ type Provider struct {
 type Proof struct {
 	Type     string `bson:"type,omitempty" json:"type,omitempty"`
 	File     string `bson:"file,omitempty" json:"file,omitempty"`
-	Verified string `bson:"verified,omitempty" json:"verified,omitempty"`
+	Verified bool `bson:"verified,omitempty" json:"verified,omitempty"`
 }
 
 type CancelCheque struct {

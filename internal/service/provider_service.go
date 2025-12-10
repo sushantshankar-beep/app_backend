@@ -78,7 +78,6 @@ func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.P
 	if err != nil {
 		return nil, err
 	}
-
 	if name, ok := req["name"].(string); ok && name != "" {
 		provider.Name = name
 	}

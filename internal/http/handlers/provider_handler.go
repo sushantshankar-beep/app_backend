@@ -17,27 +17,30 @@ type ProviderHandler struct {
 func NewProviderHandler(s *service.ProviderService) *ProviderHandler {
 	return &ProviderHandler{svc: s}
 }
-
 func (h *ProviderHandler) SendOTP(c *gin.Context) {
 	var req struct {
 		Phone string `json:"phone" binding:"required"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "phone required"})
 		return
 	}
+
 	if err := h.svc.SendOTP(c, req.Phone); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "OTP sent successfully",
+	})
 }
-
 func (h *ProviderHandler) VerifyOTP(c *gin.Context) {
 	var req struct {
 		Phone string `json:"phone" binding:"required"`
 		Code  string `json:"code" binding:"required"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
@@ -49,7 +52,10 @@ func (h *ProviderHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token, "isNew": isNew})
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"isNew": isNew,
+	})
 }
 
 func (h *ProviderHandler) Profile(c *gin.Context) {
@@ -66,14 +72,17 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, p)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Profile fetched successfully",
+		"data":    p,
+	})
 }
-
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 	id := c.GetString(middleware.ContextKeyUserID)
 	pid := domain.ProviderID(id)
 
 	var req map[string]any
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
@@ -89,7 +98,10 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, updatedProfile)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Profile updated successfully",
+		"data":    updatedProfile,
+	})
 }
 
 // func (h *ProviderHandler) Dashboard(c *gin.Context) {

@@ -39,7 +39,8 @@ type Provider struct {
 type Proof struct {
 	Type     string `bson:"type,omitempty" json:"type,omitempty"`
 	File     string `bson:"file,omitempty" json:"file,omitempty"`
-	Verified  string `bson:"verified,omitempty" json:"verified,omitempty"`
+	Verified string `bson:"verified,omitempty" json:"verified,omitempty"`
+
 }
 
 type CancelCheque struct {

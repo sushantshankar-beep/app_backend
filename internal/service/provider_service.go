@@ -7,18 +7,32 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/worker"
+	"go.mongodb.org/mongo-driver/bson"
+
 )
 
 type ProviderService struct {
-	repo  ports.ProviderRepository
-	otp   ports.OTPStore
-	token ports.TokenService
-	queue *worker.OTPQueue
-
+	repo                ports.ProviderRepository
+	otp                 ports.OTPStore
+	token               ports.TokenService
+	queue               *worker.OTPQueue
+	AcceptedServiceRepo ports.AcceptedServiceRepository
 }
 
-func NewProviderService(repo ports.ProviderRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue) *ProviderService {
-	return &ProviderService{repo: repo, otp: otp, token: token, queue: q}
+func NewProviderService(
+	repo ports.ProviderRepository,
+	otp ports.OTPStore,
+	token ports.TokenService,
+	q *worker.OTPQueue,
+	acceptedRepo ports.AcceptedServiceRepository,
+) *ProviderService {
+	return &ProviderService{
+		repo:                repo,
+		otp:                 otp,
+		token:               token,
+		queue:               q,
+		AcceptedServiceRepo: acceptedRepo,
+	}
 }
 
 func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
@@ -191,4 +205,68 @@ func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.P
 	}
 
 	return provider, nil
+}
+
+func (s *ProviderService) GetMyAllServices(ctx context.Context, providerID domain.ProviderID, page, limit int) (map[string][]map[string]any, int64, error) {
+	skip := (page - 1) * limit
+
+	services, err := s.AcceptedServiceRepo.ListByProvider(ctx, providerID, skip, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, err := s.AcceptedServiceRepo.Count(ctx, bson.M{"provider": providerID})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ongoingStatuses := []string{"not_started", "started", "reached_location", "otp_verified", "in_progress"}
+	completedStatuses := []string{"completed"}
+	cancelledStatuses := []string{"cancelled", "dead"}
+
+	grouped := map[string][]map[string]any{
+		"ongoing":   {},
+		"completed": {},
+		"cancelled": {},
+	}
+
+	for _, s := range services {
+		status := s.Status
+		if status == "dead" {
+			status = "cancelled"
+		}
+
+		item := map[string]any{
+			"id":         s.ID,
+			"finalPrice": s.FinalPrice,
+			"basePrice":  s.BasePrice,
+			"issues":     s.Issues,
+			"createdAt":  s.CreatedAt,
+			"status":     status,
+		}
+
+		switch {
+		case contains(ongoingStatuses, s.Status):
+			grouped["ongoing"] = append(grouped["ongoing"], item)
+		case contains(completedStatuses, s.Status):
+			grouped["completed"] = append(grouped["completed"], item)
+		case contains(cancelledStatuses, s.Status):
+			grouped["cancelled"] = append(grouped["cancelled"], item)
+		}
+	}
+
+	return grouped, total, nil
+}
+
+func contains(arr []string, v string) bool {
+	for _, a := range arr {
+		if a == v {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *ProviderService) GetMyService(ctx context.Context, providerID domain.ProviderID, serviceID string) (*domain.AcceptedService, error) {
+	return s.AcceptedServiceRepo.FindByIDAndProvider(ctx, serviceID, providerID)
 }

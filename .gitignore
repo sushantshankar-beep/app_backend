@@ -1,0 +1,14 @@
+# Go build artifacts
+*.exe
+*.test
+*.out
+
+# Binaries
+/bin/
+build/
+
+# System
+.DS_Store
+
+# Environment files
+.env

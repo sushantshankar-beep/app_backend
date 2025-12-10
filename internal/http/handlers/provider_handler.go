@@ -1,12 +1,13 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
-
+    "log"
 	"app_backend/internal/domain"
-	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
+	"strconv"
+	"math"
+	"app_backend/internal/http/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -61,10 +62,8 @@ func (h *ProviderHandler) VerifyOTP(c *gin.Context) {
 
 func (h *ProviderHandler) Profile(c *gin.Context) {
 	id := c.GetString(middleware.ContextKeyUserID)
-	fmt.Println("Provider ID from context:", id)
 	pid := domain.ProviderID(id)
 	p, err := h.svc.GetProfile(c, pid)
-	fmt.Println("Fetched Provider Profile:", p)
 	if err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -80,15 +79,17 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 	})
 }
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
-	id := c.GetString(middleware.ContextKeyUserID)
+	id := c.GetString("userID")
 	pid := domain.ProviderID(id)
+
+	log.Println("User ID from context:", id)
+	log.Println("Provider ID from context:", pid)
 	var req map[string]any
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 	updatedProfile, err := h.svc.CreateOrUpdateProfile(c, pid, req)
-	fmt.Println("Updated Provider Profile:", updatedProfile)
 	if err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -104,24 +105,39 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 	})
 }
 
-// func (h *ProviderHandler) Dashboard(c *gin.Context) {
-// 	id := c.GetString(middleware.ContextKeyUserID)
-// 	providerObjID, err := primitive.ObjectIDFromHex(id)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider id"})
-// 		return
-// 	}
+func (h *ProviderHandler) GetMyAllServices(c *gin.Context) {
+    providerID := domain.ProviderID(c.GetString("userID"))
 
-// 	stats, err := h.svc.GetDashboardStats(c, providerObjID)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-// 	c.JSON(http.StatusOK, gin.H{
-// 		"success": true,
-// 		"status":  200,
-// 		"message": "Dashboard stats fetched successfully",
-// 		"data":    stats,
-// 	})
-// }
+    grouped, total, err := h.svc.GetMyAllServices(c, providerID, page, limit)
+    if err != nil {
+        c.JSON(500, gin.H{"success": false, "error": err.Error()})
+        return
+    }
+
+    c.JSON(200, gin.H{
+        "success": true,
+        "data":    grouped,
+        "pagination": gin.H{
+            "currentPage": page,
+            "totalPages":  int(math.Ceil(float64(total) / float64(limit))),
+            "total":       total,
+            "perPage":     limit,
+        },
+    })
+}
+
+func (h *ProviderHandler) GetMyService(c *gin.Context) {
+    id := c.Param("id")
+    providerID := domain.ProviderID(c.GetString("userID"))
+
+    service, err := h.svc.GetMyService(c, providerID, id)
+    if err != nil {
+        c.JSON(404, gin.H{"success": false, "message": "Service not found"})
+        return
+    }
+
+    c.JSON(200, gin.H{"success": true, "data": service})
+}

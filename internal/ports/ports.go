@@ -1,8 +1,9 @@
 package ports
 
 import (
-	"app_backend/internal/domain"
-	"context"
+    "app_backend/internal/domain"
+    "context"
+    "go.mongodb.org/mongo-driver/bson"
 )
 
 type UserRepository interface {
@@ -31,4 +32,11 @@ type TokenService interface {
 	GenerateUserToken(id domain.UserID) (string, error)
 	GenerateProviderToken(id domain.ProviderID) (string, error)
 	Parse(token string) (string, string, error)
+}
+
+type AcceptedServiceRepository interface {
+    Find(ctx context.Context, filter bson.M, skip, limit int) ([]domain.AcceptedService, error)
+    ListByProvider(ctx context.Context, providerID domain.ProviderID, skip, limit int) ([]domain.AcceptedService, error)
+    FindByIDAndProvider(ctx context.Context, id string, providerID domain.ProviderID) (*domain.AcceptedService, error)
+    Count(ctx context.Context, filter bson.M) (int64, error)
 }

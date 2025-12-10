@@ -81,6 +81,7 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 }
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 	id := c.GetString(middleware.ContextKeyUserID)
+	fmt.Println("Provider ID from context for update:", id)
 	pid := domain.ProviderID(id)
 	var req map[string]any
 	if err := c.ShouldBindJSON(&req); err != nil {

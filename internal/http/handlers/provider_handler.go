@@ -79,7 +79,9 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 	})
 }
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
-	id := c.GetString("userID")
+	id := c.GetString(middleware.ContextKeyUserID)
+	fmt.Println("Provider ID from context for update:", id)
+
 	pid := domain.ProviderID(id)
 
 	log.Println("User ID from context:", id)

@@ -18,10 +18,6 @@ func NewLocationHandler(svc *service.LocationService) *LocationHandler {
 	return &LocationHandler{svc: svc}
 }
 
-// =======================================
-// USER LOCATION
-// =======================================
-
 func (h *LocationHandler) SaveUserLocation(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)
 
@@ -52,10 +48,6 @@ func (h *LocationHandler) GetUserLocation(c *gin.Context) {
 
 	c.JSON(200, loc)
 }
-
-// =======================================
-// PROVIDER LOCATION
-// =======================================
 
 func (h *LocationHandler) SaveProviderLocation(c *gin.Context) {
 	providerID := c.GetString(middleware.ContextKeyUserID)

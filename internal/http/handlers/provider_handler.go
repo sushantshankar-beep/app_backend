@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"app_backend/internal/domain"
@@ -60,9 +61,10 @@ func (h *ProviderHandler) VerifyOTP(c *gin.Context) {
 
 func (h *ProviderHandler) Profile(c *gin.Context) {
 	id := c.GetString(middleware.ContextKeyUserID)
+	fmt.Println("Provider ID from context:", id)
 	pid := domain.ProviderID(id)
-
 	p, err := h.svc.GetProfile(c, pid)
+	fmt.Println("Fetched Provider Profile:", p)
 	if err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})
@@ -80,15 +82,13 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 	id := c.GetString(middleware.ContextKeyUserID)
 	pid := domain.ProviderID(id)
-
 	var req map[string]any
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-
 	updatedProfile, err := h.svc.CreateOrUpdateProfile(c, pid, req)
+	fmt.Println("Updated Provider Profile:", updatedProfile)
 	if err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Provider not found"})

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 
 	"app_backend/internal/domain"
 
@@ -20,7 +19,6 @@ func NewProviderRepo(db *mongo.Database) *ProviderRepo {
 }
 
 func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.Provider, error) {
-	fmt.Println("Searching for provider with phone:", phone)
 	var p domain.Provider
 	err := r.col.FindOne(ctx, bson.M{"phone": phone}).Decode(&p)
 	if err == mongo.ErrNoDocuments {
@@ -30,23 +28,28 @@ func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.P
 }
 
 func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
-	oid, err := primitive.ObjectIDFromHex(string(id))
+	objID, err := primitive.ObjectIDFromHex(string(id))
 	if err != nil {
-		return nil, err 
-	}
-
-	var p domain.Provider
-	err = r.col.FindOne(ctx, bson.M{"_id": oid}).Decode(&p)
-	if err == mongo.ErrNoDocuments {
 		return nil, domain.ErrNotFound
 	}
-	return &p, err
+
+	var provider domain.Provider
+	err = r.col.FindOne(ctx, bson.M{"_id": objID}).Decode(&provider)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &provider, nil
 }
 
 func (r *ProviderRepo) Create(ctx context.Context, p *domain.Provider) error {
 	_, err := r.col.InsertOne(ctx, p)
 	return err
 }
+
 
 func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 	_, err := r.col.UpdateByID(ctx, p.ID, bson.M{"$set": p})

@@ -18,7 +18,7 @@ func NewLocationRepo(db *mongo.Database) *LocationRepo {
 	return &LocationRepo{col: db.Collection("locations")}
 }
 
-// Save or update user location
+
 func (r *LocationRepo) Save(ctx context.Context, loc *domain.Location) error {
 	filter := bson.M{"userId": loc.UserID}
 	update := bson.M{"$set": loc}
@@ -32,7 +32,6 @@ func (r *LocationRepo) Save(ctx context.Context, loc *domain.Location) error {
 	return err
 }
 
-// Get saved location by user
 func (r *LocationRepo) GetByUser(ctx context.Context, userID string) (*domain.Location, error) {
 	var loc domain.Location
 	err := r.col.FindOne(ctx, bson.M{"userId": userID}).Decode(&loc)

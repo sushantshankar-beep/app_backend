@@ -33,6 +33,7 @@ func SetupRouter(
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
+		provider.PUT("/dashboard", providerAuth, providerHandler.Dashboard)
 		provider.GET("/my-services", providerAuth, providerHandler.GetMyAllServices)
         provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 	}

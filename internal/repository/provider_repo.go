@@ -16,7 +16,7 @@ type ProviderRepo struct {
 }
 
 func NewProviderRepo(db *mongo.Database) *ProviderRepo {
-	return &ProviderRepo{col: db.Collection("providers")}
+	return &ProviderRepo{col: db.Collection("providerschemas")}
 }
 
 func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.Provider, error) {
@@ -32,7 +32,7 @@ func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.P
 func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
 	oid, err := primitive.ObjectIDFromHex(string(id))
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 
 	var p domain.Provider

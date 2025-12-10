@@ -40,10 +40,9 @@ func SetupRouter(
 
 		// Auth
 		provider.GET("/profile", providerAuth, providerHandler.Profile)
-
-		// Location
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
+		provider.PUT("/profile-update", providerAuth, providerHandler.CreateOrUpdateProfile)
 	}
 
 	return r

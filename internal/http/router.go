@@ -26,6 +26,7 @@ func SetupRouter(
 		provider.POST("/send-otp", providerHandler.SendOTP)
 		provider.POST("/verify-otp", providerHandler.VerifyOTP)
 		provider.GET("/profile", providerAuth, providerHandler.Profile)
+		provider.PUT("/profile-update", providerAuth, providerHandler.CreateOrUpdateProfile)
 	}
 
 	return r

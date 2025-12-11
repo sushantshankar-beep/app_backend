@@ -369,11 +369,8 @@ func (s *ProviderService) GetMyService(ctx context.Context, providerID domain.Pr
 func (s *ProviderService) GetDashboardStats(ctx context.Context, providerID domain.ProviderID) (*domain.DashboardStats, error) {
 	startOfDay := time.Now().Truncate(24 * time.Hour)
 
-	// MongoDB aggregation pipeline
 	pipeline := mongo.Pipeline{
-		// Match by provider and paymentStatus
 		{{Key: "$match", Value: bson.M{"provider": providerID, "paymentStatus": "paid"}}},
-		// Facet to calculate different stats
 		{{
 			Key: "$facet",
 			Value: bson.M{

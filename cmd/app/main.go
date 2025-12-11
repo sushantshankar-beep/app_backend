@@ -42,6 +42,7 @@ func main() {
 	providerRepo := repository.NewProviderRepo(database)
 	otpRepo := repository.NewOTPRepo(database)
 	locationRepo := repository.NewLocationRepo(database)
+	homepageRepo := repository.NewHomepageRepo(database)
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(database)
 	complaintRepo := repository.NewComplaintRepo(database)
 	var smsClient ports.SMSClient = sms.SmsTrigger()
@@ -55,12 +56,12 @@ func main() {
 	providerSvc := service.NewProviderService(providerRepo, otpRepo, tokenSvc, otpQueue, acceptedServiceRepo)
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo)
-
+	homepageSvc := service.NewHomepageService(homepageRepo)
 	userHandler := handlers.NewUserHandler(userSvc)
 	providerHandler := handlers.NewProviderHandler(providerSvc)
 	locationHandler := handlers.NewLocationHandler(locationSvc)
 	complaintRepoHandler := handlers.NewComplaintHandler(complaintSvc)
-
+	homepageHandler := handlers.NewHomepageHandler(homepageSvc)
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
 
@@ -71,6 +72,7 @@ func main() {
 		providerAuth,
 		locationHandler,
 		complaintRepoHandler,
+		homepageHandler,
 	)
 
 	log.Println("Server running on port:", cfg.HTTPPort)

@@ -40,3 +40,10 @@ type AcceptedServiceRepository interface {
     FindByIDAndProvider(ctx context.Context, id string, providerID domain.ProviderID) (*domain.AcceptedService, error)
     Count(ctx context.Context, filter bson.M) (int64, error)
 }
+type HomepageRepository interface {
+	Create(ctx context.Context, h *domain.Homepage) error
+	Update(ctx context.Context, h *domain.Homepage) error
+	FindByID(ctx context.Context, id string) (*domain.Homepage, error)
+	FindAll(ctx context.Context, skip, limit int) ([]domain.Homepage, error)
+	Count(ctx context.Context, filter bson.M) (int64, error)
+}

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-
 	"app_backend/internal/auth"
 	"app_backend/internal/config"
 	"app_backend/internal/db"
@@ -15,7 +14,6 @@ import (
 	"app_backend/internal/service"
 	"app_backend/internal/sms"
 	"app_backend/internal/worker"
-
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -23,7 +21,7 @@ import (
 func main() {
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("⚠️  No .env file found — using system environment variables")
+		log.Println("No .env file found — using system environment variables")
 	} else {
 		fmt.Println(".env file loaded successfully")
 	}
@@ -44,7 +42,7 @@ func main() {
 	otpRepo := repository.NewOTPRepo(database)
 	locationRepo := repository.NewLocationRepo(database)
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(database)
-
+	complaintRepo := repository.NewComplaintRepo(database)
 	var smsClient ports.SMSClient = sms.NewDummySMS()
 	var tokenSvc ports.TokenService = auth.NewJWT(cfg.JWTSecret)
 
@@ -54,11 +52,13 @@ func main() {
 
 	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue)
 	providerSvc := service.NewProviderService(providerRepo, otpRepo, tokenSvc, otpQueue, acceptedServiceRepo)
-	locationSvc := service.NewLocationService(locationRepo) 
+	locationSvc := service.NewLocationService(locationRepo)
+	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo)
 
 	userHandler := handlers.NewUserHandler(userSvc)
 	providerHandler := handlers.NewProviderHandler(providerSvc)
-	locationHandler := handlers.NewLocationHandler(locationSvc) 
+	locationHandler := handlers.NewLocationHandler(locationSvc)
+	complaintRepoHandler := handlers.NewComplaintHandler(complaintSvc)
 
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
@@ -69,9 +69,10 @@ func main() {
 		userAuth,
 		providerAuth,
 		locationHandler,
+		complaintRepoHandler,
 	)
 
-	log.Println("🚀 Server running on port:", cfg.HTTPPort)
+	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {
 		log.Fatal("server error:", err)

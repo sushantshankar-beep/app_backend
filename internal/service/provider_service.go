@@ -7,8 +7,8 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/worker"
-	"go.mongodb.org/mongo-driver/bson"
 
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type ProviderService struct {
@@ -36,8 +36,7 @@ func NewProviderService(
 }
 
 func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
-	code := "1234"
-
+	code := GenerateOTP()
 	otp := &domain.OTP{
 		Phone:     phone,
 		Code:      code,

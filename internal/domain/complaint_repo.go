@@ -1,8 +1,9 @@
 package domain
 
 import (
-    "time"
-    "go.mongodb.org/mongo-driver/bson/primitive"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Complaint struct {
@@ -13,11 +14,10 @@ type Complaint struct {
     ProviderID      primitive.ObjectID `bson:"providerId" json:"providerId"`
     UserID          primitive.ObjectID `bson:"userId" json:"userId"`
 
-    RaisedBy        string             `bson:"raisedBy" json:"raisedBy"` // "User" or "Provider"
+    RaisedBy        string             `bson:"raisedBy" json:"raisedBy"`
     Problem         string             `bson:"problem" json:"problem"`
     Photos          []string           `bson:"photos" json:"photos"`
-
-    Status          string             `bson:"status" json:"status"` // "initiated"
+    Status          string             `bson:"status" json:"status"`
     Timeline        map[string]time.Time `bson:"timeline" json:"timeline"`
 
     CreatedAt       time.Time `bson:"createdAt" json:"createdAt"`

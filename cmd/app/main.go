@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"app_backend/internal/auth"
 	"app_backend/internal/config"
 	"app_backend/internal/db"
@@ -14,6 +12,9 @@ import (
 	"app_backend/internal/service"
 	"app_backend/internal/sms"
 	"app_backend/internal/worker"
+	"fmt"
+	"log"
+
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -43,7 +44,7 @@ func main() {
 	locationRepo := repository.NewLocationRepo(database)
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(database)
 	complaintRepo := repository.NewComplaintRepo(database)
-	var smsClient ports.SMSClient = sms.NewDummySMS()
+	var smsClient ports.SMSClient = sms.SmsTrigger()
 	var tokenSvc ports.TokenService = auth.NewJWT(cfg.JWTSecret)
 
 	otpQueue := worker.NewOTPQueue(smsClient)

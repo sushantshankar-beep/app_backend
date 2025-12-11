@@ -13,6 +13,7 @@ func SetupRouter(
 	providerAuth gin.HandlerFunc,
 	locationHandler *handlers.LocationHandler,
 	complaintHandler *handlers.ComplaintHandler,
+	homepageHandler *handlers.HomepageHandler,
 ) *gin.Engine {
 
 	r := gin.Default()

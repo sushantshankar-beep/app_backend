@@ -31,8 +31,6 @@ func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*dom
 	objID, err := primitive.ObjectIDFromHex(string(id))
 	if err != nil {
 		return nil, domain.ErrNotFound
-		return nil, err
-
 	}
 
 	var provider domain.Provider
@@ -44,16 +42,52 @@ func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*dom
 		return nil, err
 	}
 
+	provider.ID = domain.ProviderID(objID.Hex())
 	return &provider, nil
 }
 
 func (r *ProviderRepo) Create(ctx context.Context, p *domain.Provider) error {
-	_, err := r.col.InsertOne(ctx, p)
-	return err
+	res, err := r.col.InsertOne(ctx, p)
+	if err != nil {
+		return err
+	}
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		p.ID = domain.ProviderID(oid.Hex())
+	}
+	return nil
 }
 
-
 func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
-	_, err := r.col.UpdateByID(ctx, p.ID, bson.M{"$set": p})
+	objID, err := primitive.ObjectIDFromHex(string(p.ID))
+	if err != nil {
+		return err
+	}
+	
+	update := bson.M{
+		"$set": bson.M{
+			"name":               p.Name,
+			"email":              p.Email,
+			"alternateContact":   p.AlternateContact,
+			"profileUrl":         p.ProfileURL,
+			"address":            p.Address,
+			"permanentAddress":   p.PermanentAddress,
+			"city":               p.City,
+			"GSTNumber":          p.GSTNumber,
+			"identityProof":      p.IdentityProof,
+			"addressProof":       p.AddressProof,
+			"cancelCheque":       p.CancelCheque,
+			"bankDetails":        p.BankDetails,
+			"vehicleNumber":      p.VehicleNumber,
+			"formSubmitted":      p.FormSubmitted,
+			"description":        p.Description,
+			"vehicleType":        p.VehicleType,
+			"providerBrands":     p.ProviderBrands,
+			"providerServices":   p.ProviderServices,
+			"companyName":        p.CompanyName,
+			"updatedAt":          p.UpdatedAt,
+		},
+	}
+	
+	_, err = r.col.UpdateByID(ctx, objID, update)
 	return err
 }

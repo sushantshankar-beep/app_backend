@@ -27,6 +27,13 @@ func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.P
 	return &p, err
 }
 
+func (r *ProviderRepo) AddComplaint(ctx context.Context, providerID primitive.ObjectID, complaintID primitive.ObjectID) error {
+	_, err := r.col.UpdateByID(ctx, providerID, bson.M{
+		"$push": bson.M{"complaints": complaintID},
+	})
+	return err
+}
+
 func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
 	objID, err := primitive.ObjectIDFromHex(string(id))
 	if err != nil {

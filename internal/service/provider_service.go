@@ -6,33 +6,51 @@ import (
 
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
+	"app_backend/internal/validation"
 	"app_backend/internal/worker"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ProviderService struct {
-	repo                ports.ProviderRepository
-	otp                 ports.OTPStore
-	token               ports.TokenService
-	queue               *worker.OTPQueue
-	AcceptedServiceRepo ports.AcceptedServiceRepository
+    repo                ports.ProviderRepository
+    otp                 ports.OTPStore
+    token               ports.TokenService
+    queue               *worker.OTPQueue
+    AcceptedServiceRepo ports.AcceptedServiceRepository
+    ServiceRequestRepo  ports.ServiceRequestRepository
+    UserRepo            ports.UserRepository
+    BidRepo             ports.BidRepository
 }
 
+
 func NewProviderService(
-	repo ports.ProviderRepository,
-	otp ports.OTPStore,
-	token ports.TokenService,
-	q *worker.OTPQueue,
-	acceptedRepo ports.AcceptedServiceRepository,
+    repo ports.ProviderRepository,
+    otp ports.OTPStore,
+    token ports.TokenService,
+    q *worker.OTPQueue,
+    acceptedRepo ports.AcceptedServiceRepository,
+    srRepo ports.ServiceRequestRepository,
+    userRepo ports.UserRepository,
+    bidRepo ports.BidRepository,
 ) *ProviderService {
-	return &ProviderService{
-		repo:                repo,
-		otp:                 otp,
-		token:               token,
-		queue:               q,
-		AcceptedServiceRepo: acceptedRepo,
-	}
+    return &ProviderService{
+        repo:                repo,
+        otp:                 otp,
+        token:               token,
+        queue:               q,
+        AcceptedServiceRepo: acceptedRepo,
+        ServiceRequestRepo:  srRepo,
+        UserRepo:            userRepo,
+        BidRepo:             bidRepo,
+    }
+}
+func firstOrFallback(arr []string, fallback string) string {
+    if len(arr) > 0 {
+        return arr[0]
+    }
+    return fallback
 }
 
 func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
@@ -69,7 +87,6 @@ func (s *ProviderService) VerifyOTP(ctx context.Context, phone, code string) (st
 		isNew = true
 		p = &domain.Provider{
 			Phone:     phone,
-			Services:  []string{},
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -86,113 +103,107 @@ func (s *ProviderService) GetProfile(ctx context.Context, id domain.ProviderID) 
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.ProviderID, req map[string]any) (*domain.Provider, error) {
+func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.ProviderID, req validation.ProviderProfileRequest) (*domain.Provider, error) {
 	provider, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if name, ok := req["name"].(string); ok && name != "" {
-		provider.Name = name
+
+	if req.Name != "" {
+		provider.Name = req.Name
 	}
-	if email, ok := req["email"].(string); ok && email != "" {
-		provider.Email = email
+	if req.Email != "" {
+		provider.Email = req.Email
 	}
-	if alternateContact, ok := req["alternateContact"].(string); ok && alternateContact != "" {
-		provider.AlternateContact = alternateContact
+	if req.AlternateContact != "" {
+		provider.AlternateContact = req.AlternateContact
 	}
-	if profileUrl, ok := req["profileUrl"].(string); ok && profileUrl != "" {
-		provider.ProfileURL = profileUrl
+	if req.ProfileURL != "" {
+		provider.ProfileURL = req.ProfileURL
 	}
-	if address, ok := req["address"].(string); ok && address != "" {
-		provider.Address = address
+	if req.Address != "" {
+		provider.Address = req.Address
 	}
-	if permanentAddress, ok := req["permanentAddress"].(string); ok && permanentAddress != "" {
-		provider.PermanentAddress = permanentAddress
+	if req.PermanentAddress != "" {
+		provider.PermanentAddress = req.PermanentAddress
 	}
-	if city, ok := req["city"].(string); ok && city != "" {
-		provider.City = city
+	if req.City != "" {
+		provider.City = req.City
 	}
-	if gstNumber, ok := req["gstNumber"].(string); ok && gstNumber != "" {
-		provider.GSTNumber = gstNumber
+	if req.GSTNumber != "" {
+		provider.GSTNumber = req.GSTNumber
 	}
-	if vehicleNumber, ok := req["vehicleNumber"].(string); ok && vehicleNumber != "" {
-		provider.VehicleNumber = vehicleNumber
+	if req.VehicleNumber != "" {
+		provider.VehicleNumber = req.VehicleNumber
 	}
-	if description, ok := req["description"].(string); ok && description != "" {
-		provider.Description = description
+	if req.Description != "" {
+		provider.Description = req.Description
 	}
-	if companyName, ok := req["companyName"].(string); ok && companyName != "" {
-		provider.CompanyName = companyName
+	if req.CompanyName != "" {
+		provider.CompanyName = req.CompanyName
+	}
+	if req.PreferredLanguage != "" {
+		provider.PreferredLanguage = req.PreferredLanguage
 	}
 
-	if vehicleType, ok := req["vehicleType"].([]any); ok && len(vehicleType) > 0 {
-		provider.VehicleType = make([]string, len(vehicleType))
-		for i, vt := range vehicleType {
-			provider.VehicleType[i] = vt.(string)
-		}
+	provider.TermsAndConditions = req.TermsAndConditions
+
+	if len(req.VehicleType) > 0 {
+		provider.VehicleType = req.VehicleType
 	}
 
-	if providerServices, ok := req["providerServices"].([]any); ok && len(providerServices) > 0 {
-		provider.ProviderServices = make([]string, len(providerServices))
-		for i, ps := range providerServices {
-			provider.ProviderServices[i] = ps.(string)
-		}
-	}
-	if providerBrands, ok := req["providerBrands"].([]any); ok && len(providerBrands) > 0 {
-		provider.ProviderBrands = make([]string, len(providerBrands))
-		for i, pb := range providerBrands {
-			provider.ProviderBrands[i] = pb.(string)
-		}
+	if len(req.ProviderServices) > 0 {
+		provider.ProviderServices = req.ProviderServices
 	}
 
-	if identityProof, ok := req["identityProof"].([]any); ok && len(identityProof) > 0 {
-		provider.IdentityProof = make([]domain.Proof, len(identityProof))
-		for i, ip := range identityProof {
-			proofMap := ip.(map[string]any)
-			provider.IdentityProof[i] = domain.Proof{
-				Type:     proofMap["type"].(string),
-				File:     proofMap["file"].(string),
-				Verified: "pending",
-			}
-		}
+	if len(req.ProviderBrands) > 0 {
+		provider.ProviderBrands = req.ProviderBrands
 	}
 
-	if addressProof, ok := req["addressProof"].([]any); ok && len(addressProof) > 0 {
-		provider.AddressProof = make([]domain.Proof, len(addressProof))
-		for i, ap := range addressProof {
-			proofMap := ap.(map[string]any)
-			provider.AddressProof[i] = domain.Proof{
-				Type:     proofMap["type"].(string),
-				File:     proofMap["file"].(string),
-				Verified: "pending",
-			}
-		}
-	}
+	// if len(req.IdentityProof) > 0 {
+	// 	provider.IdentityProof = make([]domain.Proof, len(req.IdentityProof))
+	// 	for i, ip := range req.IdentityProof {
+	// 		provider.IdentityProof[i] = domain.Proof{
+	// 			Type:     ip.Type,
+	// 			File:     ip.File,
+	// 			Verified: "pending",
+	// 		}
+	// 	}
+	// }
 
-	if cancelCheque, ok := req["cancelCheque"].(map[string]any); ok && len(cancelCheque) > 0 {
-		if file, ok := cancelCheque["file"].(string); ok && file != "" {
-			provider.CancelCheque = domain.CancelCheque{
-				File:     file,
-				Verified: "pending",
-			}
-		}
-	}
+	// if len(req.AddressProof) > 0 {
+	// 	provider.AddressProof = make([]domain.Proof, len(req.AddressProof))
+	// 	for i, ap := range req.AddressProof {
+	// 		provider.AddressProof[i] = domain.Proof{
+	// 			Type:     ap.Type,
+	// 			File:     ap.File,
+	// 			Verified: "pending",
+	// 		}
+	// 	}
+	// }
 
-	if bankDetails, ok := req["bankDetails"].(map[string]any); ok && len(bankDetails) > 0 {
-		if accountHolderName, ok := bankDetails["accountHolderName"].(string); ok && accountHolderName != "" {
-			provider.BankDetails.AccountHolderName = accountHolderName
+	// if req.CancelCheque != nil && req.CancelCheque.File != "" {
+	// 	provider.CancelCheque = domain.CancelCheque{
+	// 		File:     req.CancelCheque.File,
+	// 		Verified: "pending",
+	// 	}
+	// }
+
+	if req.BankDetails != nil {
+		if req.BankDetails.AccountHolderName != "" {
+			provider.BankDetails.AccountHolderName = req.BankDetails.AccountHolderName
 		}
-		if accountNumber, ok := bankDetails["accountNumber"].(string); ok && accountNumber != "" {
-			provider.BankDetails.AccountNumber = accountNumber
+		if req.BankDetails.AccountNumber != "" {
+			provider.BankDetails.AccountNumber = req.BankDetails.AccountNumber
 		}
-		if ifscCode, ok := bankDetails["ifscCode"].(string); ok && ifscCode != "" {
-			provider.BankDetails.IFSCCode = ifscCode
+		if req.BankDetails.IFSCCode != "" {
+			provider.BankDetails.IFSCCode = req.BankDetails.IFSCCode
 		}
-		if branchName, ok := bankDetails["branchName"].(string); ok && branchName != "" {
-			provider.BankDetails.BranchName = branchName
+		if req.BankDetails.BranchName != "" {
+			provider.BankDetails.BranchName = req.BankDetails.BranchName
 		}
-		if upi, ok := bankDetails["upi"].(string); ok && upi != "" {
-			provider.BankDetails.UPI = upi
+		if req.BankDetails.UPI != "" {
+			provider.BankDetails.UPI = req.BankDetails.UPI
 		}
 	}
 
@@ -206,56 +217,140 @@ func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.P
 	return provider, nil
 }
 
-func (s *ProviderService) GetMyAllServices(ctx context.Context, providerID domain.ProviderID, page, limit int) (map[string][]map[string]any, int64, error) {
-	skip := (page - 1) * limit
+func (s *ProviderService) GetMyAllServices(
+    ctx context.Context,
+    providerID domain.ProviderID,
+    page, limit int,
+) (map[string][]map[string]any, int64, error) {
 
-	services, err := s.AcceptedServiceRepo.ListByProvider(ctx, providerID, skip, limit)
-	if err != nil {
-		return nil, 0, err
-	}
+    skip := (page - 1) * limit
 
-	total, err := s.AcceptedServiceRepo.Count(ctx, bson.M{"provider": providerID})
-	if err != nil {
-		return nil, 0, err
-	}
+    services, err := s.AcceptedServiceRepo.ListByProvider(ctx, providerID, skip, limit)
+    if err != nil {
+        return nil, 0, err
+    }
 
-	ongoingStatuses := []string{"not_started", "started", "reached_location", "otp_verified", "in_progress"}
-	completedStatuses := []string{"completed"}
-	cancelledStatuses := []string{"cancelled", "dead"}
+    total, err := s.AcceptedServiceRepo.Count(ctx, bson.M{"provider": providerID})
+    if err != nil {
+        return nil, 0, err
+    }
 
-	grouped := map[string][]map[string]any{
-		"ongoing":   {},
-		"completed": {},
-		"cancelled": {},
-	}
+    ongoingStatuses := []string{"not_started", "started", "reached_location", "otp_verified", "in_progress"}
+    completedStatuses := []string{"completed"}
+    cancelledStatuses := []string{"cancelled", "dead"}
 
-	for _, s := range services {
-		status := s.Status
-		if status == "dead" {
-			status = "cancelled"
-		}
+    grouped := map[string][]map[string]any{
+        "ongoing":   {},
+        "completed": {},
+        "cancelled": {},
+    }
 
-		item := map[string]any{
-			"id":         s.ID,
-			"finalPrice": s.FinalPrice,
-			"basePrice":  s.BasePrice,
-			"issues":     s.Issues,
-			"createdAt":  s.CreatedAt,
-			"status":     status,
-		}
+    for _, svc := range services {
 
-		switch {
-		case contains(ongoingStatuses, s.Status):
-			grouped["ongoing"] = append(grouped["ongoing"], item)
-		case contains(completedStatuses, s.Status):
-			grouped["completed"] = append(grouped["completed"], item)
-		case contains(cancelledStatuses, s.Status):
-			grouped["cancelled"] = append(grouped["cancelled"], item)
-		}
-	}
+        // ---- Fetch Service Request ----
+        sr, err := s.ServiceRequestRepo.FindByObjectID(ctx, svc.ServiceRequest)
+        if err != nil {
+            return nil, 0, err
+        }
 
-	return grouped, total, nil
+        // ---- Fetch User ----
+        userData, err := s.UserRepo.FindByObjectID(ctx, sr.User)
+        if err != nil {
+            return nil, 0, err
+        }
+
+        // ---- Fetch Provider ----
+        providerData, err := s.repo.FindByID(ctx, providerID)
+        if err != nil {
+            return nil, 0, err
+        }
+
+        // ---- Fetch accepted bid ----
+        bid, err := s.BidRepo.FindByObjectID(ctx, svc.AcceptedBid)
+        if err != nil {
+            return nil, 0, err
+        }
+
+        // ---- Build Response ----
+        item := map[string]any{
+            "id":  svc.ID,
+            "_id": svc.ID,
+
+            "user": map[string]any{
+                "id":         userData.ID,
+                "name":       userData.Name,
+                "email":      userData.Email,
+                "phone":      userData.Phone,
+            },
+
+            "provider": map[string]any{
+                "id":          providerData.ID,
+                "name":        providerData.Name,
+                "email":       providerData.Email,
+                "phone":       providerData.Phone,
+                "businessName": providerData.CompanyName,
+            },
+
+            "serviceRequest": map[string]any{
+                "id":            sr.ID,
+                "vehicleNumber": sr.VehicleNumber,
+                "vehicleModel":  sr.Model,
+                "vehicleBrand":  sr.Brand,
+                "vehicleYear":   sr.Year,
+                "vehicleType":   sr.VehicleType,
+                "fuelType":      sr.FuelType,
+                "location":      sr.Address,
+                "serviceType":   firstOrFallback(sr.Problems, sr.ServiceType),
+                "issues":        svc.Issues,
+                "description":   sr.Description,
+                "scheduledDate": sr.ScheduledDate,
+            },
+
+            "acceptedBid": map[string]any{
+                "amount":        bid.OfferedPrice,
+                "basePrice":     bid.BasePrice,
+                "estimatedTime": bid.EstimatedTime,
+                "distance":      bid.Distance,
+                "message":       bid.Message,
+                "createdAt":     bid.CreatedAt,
+            },
+
+            "otp": map[string]any{
+                "code":       svc.OTP.Code,
+                "verified":   svc.OTP.Verified,
+                "verifiedAt": svc.OTP.VerifiedAt,
+            },
+
+            "status":        svc.Status,
+            "reachedAt":     svc.ReachedAt,
+            "startedAt":     svc.StartedAt,
+            "completedAt":   svc.CompletedAt,
+            "expiresAt":     svc.ExpiresAt,
+            "basePrice":     svc.BasePrice,
+            "finalPrice":    svc.FinalPrice,
+            "paymentStatus": svc.PaymentStatus,
+            "orderId":       svc.OrderID,
+
+            "serviceLocation": svc.ServiceLocation,
+
+            "createdAt": svc.CreatedAt,
+            "updatedAt": svc.UpdatedAt,
+        }
+
+        switch {
+        case contains(ongoingStatuses, svc.Status):
+            grouped["ongoing"] = append(grouped["ongoing"], item)
+        case contains(completedStatuses, svc.Status):
+            grouped["completed"] = append(grouped["completed"], item)
+        case contains(cancelledStatuses, svc.Status):
+            grouped["cancelled"] = append(grouped["cancelled"], item)
+        }
+    }
+
+    return grouped, total, nil
 }
+
+
 
 func contains(arr []string, v string) bool {
 	for _, a := range arr {
@@ -268,4 +363,77 @@ func contains(arr []string, v string) bool {
 
 func (s *ProviderService) GetMyService(ctx context.Context, providerID domain.ProviderID, serviceID string) (*domain.AcceptedService, error) {
 	return s.AcceptedServiceRepo.FindByIDAndProvider(ctx, serviceID, providerID)
+}
+
+
+func (s *ProviderService) GetDashboardStats(ctx context.Context, providerID domain.ProviderID) (*domain.DashboardStats, error) {
+	startOfDay := time.Now().Truncate(24 * time.Hour)
+
+	// MongoDB aggregation pipeline
+	pipeline := mongo.Pipeline{
+		// Match by provider and paymentStatus
+		{{Key: "$match", Value: bson.M{"provider": providerID, "paymentStatus": "paid"}}},
+		// Facet to calculate different stats
+		{{
+			Key: "$facet",
+			Value: bson.M{
+				"allTimeEarning": []bson.M{
+					{"$match": bson.M{"status": "completed"}},
+					{"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$finalPrice"}}},
+				},
+				"todaysEarning": []bson.M{
+					{"$match": bson.M{"status": "completed", "updatedAt": bson.M{"$gte": startOfDay}}},
+					{"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$finalPrice"}}},
+				},
+				"servicesCompleted": []bson.M{
+					{"$match": bson.M{"status": "completed"}},
+					{"$count": "count"},
+				},
+				"cancelledServices": []bson.M{
+					{"$match": bson.M{"status": "cancelled"}},
+					{"$count": "count"},
+				},
+			},
+		}},
+	}
+
+	resultArr, err := s.AcceptedServiceRepo.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+
+	var stats domain.DashboardStats
+	if len(resultArr) > 0 {
+		result := resultArr[0]
+
+		if allTime, ok := result["allTimeEarning"].([]interface{}); ok && len(allTime) > 0 {
+			if v, ok := allTime[0].(map[string]interface{})["total"].(float64); ok {
+				stats.AllTimeEarning = v
+			}
+		}
+
+		if today, ok := result["todaysEarning"].([]interface{}); ok && len(today) > 0 {
+			if v, ok := today[0].(map[string]interface{})["total"].(float64); ok {
+				stats.TodaysEarning = v
+			}
+		}
+
+		if completed, ok := result["servicesCompleted"].([]interface{}); ok && len(completed) > 0 {
+			if v, ok := completed[0].(map[string]interface{})["count"].(int32); ok {
+				stats.ServicesCompleted = int(v)
+			} else if v, ok := completed[0].(map[string]interface{})["count"].(int64); ok {
+				stats.ServicesCompleted = int(v)
+			}
+		}
+
+		if cancelled, ok := result["cancelledServices"].([]interface{}); ok && len(cancelled) > 0 {
+			if v, ok := cancelled[0].(map[string]interface{})["count"].(int32); ok {
+				stats.CancelledServices = int(v)
+			} else if v, ok := cancelled[0].(map[string]interface{})["count"].(int64); ok {
+				stats.CancelledServices = int(v)
+			}
+		}
+	}
+
+	return &stats, nil
 }

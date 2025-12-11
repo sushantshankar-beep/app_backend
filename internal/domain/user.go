@@ -10,10 +10,12 @@ type UserID string
 
 type User struct {
 	ID                  UserID               `bson:"_id,omitempty" json:"id"`
+
 	Phone               string               `bson:"phone" json:"phone"`
 	CreatedAt           time.Time            `bson:"createdAt" json:"createdAt"`
 	UpdatedAt           time.Time            `bson:"updatedAt" json:"updatedAt"`
 	Email               string               `bson:"email" json:"email"`
+	Name                string               `bson:"name" json:"name"`
 	ReferralCode        string               `bson:"referralCode" json:"referralCode"`
 	IsActive            bool                 `bson:"isActive" json:"isActive"`
 	FcmToken            string               `bson:"fcmToken" json:"fcmToken"`

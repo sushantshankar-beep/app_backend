@@ -82,7 +82,7 @@ func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 			"GSTNumber":          p.GSTNumber,
 			"identityProof":      p.IdentityProof,
 			"addressProof":       p.AddressProof,
-			"cancelCheque":       p.CancelCheque,
+			// "cancelCheque":       p.CancelCheque,
 			"bankDetails":        p.BankDetails,
 			"vehicleNumber":      p.VehicleNumber,
 			"formSubmitted":      p.FormSubmitted,

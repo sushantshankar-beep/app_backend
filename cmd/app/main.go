@@ -45,6 +45,10 @@ func main() {
 	homepageRepo := repository.NewHomepageRepo(database)
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(database)
 	complaintRepo := repository.NewComplaintRepo(database)
+	serviceRequestRepo := repository.NewServiceRequestRepo(database)
+	savedVehicleRepo := repository.NewSavedVehicleRepo(database)
+	bidRepo := repository.NewBidRepo(database)
+
 	var smsClient ports.SMSClient = sms.SmsTrigger()
 	var tokenSvc ports.TokenService = auth.NewJWT(cfg.JWTSecret)
 
@@ -53,15 +57,18 @@ func main() {
 	defer otpQueue.Stop()
 
 	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue)
-	providerSvc := service.NewProviderService(providerRepo, otpRepo, tokenSvc, otpQueue, acceptedServiceRepo)
+	providerSvc := service.NewProviderService(providerRepo, otpRepo, tokenSvc, otpQueue, acceptedServiceRepo, serviceRequestRepo, userRepo, bidRepo)
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo)
+	serviceRequestSvc := service.NewServiceRequestService(serviceRequestRepo, savedVehicleRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo)
 	userHandler := handlers.NewUserHandler(userSvc)
 	providerHandler := handlers.NewProviderHandler(providerSvc)
 	locationHandler := handlers.NewLocationHandler(locationSvc)
 	complaintRepoHandler := handlers.NewComplaintHandler(complaintSvc)
 	homepageHandler := handlers.NewHomepageHandler(homepageSvc)
+	serviceRequestHandler := handlers.NewServiceRequestHandler(serviceRequestSvc)
+
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
 
@@ -73,6 +80,7 @@ func main() {
 		locationHandler,
 		complaintRepoHandler,
 		homepageHandler,
+		serviceRequestHandler,
 	)
 
 	log.Println("Server running on port:", cfg.HTTPPort)

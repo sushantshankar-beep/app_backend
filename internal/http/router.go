@@ -14,6 +14,7 @@ func SetupRouter(
 	locationHandler *handlers.LocationHandler,
 	complaintHandler *handlers.ComplaintHandler,
 	homepageHandler *handlers.HomepageHandler,
+	serviceRequestHandler *handlers.ServiceRequestHandler,
 ) *gin.Engine {
 
 	r := gin.Default()
@@ -38,11 +39,22 @@ func SetupRouter(
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
-		provider.PUT("/dashboard", providerAuth, providerHandler.Dashboard)
+		provider.GET("/dashboard", providerAuth, providerHandler.Dashboard)
 		provider.GET("/my-services", providerAuth, providerHandler.GetMyAllServices)
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
+	}
+
+	homepage := r.Group("/homepage")
+	{
+		homepage.GET("/:id", homepageHandler.GetHomepage)
+		homepage.POST("", homepageHandler.CreateOrUpdateHomepage)
+	}
+
+	serviceRequest := r.Group("/service-request")
+	{
+		serviceRequest.POST("", userAuth, serviceRequestHandler.CreateServiceRequest)
 	}
 
 	return r

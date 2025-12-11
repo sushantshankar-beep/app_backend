@@ -44,47 +44,80 @@ func (r *AcceptedServiceRepo) Count(ctx context.Context, filter bson.M) (int64, 
     return r.col.CountDocuments(ctx, filter)
 }
 
+
+
 func (r *AcceptedServiceRepo) ListByProvider(ctx context.Context, providerID domain.ProviderID, skip, limit int) ([]domain.AcceptedService, error) {
+    oid, _ := primitive.ObjectIDFromHex(string(providerID))
+
     filter := bson.M{
-        "provider": providerID,
+        "provider": oid,
         "paymentStatus": "paid",
     }
 
     opts := options.Find().
+        SetSort(bson.M{"createdAt": -1}).
         SetSkip(int64(skip)).
-        SetLimit(int64(limit)).
-        SetSort(bson.M{"createdAt": -1})
+        SetLimit(int64(limit))
 
     cur, err := r.col.Find(ctx, filter, opts)
     if err != nil {
         return nil, err
     }
-    defer cur.Close(ctx)
 
-    var services []domain.AcceptedService
-    if err := cur.All(ctx, &services); err != nil {
+    var result []domain.AcceptedService
+    if err := cur.All(ctx, &result); err != nil {
         return nil, err
     }
 
-    return services, nil
+    return result, nil
 }
 
 func (r *AcceptedServiceRepo) FindByIDAndProvider(ctx context.Context, id string, providerID domain.ProviderID) (*domain.AcceptedService, error) {
-    objID, err := primitive.ObjectIDFromHex(id)
+    oid, err := primitive.ObjectIDFromHex(id)
+    if err != nil {
+        return nil, domain.ErrNotFound
+    }
+
+    providerOID, _ := primitive.ObjectIDFromHex(string(providerID))
+
+    filter := bson.M{
+        "_id": oid,
+        "provider": providerOID,
+        "paymentStatus": "paid",
+    }
+
+    var result domain.AcceptedService
+    err = r.col.FindOne(ctx, filter).Decode(&result)
     if err != nil {
         return nil, err
     }
 
-    filter := bson.M{
-        "_id": objID,
-        "provider": providerID,
-        "paymentStatus": "paid",
-    }
+    return &result, nil
+}
 
-    var svc domain.AcceptedService
-    if err := r.col.FindOne(ctx, filter).Decode(&svc); err != nil {
+
+func (r *AcceptedServiceRepo) FindByObjectID(ctx context.Context, id primitive.ObjectID) (*domain.AcceptedService, error) {
+    var service domain.AcceptedService
+
+    err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&service)
+    if err != nil {
         return nil, err
     }
 
-    return &svc, nil
+    return &service, nil
+}
+
+func (r *AcceptedServiceRepo) Aggregate(ctx context.Context, pipeline mongo.Pipeline) ([]map[string]any, error) {
+    cur, err := r.col.Aggregate(ctx, pipeline)
+    if err != nil {
+        return nil, err
+    }
+    defer cur.Close(ctx)
+
+    var results []map[string]any
+    if err := cur.All(ctx, &results); err != nil {
+        return nil, err
+    }
+
+    return results, nil
 }

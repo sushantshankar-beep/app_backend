@@ -37,3 +37,14 @@ func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {
 	_, err := r.col.InsertOne(ctx, u)
 	return err
 }
+
+func (r *UserRepo) FindByObjectID(ctx context.Context, id primitive.ObjectID) (*domain.User, error) {
+    var user domain.User
+
+    err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&user)
+    if err != nil {
+        return nil, err
+    }
+
+    return &user, nil
+}

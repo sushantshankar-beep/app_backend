@@ -4,6 +4,7 @@ import (
 	"app_backend/internal/http/handlers"
 
 	"github.com/gin-gonic/gin"
+	"app_backend/internal/payment"
 )
 
 func SetupRouter(
@@ -17,6 +18,12 @@ func SetupRouter(
 ) *gin.Engine {
 
 	r := gin.Default()
+	paySvc := payment.NewService(transactionRepo)
+	payHandler := payment.NewHandler(paySvc)
+	r.POST("/payment/initiate", payHandler.Initiate)
+	r.POST("/payment/verify", payHandler.Verify)
+	r.POST("/api/payment/webhook/success", payHandler.Webhook)
+	r.POST("/api/payment/webhook/failure", payHandler.Webhook)
 
 	user := r.Group("/user")
 	{

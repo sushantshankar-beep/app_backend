@@ -4,8 +4,6 @@ package repository
 import (
     "app_backend/internal/domain"
     "context"
-
-
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/mongo"
     "go.mongodb.org/mongo-driver/mongo/options"
@@ -15,6 +13,10 @@ import (
 type AcceptedServiceRepo struct {
     col *mongo.Collection
 }
+func (r *AcceptedServiceRepo) Col() *mongo.Collection {
+	return r.col
+}
+
 
 func NewAcceptedServiceRepo(db *mongo.Database) *AcceptedServiceRepo {
     return &AcceptedServiceRepo{col: db.Collection("acceptedservices")}

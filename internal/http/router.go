@@ -2,9 +2,9 @@ package http
 
 import (
 	"app_backend/internal/http/handlers"
-
+	// "app_backend/internal/repository"
 	"github.com/gin-gonic/gin"
-	"app_backend/internal/payment"
+	// "github.com/redis/go-redis/v9"
 )
 
 func SetupRouter(
@@ -15,16 +15,19 @@ func SetupRouter(
 	locationHandler *handlers.LocationHandler,
 	complaintHandler *handlers.ComplaintHandler,
 	homepageHandler *handlers.HomepageHandler,
+	paymentHandler *handlers.PaymentHandler,
 ) *gin.Engine {
 
 	r := gin.Default()
-	paySvc := payment.NewService(transactionRepo)
-	payHandler := payment.NewHandler(paySvc)
-	r.POST("/payment/initiate", payHandler.Initiate)
-	r.POST("/payment/verify", payHandler.Verify)
-	r.POST("/api/payment/webhook/success", payHandler.Webhook)
-	r.POST("/api/payment/webhook/failure", payHandler.Webhook)
 
+	// === Payment Routes ===
+	payment := r.Group("/payment")
+	{
+		payment.POST("/initiate",userAuth, paymentHandler.InitiatePayment)
+		payment.POST("/webhook", paymentHandler.PayUWebhook)
+		payment.POST("/refund", userAuth, paymentHandler.Refund)
+	}
+	// === User Routes ===
 	user := r.Group("/user")
 	{
 		user.POST("/send-otp", userHandler.SendOTP)
@@ -36,6 +39,7 @@ func SetupRouter(
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
 	}
 
+	// === Provider Routes ===
 	provider := r.Group("/provider")
 	{
 		provider.POST("/send-otp", providerHandler.SendOTP)
@@ -50,6 +54,9 @@ func SetupRouter(
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
+	}
+	if homepageHandler != nil {
+		r.GET("/homepage", homepageHandler.GetHomepage)
 	}
 
 	return r

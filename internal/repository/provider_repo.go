@@ -14,6 +14,20 @@ type ProviderRepo struct {
 	col *mongo.Collection
 }
 
+func (r *ProviderRepo) GetFCMToken(ctx context.Context,id primitive.ObjectID,) (string, error) {
+
+		var result struct {
+			FCMToken string `bson:"fcmToken"`
+		}
+
+		err := r.col.FindOne(
+			ctx,
+			bson.M{"_id": id},
+		).Decode(&result)
+
+		return result.FCMToken, err
+	}
+
 func NewProviderRepo(db *mongo.Database) *ProviderRepo {
 	return &ProviderRepo{col: db.Collection("providerschemas")}
 }
@@ -97,4 +111,11 @@ func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 	
 	_, err = r.col.UpdateByID(ctx, objID, update)
 	return err
+}
+func (r *ProviderRepo) FindOne(
+	ctx context.Context,
+	filter bson.M,
+	result any,
+) error {
+	return r.col.FindOne(ctx, filter).Decode(result)
 }

@@ -55,3 +55,5 @@ type BankDetails struct {
 	BranchName        string `bson:"branchName,omitempty" json:"branchName,omitempty"`
 	UPI               string `bson:"upi,omitempty" json:"upi,omitempty"`
 }
+
+

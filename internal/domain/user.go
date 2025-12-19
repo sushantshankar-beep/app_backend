@@ -11,6 +11,7 @@ type UserID string
 type User struct {
 	ID                  UserID               `bson:"_id,omitempty" json:"id"`
 	Phone               string               `bson:"phone" json:"phone"`
+	Name                string 				 `bson:"name" json:"name"`
 	CreatedAt           time.Time            `bson:"createdAt" json:"createdAt"`
 	UpdatedAt           time.Time            `bson:"updatedAt" json:"updatedAt"`
 	Email               string               `bson:"email" json:"email"`
@@ -21,4 +22,5 @@ type User struct {
 	SelectedCity        string               `bson:"selectedCity" json:"selectedCity"`
 	AmcPurchased        map[string]string    `bson:"amcPurchased" json:"amcPurchased"`
 	ComplaintsSubmitted []primitive.ObjectID `bson:"complaintsSubmitted" json:"complaintsSubmitted"`
+	ServiceOTP         string 				 `bson:"service_otp" json:"service_otp"`
 }

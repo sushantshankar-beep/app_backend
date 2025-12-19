@@ -36,12 +36,14 @@ type AcceptedService struct {
 	Issues               []string             `bson:"issues,omitempty" json:"issues,omitempty"`
 	ProviderLocation     *Location            `bson:"providerLocation,omitempty" json:"providerLocation,omitempty"`
 	ServiceLocation      *Location            `bson:"serviceLocation,omitempty" json:"serviceLocation,omitempty"`
-	CreatedAt            time.Time            `bson:"createdAt" json:"createdAt"`
-	UpdatedAt            time.Time            `bson:"updatedAt" json:"updatedAt"`
+	RetryCount 			 int 			  	  `bson:"retryCount" json:"retryCount"`
+	MaxRetries           int 			      `bson:"maxRetries" json:"maxRetries"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
 type OTPInfo struct {
-	Code       string     `bson:"code,omitempty" json:"code,omitempty"`
+	Code             string     `bson:"code,omitempty" json:"code,omitempty"`
 	Verified   bool       `bson:"verified" json:"verified"`
 	VerifiedAt *time.Time `bson:"verifiedAt,omitempty" json:"verifiedAt,omitempty"`
 }

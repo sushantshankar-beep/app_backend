@@ -5,6 +5,7 @@ import (
 	// "app_backend/internal/repository"
 	"github.com/gin-gonic/gin"
 	// "github.com/redis/go-redis/v9"
+	"app_backend/internal/socket"
 )
 
 func SetupRouter(
@@ -16,6 +17,11 @@ func SetupRouter(
 	complaintHandler *handlers.ComplaintHandler,
 	homepageHandler *handlers.HomepageHandler,
 	paymentHandler *handlers.PaymentHandler,
+	biddingHandler *handlers.BiddingHandler,
+	amcValidationHandler *handlers.AMCValidationHandler,
+	hub *socket.Hub,
+	bookingHandler *handlers.BookingHandler,
+	serviceTrackingHandler *handlers.ServiceTrackingHandler,
 ) *gin.Engine {
 
 	r := gin.Default()
@@ -38,6 +44,24 @@ func SetupRouter(
 		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
 	}
+	service := r.Group("/service")
+	{
+		service.POST("/validate-problems",userAuth,amcValidationHandler.ValidateProblems)
+		service.GET("/:id/user-tracking", userAuth, serviceTrackingHandler.UserTracking)
+		service.GET("/:id/provider-tracking", providerAuth, serviceTrackingHandler.ProviderTracking)
+		service.POST("/:id/verify-otp", providerAuth, serviceTrackingHandler.VerifyOTP)
+	}
+	bid := r.Group("/bid", userAuth)
+	{
+		bid.POST("/find", biddingHandler.FindMechanics)
+		bid.POST("/accept", biddingHandler.AcceptBid)
+	}
+	// === Websocket handling ===
+	r.GET("/ws", socket.HandleWebSocket(hub))
+	booking := r.Group("/booking")
+	{
+		booking.GET("/details/:serviceId",userAuth,bookingHandler.GetBookingDetails)
+	}
 
 	// === Provider Routes ===
 	provider := r.Group("/provider")
@@ -54,6 +78,7 @@ func SetupRouter(
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
+		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 	}
 	if homepageHandler != nil {
 		r.GET("/homepage", homepageHandler.GetHomepage)

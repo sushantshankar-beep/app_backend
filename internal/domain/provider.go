@@ -34,6 +34,7 @@ type Provider struct {
 	CommissionPercentage float64      `bson:"commissionPercentage" json:"commissionPercentage"`
 	CreatedAt            time.Time    `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time    `bson:"updatedAt" json:"updatedAt"`
+	Rating               string       `bson:"rating" json:"rating"`
 }
 
 type Proof struct {

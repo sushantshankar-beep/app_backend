@@ -37,3 +37,11 @@ func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {
 	_, err := r.col.InsertOne(ctx, u)
 	return err
 }
+func (r *UserRepo) GetByID(ctx context.Context,userID primitive.ObjectID,) (*domain.User, error) {
+	var u domain.User
+	err := r.col.FindOne(ctx, bson.M{"_id": userID}).Decode(&u)
+	if err == mongo.ErrNoDocuments {
+		return nil, domain.ErrNotFound
+	}
+	return &u, err
+}

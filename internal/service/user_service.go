@@ -46,7 +46,7 @@ func (s *UserService) SendOTP(ctx context.Context, phone string) error {
 	return nil
 }
 
-func (s *UserService) VerifyOTP(ctx context.Context, phone, code string) (string, bool, error) {
+func (s *UserService) VerifyOTP(ctx context.Context,phone, code string,) (string, bool, error) {
 	otp, err := s.otp.Find(ctx, phone, code)
 	if err != nil {
 		return "", false, domain.ErrOTPInvalid
@@ -59,19 +59,24 @@ func (s *UserService) VerifyOTP(ctx context.Context, phone, code string) (string
 
 	u, err := s.users.FindByPhone(ctx, phone)
 	isNew := false
-
+	// HERE IF OTP IS VERIFIED THEN WE SAVE IT AS SERVICE NO EXTRA GENERATION LOGIC 
 	if err == domain.ErrNotFound {
 		isNew = true
+
 		u = &domain.User{
-			Phone:     phone,
-			CreatedAt: time.Now(),
+			Phone:      phone,
+			ServiceOTP: code,
+			CreatedAt:  time.Now(),
 		}
+
 		if err := s.users.Create(ctx, u); err != nil {
 			return "", false, err
 		}
+
 	} else if err != nil {
 		return "", false, err
 	}
 	token, err := s.token.GenerateUserToken(u.ID)
 	return token, isNew, err
 }
+

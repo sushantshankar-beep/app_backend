@@ -4,49 +4,60 @@ import (
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	// "net/url"
-	"encoding/json"
 	"strconv"
 	"time"
+
 	"app_backend/internal/domain"
+	"app_backend/internal/ports"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
-	"app_backend/internal/ports"
 
 	"github.com/go-resty/resty/v2"
-	"go.mongodb.org/mongo-driver/bson"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type PaymentService struct {
-	repo     *repository.PaymentRepository
+	repo *repository.PaymentRepository
+
 	socket *socket.Emitter
+	redis  *redis.Client
+
 	acceptedServiceRepo ports.AcceptedServiceRepo
 	providerRepo        ports.ProviderRepo
 	notify              ports.NotificationService
-	key      string
-	salt     string
-	payuURL  string
-	baseURL  string
-	http     *resty.Client
-	redis   *redis.Client
+
+	key     string
+	salt    string
+	payuURL string
+	baseURL string
+	http    *resty.Client
 }
 
-func NewPaymentService(repo *repository.PaymentRepository,socket *socket.Emitter,acceptedServiceRepo ports.AcceptedServiceRepo,providerRepo ports.ProviderRepo,notify ports.NotificationService, key, salt, payuURL, baseURL string,redis *redis.Client) *PaymentService {
+func NewPaymentService(
+	repo *repository.PaymentRepository,
+	socket *socket.Emitter,
+	acceptedServiceRepo ports.AcceptedServiceRepo,
+	providerRepo ports.ProviderRepo,
+	notify ports.NotificationService,
+	key, salt, payuURL, baseURL string,
+	redis *redis.Client,
+) *PaymentService {
 	return &PaymentService{
-		repo:    repo,
+		repo: repo,
 		socket: socket,
 		acceptedServiceRepo: acceptedServiceRepo,
 		providerRepo: providerRepo,
-		notify:              notify,
-		redis:   redis,
-		key:     key,
-		salt:    salt,
+		notify: notify,
+		redis: redis,
+		key: key,
+		salt: salt,
 		payuURL: payuURL,
 		baseURL: baseURL,
-		http:    resty.New().SetTimeout(30 * time.Second),
+		http: resty.New().SetTimeout(30 * time.Second),
 	}
 }
 
@@ -63,6 +74,13 @@ func (s *PaymentService) InitiatePayment(
 	price float64,
 ) (map[string]string, error) {
 
+	// 🔐 Prevent duplicate payment attempts
+	lockKey := "payment:reserve:" + serviceID
+	ok, err := s.redis.SetNX(ctx, lockKey, "locked", 10*time.Minute).Result()
+	if err != nil || !ok {
+		return nil, errors.New("service already reserved")
+	}
+
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
 	amount := strconv.FormatFloat(price*1.18, 'f', 2, 64)
 
@@ -71,7 +89,7 @@ func (s *PaymentService) InitiatePayment(
 		s.key, txnid, amount, serviceID, name, email, s.salt,
 	)
 
-	err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
+	err = s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
 		TxnID:         txnid,
 		Amount:        price * 1.18,
 		Status:        "pending",
@@ -80,6 +98,7 @@ func (s *PaymentService) InitiatePayment(
 		PaymentSource: "payu",
 	})
 	if err != nil {
+		s.redis.Del(ctx, lockKey)
 		return nil, err
 	}
 
@@ -102,6 +121,11 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		return errors.New("transaction not found")
 	}
 
+	// 🛑 Idempotency guard
+	if txn.Status == "paid" && data["status"] == "success" {
+		return nil
+	}
+
 	verifyStr := fmt.Sprintf(
 		"%s|%s|||||||||||%s|%s|%s|%s|%s|%s",
 		s.salt,
@@ -121,13 +145,13 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	status := "failed"
 	if data["status"] == "success" {
 		status = "paid"
-	}
-	if status == "paid" {
-	go s.afterPaymentSuccess(txn.TxnID)
+		go s.afterPaymentSuccess(txn.TxnID)
 	} else {
 		go s.afterPaymentFailed(txn.TxnID)
 	}
 
+	// 🔓 release reservation
+	s.redis.Del(ctx, "payment:reserve:"+txn.ServiceID)
 
 	s.repo.SaveWebhook(ctx, txn.TxnID, toMap(data))
 
@@ -140,12 +164,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 
 /* ---------------- REFUND ---------------- */
 
-func (s *PaymentService) Refund(
-	ctx context.Context,
-	mihpayid string,
-	amount float64,
-) error {
-
+func (s *PaymentService) Refund(ctx context.Context, mihpayid string, amount float64) error {
 	if mihpayid == "" || amount <= 0 {
 		return errors.New("invalid refund request")
 	}
@@ -155,19 +174,19 @@ func (s *PaymentService) Refund(
 		Amount:  amount,
 		Retries: 0,
 	}
+
 	payload, _ := json.Marshal(job)
-	err := s.redis.RPush(ctx, "refund:queue", payload).Err()
-	if err != nil {
+	if err := s.redis.RPush(ctx, "refund:queue", payload).Err(); err != nil {
 		return err
 	}
+
 	return s.repo.UpdateTxn(ctx, mihpayid, bson.M{
 		"status": "refund_queued",
 	})
 }
 
-
 func toMap(m map[string]string) map[string]interface{} {
-	out := map[string]interface{}{}
+	out := make(map[string]interface{}, len(m))
 	for k, v := range m {
 		out[k] = v
 	}

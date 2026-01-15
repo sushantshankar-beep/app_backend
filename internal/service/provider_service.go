@@ -3,39 +3,75 @@ package service
 import (
 	"context"
 	"time"
+
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/worker"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"app_backend/internal/repository"
+	"errors"
+	"strings"
+	"fmt"
 )
 
 type ProviderService struct {
 	repo                ports.ProviderRepository
+	counterRepo *repository.CounterRepo
 	otp                 ports.OTPStore
 	token               ports.TokenService
 	queue               *worker.OTPQueue
-	AcceptedServiceRepo ports.AcceptedServiceRepository
+	acceptedServiceRepo ports.AcceptedServiceRepository
 }
 
-func NewProviderService(
-	repo ports.ProviderRepository,
-	otp ports.OTPStore,
-	token ports.TokenService,
-	q *worker.OTPQueue,
-	acceptedRepo ports.AcceptedServiceRepository,
-) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
+		counterRepo:		counterRepo,
 		otp:                 otp,
 		token:               token,
 		queue:               q,
-		AcceptedServiceRepo: acceptedRepo,
+		acceptedServiceRepo: acceptedRepo,
 	}
 }
+func assignString(dst *string, v any) {
+	if s, ok := v.(string); ok && s != "" {
+		*dst = s
+	}
+}
+func toStringSlice(src []any) []string {
+	out := make([]string, 0, len(src))
+	for _, v := range src {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func parseProofs(src []any) []domain.Proof {
+	out := make([]domain.Proof, 0, len(src))
+	for _, v := range src {
+		m, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, domain.Proof{
+			Type:     m["type"].(string),
+			File:     m["file"].(string),
+			Verified: "pending",
+		})
+	}
+	return out
+}
+
+
+/* ---------------- OTP ---------------- */
 
 func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
 	code := GenerateOTP()
+
 	otp := &domain.OTP{
 		Phone:     phone,
 		Code:      code,
@@ -46,11 +82,20 @@ func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
 		return err
 	}
 
-	s.queue.Enqueue(worker.OTPJob{Phone: phone, Msg: "Your provider OTP is " + code})
+	s.queue.Enqueue(worker.OTPJob{
+		Phone: phone,
+		Msg:   code,
+		Type:  "provider",
+	})
+
 	return nil
 }
 
-func (s *ProviderService) VerifyOTP(ctx context.Context, phone, code string) (string, bool, error) {
+func (s *ProviderService) VerifyOTP(
+	ctx context.Context,
+	phone, code string,
+) (string, bool, error) {
+
 	otp, err := s.otp.Find(ctx, phone, code)
 	if err != nil {
 		return "", false, domain.ErrOTPInvalid
@@ -58,144 +103,104 @@ func (s *ProviderService) VerifyOTP(ctx context.Context, phone, code string) (st
 	if time.Now().After(otp.ExpiresAt) {
 		return "", false, domain.ErrOTPExpired
 	}
+	provider, err := s.repo.FindByPhone(ctx, phone)
 
-	_ = s.otp.Delete(ctx, phone)
-
-	p, err := s.repo.FindByPhone(ctx, phone)
 	isNew := false
-
 	if err == domain.ErrNotFound {
 		isNew = true
-		p = &domain.Provider{
-			Phone:     phone,
-			Services:  []string{},
+
+		seq, _ := s.counterRepo.Next(ctx, "provider")
+		providerCode := fmt.Sprintf("PRV-%05d", seq)
+
+		provider = &domain.Provider{
+			Phone:      phone,
+			ProviderCode: providerCode,
+			IsActive:   "inactive",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		if err := s.repo.Create(ctx, p); err != nil {
+
+		if err := s.repo.Create(ctx, provider); err != nil {
 			return "", false, err
 		}
 	}
 
-	token, err := s.token.GenerateProviderToken(p.ID)
+	// ✅ GENERATE PROVIDER JWT
+	token, err := s.token.GenerateProviderToken(provider.ID)
 	return token, isNew, err
 }
+
+
+/* ---------------- PROFILE ---------------- */
 
 func (s *ProviderService) GetProfile(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.ProviderID, req map[string]any) (*domain.Provider, error) {
+func (s *ProviderService) CreateOrUpdateProfile(
+	ctx context.Context,
+	id domain.ProviderID,
+	req map[string]any,
+) (*domain.Provider, error) {
+
 	provider, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if name, ok := req["name"].(string); ok && name != "" {
-		provider.Name = name
-	}
-	if email, ok := req["email"].(string); ok && email != "" {
-		provider.Email = email
-	}
-	if alternateContact, ok := req["alternateContact"].(string); ok && alternateContact != "" {
-		provider.AlternateContact = alternateContact
-	}
-	if profileUrl, ok := req["profileUrl"].(string); ok && profileUrl != "" {
-		provider.ProfileURL = profileUrl
-	}
-	if address, ok := req["address"].(string); ok && address != "" {
-		provider.Address = address
-	}
-	if permanentAddress, ok := req["permanentAddress"].(string); ok && permanentAddress != "" {
-		provider.PermanentAddress = permanentAddress
-	}
-	if city, ok := req["city"].(string); ok && city != "" {
-		provider.City = city
-	}
-	if gstNumber, ok := req["gstNumber"].(string); ok && gstNumber != "" {
-		provider.GSTNumber = gstNumber
-	}
-	if vehicleNumber, ok := req["vehicleNumber"].(string); ok && vehicleNumber != "" {
-		provider.VehicleNumber = vehicleNumber
-	}
-	if description, ok := req["description"].(string); ok && description != "" {
-		provider.Description = description
-	}
-	if companyName, ok := req["companyName"].(string); ok && companyName != "" {
-		provider.CompanyName = companyName
-	}
 
-	if vehicleType, ok := req["vehicleType"].([]any); ok && len(vehicleType) > 0 {
-		provider.VehicleType = make([]string, len(vehicleType))
-		for i, vt := range vehicleType {
-			provider.VehicleType[i] = vt.(string)
+	// ================= REQUIRED STRING FIELDS =================
+	requiredStrings := []string{"name","email","companyName","profileUrl","address","permanentAddress"}
+
+	for _, field := range requiredStrings {
+		v, ok := req[field]
+		if !ok {
+			return nil, errors.New(field + " is required")
+		}
+		str, ok := v.(string)
+		if !ok || strings.TrimSpace(str) == "" {
+			return nil, errors.New(field + " must be a non-empty string")
 		}
 	}
 
-	if providerServices, ok := req["providerServices"].([]any); ok && len(providerServices) > 0 {
-		provider.ProviderServices = make([]string, len(providerServices))
-		for i, ps := range providerServices {
-			provider.ProviderServices[i] = ps.(string)
-		}
-	}
-	if providerBrands, ok := req["providerBrands"].([]any); ok && len(providerBrands) > 0 {
-		provider.ProviderBrands = make([]string, len(providerBrands))
-		for i, pb := range providerBrands {
-			provider.ProviderBrands[i] = pb.(string)
-		}
+	// ================= REQUIRED ARRAY FIELD =================
+	vehicleTypeRaw, ok := req["vehicleType"].([]any)
+	if !ok || len(vehicleTypeRaw) == 0 {
+		return nil, errors.New("vehicleType is required and must have at least one value")
 	}
 
-	if identityProof, ok := req["identityProof"].([]any); ok && len(identityProof) > 0 {
-		provider.IdentityProof = make([]domain.Proof, len(identityProof))
-		for i, ip := range identityProof {
-			proofMap := ip.(map[string]any)
-			provider.IdentityProof[i] = domain.Proof{
-				Type:     proofMap["type"].(string),
-				File:     proofMap["file"].(string),
-				Verified: "pending",
-			}
-		}
+	// ================= ASSIGN CORE =================
+	assignString(&provider.Name, req["name"])
+	assignString(&provider.Email, req["email"])
+	assignString(&provider.CompanyName, req["companyName"])
+	assignString(&provider.ProfileURL, req["profileUrl"]) // S3 URL
+	assignString(&provider.Address, req["address"])
+	assignString(&provider.PermanentAddress, req["permanentAddress"])
+	assignString(&provider.AlternateContact, req["alternateContact"])
+	assignString(&provider.City, req["city"])
+	assignString(&provider.VehicleNumber, req["vehicleNumber"])
+	assignString(&provider.Description, req["description"])
+
+	// ================= ASSIGN ARRAYS =================
+	provider.VehicleType = toStringSlice(vehicleTypeRaw)
+
+	if v, ok := req["providerServices"].([]any); ok {
+		provider.ProviderServices = toStringSlice(v)
+	}
+	if v, ok := req["providerBrands"].([]any); ok {
+		provider.ProviderBrands = toStringSlice(v)
 	}
 
-	if addressProof, ok := req["addressProof"].([]any); ok && len(addressProof) > 0 {
-		provider.AddressProof = make([]domain.Proof, len(addressProof))
-		for i, ap := range addressProof {
-			proofMap := ap.(map[string]any)
-			provider.AddressProof[i] = domain.Proof{
-				Type:     proofMap["type"].(string),
-				File:     proofMap["file"].(string),
-				Verified: "pending",
-			}
-		}
+	// ================= PROOFS (OPTIONAL) =================
+	if v, ok := req["identityProof"].([]any); ok {
+		provider.IdentityProof = parseProofs(v)
+	}
+	if v, ok := req["addressProof"].([]any); ok {
+		provider.AddressProof = parseProofs(v)
 	}
 
-	if cancelCheque, ok := req["cancelCheque"].(map[string]any); ok && len(cancelCheque) > 0 {
-		if file, ok := cancelCheque["file"].(string); ok && file != "" {
-			provider.CancelCheque = domain.CancelCheque{
-				File:     file,
-				Verified: "pending",
-			}
-		}
-	}
-
-	if bankDetails, ok := req["bankDetails"].(map[string]any); ok && len(bankDetails) > 0 {
-		if accountHolderName, ok := bankDetails["accountHolderName"].(string); ok && accountHolderName != "" {
-			provider.BankDetails.AccountHolderName = accountHolderName
-		}
-		if accountNumber, ok := bankDetails["accountNumber"].(string); ok && accountNumber != "" {
-			provider.BankDetails.AccountNumber = accountNumber
-		}
-		if ifscCode, ok := bankDetails["ifscCode"].(string); ok && ifscCode != "" {
-			provider.BankDetails.IFSCCode = ifscCode
-		}
-		if branchName, ok := bankDetails["branchName"].(string); ok && branchName != "" {
-			provider.BankDetails.BranchName = branchName
-		}
-		if upi, ok := bankDetails["upi"].(string); ok && upi != "" {
-			provider.BankDetails.UPI = upi
-		}
-	}
-
-	provider.FormSubmitted++
+	// ================= FINAL STATE =================
+	provider.FormSubmitted = 1
+	provider.IsActive = "active"
 	provider.UpdatedAt = time.Now()
 
 	if err := s.repo.Update(ctx, provider); err != nil {
@@ -205,22 +210,30 @@ func (s *ProviderService) CreateOrUpdateProfile(ctx context.Context, id domain.P
 	return provider, nil
 }
 
-func (s *ProviderService) GetMyAllServices(ctx context.Context, providerID domain.ProviderID, page, limit int) (map[string][]map[string]any, int64, error) {
+
+
+/* ---------------- SERVICES ---------------- */
+
+func (s *ProviderService) GetMyAllServices(
+	ctx context.Context,
+	providerID domain.ProviderID,
+	page, limit int,
+) (map[string][]map[string]any, int64, error) {
+
 	skip := (page - 1) * limit
 
-	services, err := s.AcceptedServiceRepo.ListByProvider(ctx, providerID, skip, limit)
+	services, err := s.acceptedServiceRepo.ListByProvider(ctx, providerID, skip, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	total, err := s.AcceptedServiceRepo.Count(ctx, bson.M{"provider": providerID})
+	total, err := s.acceptedServiceRepo.Count(ctx, bson.M{
+		"provider":      providerID,
+		"paymentStatus": "paid",
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-
-	ongoingStatuses := []string{"not_started", "started", "reached_location", "otp_verified", "in_progress"}
-	completedStatuses := []string{"completed"}
-	cancelledStatuses := []string{"cancelled", "dead"}
 
 	grouped := map[string][]map[string]any{
 		"ongoing":   {},
@@ -228,27 +241,22 @@ func (s *ProviderService) GetMyAllServices(ctx context.Context, providerID domai
 		"cancelled": {},
 	}
 
-	for _, s := range services {
-		status := s.Status
-		if status == "dead" {
-			status = "cancelled"
-		}
-
+	for _, svc := range services {
 		item := map[string]any{
-			"id":         s.ID,
-			"finalPrice": s.FinalPrice,
-			"basePrice":  s.BasePrice,
-			"issues":     s.Issues,
-			"createdAt":  s.CreatedAt,
-			"status":     status,
+			"id":         svc.ID,
+			"finalPrice": svc.FinalPrice,
+			"basePrice":  svc.BasePrice,
+			"issues":     svc.Issues,
+			"createdAt":  svc.CreatedAt,
+			"status":     svc.Status,
 		}
 
 		switch {
-		case contains(ongoingStatuses, s.Status):
+		case ongoingSet[svc.Status]:
 			grouped["ongoing"] = append(grouped["ongoing"], item)
-		case contains(completedStatuses, s.Status):
+		case completedSet[svc.Status]:
 			grouped["completed"] = append(grouped["completed"], item)
-		case contains(cancelledStatuses, s.Status):
+		default:
 			grouped["cancelled"] = append(grouped["cancelled"], item)
 		}
 	}
@@ -256,15 +264,78 @@ func (s *ProviderService) GetMyAllServices(ctx context.Context, providerID domai
 	return grouped, total, nil
 }
 
-func contains(arr []string, v string) bool {
-	for _, a := range arr {
-		if a == v {
-			return true
-		}
-	}
-	return false
+func (s *ProviderService) GetMyService(
+	ctx context.Context,
+	providerID domain.ProviderID,
+	serviceID string,
+) (*domain.AcceptedService, error) {
+	return s.acceptedServiceRepo.FindByIDAndProvider(ctx, serviceID, providerID)
 }
 
-func (s *ProviderService) GetMyService(ctx context.Context, providerID domain.ProviderID, serviceID string) (*domain.AcceptedService, error) {
-	return s.AcceptedServiceRepo.FindByIDAndProvider(ctx, serviceID, providerID)
+/* ---------------- STATE MAPS ---------------- */
+
+var (
+	ongoingSet = map[domain.ServiceStatus]bool{
+		domain.StatusNotStarted:      true,
+		domain.StatusStarted:         true,
+		domain.StatusReachedLocation: true,
+		domain.StatusOTPVerified:     true,
+		domain.StatusInProgress:      true,
+	}
+
+	completedSet = map[domain.ServiceStatus]bool{
+		domain.StatusCompleted: true,
+	}
+)
+
+
+
+/* ---------------- ACTIONS ---------------- */
+
+func (s *ProviderService) StartService(ctx context.Context,serviceID string,providerID domain.ProviderID) error {
+
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
+	if err != nil {
+		return err
+	}
+
+	if err := domain.CanStartService(svc); err != nil {
+		return err
+	}
+
+	return s.acceptedServiceRepo.UpdateByID(ctx, serviceOID, bson.M{
+		"$set": bson.M{
+			"status":    domain.StatusInProgress,
+			"startedAt": time.Now(),
+		},
+	})
+}
+
+func (s *ProviderService) CompleteService(ctx context.Context,serviceID string) error {
+
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
+	if err != nil {
+		return err
+	}
+
+	if err := domain.CanCompleteService(svc); err != nil {
+		return err
+	}
+
+	return s.acceptedServiceRepo.UpdateByID(ctx, serviceOID, bson.M{
+		"$set": bson.M{
+			"status":      domain.StatusCompleted,
+			"completedAt": time.Now(),
+		},
+	})
 }

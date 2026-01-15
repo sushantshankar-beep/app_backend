@@ -29,3 +29,10 @@ type EstimatedTime struct {
 	Value int64  `bson:"value" json:"value"`
 	Unit  string `bson:"unit" json:"unit"`
 }
+type BidLog struct {
+	ID          primitive.ObjectID `bson:_id,ometempty" json: "id"`
+    ServiceID   primitive.ObjectID `bson:"serviceId"`
+    ProviderID  primitive.ObjectID `bson:"providerId"`
+    Price       float64            `bson:"price"`
+    CreatedAt   time.Time          `bson:"createdAt"`
+}

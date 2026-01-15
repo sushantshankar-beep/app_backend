@@ -2,23 +2,26 @@ package service
 
 import (
 	"context"
-	"errors"
+	// "errors"
 	"time"
+	"fmt"
+
+	"app_backend/internal/domain"
+	"app_backend/internal/repository"
+	"app_backend/internal/socket"
 
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-
-	"app_backend/internal/domain"
-	"app_backend/internal/socket"
-	"app_backend/internal/repository"
 )
 
 type BiddingService struct {
-	rdb              *redis.Client
-	socket           *socket.Emitter
-	acceptedRepo     *repository.AcceptedServiceRepo
-	cancelRepo       *repository.CancellationRepo
+	rdb          *redis.Client
+	socket       *socket.Emitter
+	acceptedRepo *repository.AcceptedServiceRepo
+	cancelRepo   *repository.CancellationRepo
+	bidRepo      *repository.BidRepo
+	counterRepo  *repository.CounterRepo
 }
 
 func NewBiddingService(
@@ -26,36 +29,144 @@ func NewBiddingService(
 	socket *socket.Emitter,
 	acceptedRepo *repository.AcceptedServiceRepo,
 	cancelRepo *repository.CancellationRepo,
+	bidRepo *repository.BidRepo,
+	counterRepo *repository.CounterRepo,
 ) *BiddingService {
-	return &BiddingService{rdb, socket, acceptedRepo, cancelRepo}
+	return &BiddingService{
+		rdb:          rdb,
+		socket:       socket,
+		acceptedRepo: acceptedRepo,
+		cancelRepo:   cancelRepo,
+		bidRepo:      bidRepo,
+		counterRepo:  counterRepo,
+	}
 }
 
-/* ---------------- FIND MECHANICS ---------------- */
-
-func (s *BiddingService) FindMechanics(
+// ================= START SEARCH =================
+func (s *BiddingService) StartSearch(
 	ctx context.Context,
-	serviceID string,
+	userID domain.UserID,
+	serviceType string,
+	issues []string,
 	lat, lng float64,
-) {
+) (string, error) {
 
-	lockKey := "lock:find:" + serviceID
-	ok, _ := s.rdb.SetNX(ctx, lockKey, 1, 30*time.Second).Result()
-	if !ok {
-		return
+	userOID, _ := primitive.ObjectIDFromHex(string(userID))
+
+	seq, err := s.counterRepo.Next(ctx, "service")
+	if err != nil {
+		return "", err
 	}
 
-	radiusLevels := []float64{10, 20, 50}
+	serviceNumber := fmt.Sprintf("BK-%05d", seq)
 
-	objID, _ := primitive.ObjectIDFromHex(serviceID)
-	var svc domain.AcceptedService
-	s.acceptedRepo.Col().FindOne(ctx, bson.M{"_id": objID}).Decode(&svc)
-
-	excluded := map[string]bool{}
-	for _, p := range svc.NotToSendProviders {
-		excluded[p.Hex()] = true
+	svc := &domain.AcceptedService{
+		ServiceNumber: serviceNumber,
+		User:          userOID,
+		Status:        domain.StatusSearching,
+		PaymentStatus: domain.PaymentPending,
+		ServiceType:   serviceType,
+		Issues:        issues,
+		ServiceLocation: &domain.Location{
+			Latitude:  lat,
+			Longitude: lng,
+		},
+		RetryCount: 0,
+		MaxRetries: 3,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
-	for _, radius := range radiusLevels {
+	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
+		return "", err
+	}
+
+	go s.findProviders(svc.ID.Hex(), lat, lng, serviceType)
+	return svc.ID.Hex(), nil
+}
+
+// ================= PLACE BID =================
+func (s *BiddingService) PlaceBid(ctx context.Context,serviceID string,providerID string,price float64) (string, error) {
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return "", err
+	}
+	providerOID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return "", err
+	}
+	bid := &domain.BidLog{
+		ServiceID:  serviceOID,
+		ProviderID: providerOID,
+		Price:      price,
+		CreatedAt:  time.Now(),
+	}
+	bidOID, err := s.bidRepo.Insert(ctx, bid)
+	if err != nil {
+		return "", err
+	}
+	s.socket.EmitWithRetry(
+		"user:"+serviceID,
+		"bid:update",
+		map[string]any{
+			"bidId":      bidOID.Hex(),
+			"providerId": providerID,
+			"price":      price,
+		},
+		2,
+	)
+
+	return bidOID.Hex(), nil
+}
+
+// ================= ACCEPT BID =================
+func (s *BiddingService) AcceptBid(ctx context.Context,serviceID string,bidID string,providerID string,price float64) error {
+
+	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+	bidOID, _ := primitive.ObjectIDFromHex(bidID)
+	providerOID, _ := primitive.ObjectIDFromHex(providerID)
+
+	err := s.acceptedRepo.UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{
+			"$set": bson.M{
+				"provider":      providerOID,
+				"acceptedBid":   bidOID,
+				"finalPrice":    price,
+				"status":        domain.StatusProviderAssigned,
+				"paymentStatus": domain.PaymentPending,
+				"updatedAt":     time.Now(),
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+	s.socket.EmitWithRetry(
+		"provider:"+providerID,
+		"bid:accepted",
+		map[string]any{
+			"serviceId": serviceID,
+			"price":     price,
+		},
+		2,
+	)
+	return nil
+}
+// ================= FIND PROVIDERS =================
+func (s *BiddingService) findProviders(serviceID string,lat, lng float64,serviceType string) {
+	ctx := context.Background()
+	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+	radiusSteps := []float64{5, 10, 20, 50}
+	for _, radius := range radiusSteps {
+		var svc domain.AcceptedService
+		if err := s.acceptedRepo.Col().FindOne(ctx, bson.M{"_id": serviceOID}).Decode(&svc); err != nil {
+			return
+		}
+		if svc.Status != "searching" {
+			return
+		}
 		providers, _ := s.rdb.GeoRadius(
 			ctx,
 			"providers:geo",
@@ -65,127 +176,30 @@ func (s *BiddingService) FindMechanics(
 				Unit:   "km",
 			},
 		).Result()
-
-		if len(providers) == 0 {
-			continue
-		}
-
 		for _, p := range providers {
-			if excluded[p.Name] {
-				continue
-			}
-
 			s.socket.EmitWithRetry(
 				"provider:"+p.Name,
 				"bid:request",
 				map[string]any{
-					"serviceId": serviceID,
-					"radius": radius,
+					"serviceId":   serviceID,
+					"serviceType": serviceType,
+					"radius":      radius,
 				},
 				1,
 			)
 		}
-		return
-	}
 
-	// Retry logic
-	if svc.RetryCount >= svc.MaxRetries {
-		s.acceptedRepo.Col().UpdateByID(ctx, objID, bson.M{
-			"$set": bson.M{"status": "no_provider_found"},
-		})
+		time.Sleep(6 * time.Second)
 
-		s.socket.EmitWithRetry(
-			"user:"+svc.User.Hex(),
-			"service:failed",
-			map[string]any{"reason": "No mechanics available"},
-			2,
+		_, _ = s.acceptedRepo.Col().UpdateByID(
+			ctx,
+			serviceOID,
+			bson.M{"$inc": bson.M{"retryCount": 1}},
 		)
-		return
 	}
-
-	s.acceptedRepo.Col().UpdateByID(ctx, objID, bson.M{
-		"$inc": bson.M{"retryCount": 1},
-	})
-
-	go s.FindMechanics(ctx, serviceID, lat, lng)
-}
-
-/* ---------------- PLACE BID ---------------- */
-
-func (s *BiddingService) PlaceBid(
-	ctx context.Context,
-	serviceID, providerID string,
-	price float64,
-) error {
-
-	key := "bid:" + serviceID + ":" + providerID
-
-	old, _ := s.rdb.Get(ctx, key).Float64()
-	if old != 0 && price >= old {
-		return errors.New("higher bid ignored")
-	}
-
-	s.rdb.Set(ctx, key, price, 10*time.Minute)
-
-	s.socket.EmitWithRetry(
-		"user:"+serviceID,
-		"bid:update",
-		map[string]any{
-			"providerId": providerID,
-			"price": price,
-		},
-		1,
+	_, _ = s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{"$set": bson.M{"status": "no_provider_found"}},
 	)
-
-	return nil
-}
-
-/* ---------------- ACCEPT BID ---------------- */
-
-func (s *BiddingService) AcceptBid(
-	ctx context.Context,
-	serviceID, providerID string,
-) error {
-
-	lock := "reserve:" + providerID
-	ok, _ := s.rdb.SetNX(ctx, lock, serviceID, 10*time.Minute).Result()
-	if !ok {
-		return errors.New("provider already reserved")
-	}
-
-	s.socket.EmitWithRetry(
-		"provider:"+providerID,
-		"bid:accepted",
-		map[string]any{
-			"serviceId": serviceID,
-			"ttl": 600,
-		},
-		2,
-	)
-
-	return nil
-}
-
-/* ---------------- PROVIDER CANCEL ---------------- */
-
-func (s *BiddingService) ProviderCancel(
-	ctx context.Context,
-	serviceID, providerID string,
-) {
-
-	objID, _ := primitive.ObjectIDFromHex(serviceID)
-	provID, _ := primitive.ObjectIDFromHex(providerID)
-
-	s.acceptedRepo.Col().UpdateByID(ctx, objID, bson.M{
-		"$addToSet": bson.M{
-			"notToSendProviders": provID,
-		},
-	})
-
-	s.cancelRepo.Insert(ctx, &domain.CancellationLog{
-		ServiceID: objID,
-		ProviderID: provID,
-		CancelledBy: "provider",
-		CreatedAt: time.Now(),
-	})
 }

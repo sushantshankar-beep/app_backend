@@ -54,7 +54,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 	return map[string]any{
 		"screen": "SERVICE_TRACKING",
-		"otp":    user.ServiceOTP, // 🔥 SAME OTP ALWAYS
+		"otp":    user.ServiceOTP,
 		"status": svc.Status,
 
 		"provider": map[string]any{

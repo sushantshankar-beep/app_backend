@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"net/http"
-
 	"github.com/gin-gonic/gin"
-
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
 )

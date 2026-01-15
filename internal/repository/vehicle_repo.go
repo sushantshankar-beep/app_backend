@@ -1,0 +1,50 @@
+package repository
+
+import (
+	"context"
+	// "time"
+
+	"app_backend/internal/domain"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+type VehicleRepo struct {
+	col *mongo.Collection
+}
+
+func NewVehicleRepo(db *mongo.Database) *VehicleRepo {
+	return &VehicleRepo{col: db.Collection("vehicles")}
+}
+
+func (r *VehicleRepo) FindByNumber(ctx context.Context, number string) (*domain.Vehicle, error) {
+	var v domain.Vehicle
+	err := r.col.FindOne(ctx, bson.M{"vehicleNumber": number}).Decode(&v)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &v, err
+}
+
+func (r *VehicleRepo) Create(ctx context.Context, v *domain.Vehicle) error {
+	res, err := r.col.InsertOne(ctx, v)
+	if err != nil {
+		return err
+	}
+	v.ID = res.InsertedID.(primitive.ObjectID)
+	return nil
+}
+func (r *VehicleRepo) FindByID(
+	ctx context.Context,
+	id primitive.ObjectID,
+) (*domain.Vehicle, error) {
+
+	var v domain.Vehicle
+	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&v)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &v, err
+}
+

@@ -14,52 +14,58 @@ import (
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
-
 	"github.com/go-resty/resty/v2"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
+	"app_backend/internal/events"
 )
 
 type PaymentService struct {
-	repo *repository.PaymentRepository
+	repo        *repository.PaymentRepository
+	invoiceSvc  *InvoiceService
+	socket      *socket.Emitter
+	redis       *redis.Client
 
-	socket *socket.Emitter
-	redis  *redis.Client
-
-	acceptedServiceRepo ports.AcceptedServiceRepo
+	acceptedServiceRepo ports.AcceptedServiceRepository
 	providerRepo        ports.ProviderRepo
 	notify              ports.NotificationService
-
-	key     string
-	salt    string
-	payuURL string
-	baseURL string
-	http    *resty.Client
+	events              *events.Bus
+	key                 string
+	salt                string
+	payuURL             string
+	baseURL             string
+	http                *resty.Client
 }
 
 func NewPaymentService(
 	repo *repository.PaymentRepository,
+	invoiceRepo *repository.InvoiceRepo,
 	socket *socket.Emitter,
-	acceptedServiceRepo ports.AcceptedServiceRepo,
+	acceptedRepo ports.AcceptedServiceRepository,
 	providerRepo ports.ProviderRepo,
 	notify ports.NotificationService,
+	eventsBus *events.Bus,
 	key, salt, payuURL, baseURL string,
 	redis *redis.Client,
 ) *PaymentService {
+
 	return &PaymentService{
-		repo: repo,
-		socket: socket,
-		acceptedServiceRepo: acceptedServiceRepo,
-		providerRepo: providerRepo,
-		notify: notify,
-		redis: redis,
-		key: key,
-		salt: salt,
-		payuURL: payuURL,
-		baseURL: baseURL,
-		http: resty.New().SetTimeout(30 * time.Second),
+		repo:                repo,
+		invoiceSvc:          NewInvoiceService(invoiceRepo),
+		socket:              socket,
+		acceptedServiceRepo: acceptedRepo,
+		providerRepo:        providerRepo,
+		notify:              notify,
+		events:              eventsBus,
+		redis:               redis,
+		key:                 key,
+		salt:                salt,
+		payuURL:             payuURL,
+		baseURL:             baseURL,
+		http:                resty.New().SetTimeout(30 * time.Second),
 	}
 }
+
 
 func sha512Hash(input string) string {
 	h := sha512.Sum512([]byte(input))
@@ -68,43 +74,45 @@ func sha512Hash(input string) string {
 
 /* ---------------- INITIATE PAYMENT ---------------- */
 
-func (s *PaymentService) InitiatePayment(
-	ctx context.Context,
-	serviceID, userID, name, email, phone string,
-	price float64,
-) (map[string]string, error) {
-
-	// 🔐 Prevent duplicate payment attempts
+func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID, name, email, phone string, price float64) (map[string]string, error) {
 	lockKey := "payment:reserve:" + serviceID
-	ok, err := s.redis.SetNX(ctx, lockKey, "locked", 10*time.Minute).Result()
-	if err != nil || !ok {
+	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
+
+	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 10*time.Minute).Result()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, errors.New("service already reserved")
 	}
-
+	finalAmount := price * 1.18
+	amountStr := strconv.FormatFloat(finalAmount, 'f', 2, 64)
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
-	amount := strconv.FormatFloat(price*1.18, 'f', 2, 64)
-
 	hashStr := fmt.Sprintf(
 		"%s|%s|%s|%s|%s|%s|||||||||||%s",
-		s.key, txnid, amount, serviceID, name, email, s.salt,
+		s.key,
+		txnid,
+		amountStr,
+		serviceID,
+		name,
+		email,
+		s.salt,
 	)
-
-	err = s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
+	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
 		TxnID:         txnid,
-		Amount:        price * 1.18,
+		Amount:        finalAmount,
 		Status:        "pending",
 		UserID:        userID,
 		ServiceID:     serviceID,
 		PaymentSource: "payu",
-	})
-	if err != nil {
-		s.redis.Del(ctx, lockKey)
+	}); err != nil {
+		_ = s.redis.Del(ctx, lockKey).Err()
 		return nil, err
 	}
 
 	return map[string]string{
 		"txnid":   txnid,
-		"amount":  amount,
+		"amount":  amountStr,
 		"key":     s.key,
 		"hash":    sha512Hash(hashStr),
 		"payuUrl": s.payuURL + "/_payment",
@@ -113,19 +121,14 @@ func (s *PaymentService) InitiatePayment(
 	}, nil
 }
 
-/* ---------------- WEBHOOK ---------------- */
-
 func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]string) error {
 	txn, err := s.repo.GetByTxnID(ctx, data["txnid"])
 	if err != nil {
 		return errors.New("transaction not found")
 	}
-
-	// 🛑 Idempotency guard
 	if txn.Status == "paid" && data["status"] == "success" {
 		return nil
 	}
-
 	verifyStr := fmt.Sprintf(
 		"%s|%s|||||||||||%s|%s|%s|%s|%s|%s",
 		s.salt,
@@ -137,11 +140,10 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		data["txnid"],
 		s.key,
 	)
-
+	
 	if sha512Hash(verifyStr) != data["hash"] {
 		return errors.New("hash verification failed")
 	}
-
 	status := "failed"
 	if data["status"] == "success" {
 		status = "paid"
@@ -149,8 +151,6 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	} else {
 		go s.afterPaymentFailed(txn.TxnID)
 	}
-
-	// 🔓 release reservation
 	s.redis.Del(ctx, "payment:reserve:"+txn.ServiceID)
 
 	s.repo.SaveWebhook(ctx, txn.TxnID, toMap(data))
@@ -161,30 +161,23 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		"method":   data["mode"],
 	})
 }
-
-/* ---------------- REFUND ---------------- */
-
 func (s *PaymentService) Refund(ctx context.Context, mihpayid string, amount float64) error {
 	if mihpayid == "" || amount <= 0 {
 		return errors.New("invalid refund request")
 	}
-
 	job := domain.RefundJob{
 		MihPayID: mihpayid,
-		Amount:  amount,
-		Retries: 0,
+		Amount:   amount,
+		Retries:  0,
 	}
-
 	payload, _ := json.Marshal(job)
 	if err := s.redis.RPush(ctx, "refund:queue", payload).Err(); err != nil {
 		return err
 	}
-
 	return s.repo.UpdateTxn(ctx, mihpayid, bson.M{
 		"status": "refund_queued",
 	})
 }
-
 func toMap(m map[string]string) map[string]interface{} {
 	out := make(map[string]interface{}, len(m))
 	for k, v := range m {

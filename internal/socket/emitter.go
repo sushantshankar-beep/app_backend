@@ -19,9 +19,14 @@ func (e *Emitter) EmitWithRetry(
 	payload any,
 	retries int,
 ) {
+	msg := map[string]any{
+		"event": event,
+		"data":  payload,
+	}
+
 	for i := 0; i < retries; i++ {
-		log.Printf("📡 Socket emit [%d] → %s", i+1, event)
-		e.hub.Emit(room, event, payload)
+		log.Printf("📡 socket emit %s (try %d)", event, i+1)
+		e.hub.Emit(room, msg)
 		time.Sleep(200 * time.Millisecond)
 	}
 }

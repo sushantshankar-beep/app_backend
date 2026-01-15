@@ -25,6 +25,4 @@ type AMC struct {
 type ValidServices struct{
 	ID    primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name    string             `bson:"name" json:"name"`
-	
-	
 }

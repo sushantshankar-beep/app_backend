@@ -7,7 +7,6 @@ import (
 )
 
 type ProviderRepo interface {
-	// Infra-level read (for FCM, assignment, etc.)
 	FindOne(
 		ctx context.Context,
 		filter bson.M,

@@ -3,10 +3,12 @@ package handlers
 import (
 	"net/http"
 
+	"app_backend/internal/domain"
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
-
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	// "fmt"
 )
 
 type UserHandler struct {
@@ -30,9 +32,7 @@ func (h *UserHandler) SendOTP(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"message": "OTP sent successfully",
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully"})
 }
 func (h *UserHandler) VerifyOTP(c *gin.Context) {
 	var req struct {
@@ -56,6 +56,49 @@ func (h *UserHandler) VerifyOTP(c *gin.Context) {
 	})
 }
 func (h *UserHandler) Profile(c *gin.Context) {
-	id := c.GetString(middleware.ContextKeyUserID)
-	c.JSON(http.StatusOK, gin.H{"id": id})
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userObjID := userObjIDAny.(primitive.ObjectID)
+	user, err := h.svc.GetProfile(c.Request.Context(), userObjID)
+	if err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"user":    user,
+	})
+}
+
+func (h *UserHandler) CreateOrUpdateUserProfile(c *gin.Context) {
+
+	userID := c.GetString(middleware.ContextKeyUserID)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req map[string]any
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	user, action, err := h.svc.CreateOrUpdateProfile(
+		c.Request.Context(),
+		domain.UserID(userID),
+		req,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": action, "user": user})
 }

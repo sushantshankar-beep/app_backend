@@ -3,8 +3,8 @@ package socket
 import "sync"
 
 type Hub struct {
-	rooms map[string]map[*Client]bool
 	mu    sync.RWMutex
+	rooms map[string]map[*Client]bool
 }
 
 func NewHub() *Hub {
@@ -17,7 +17,7 @@ func (h *Hub) Join(room string, c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if _, ok := h.rooms[room]; !ok {
+	if h.rooms[room] == nil {
 		h.rooms[room] = make(map[*Client]bool)
 	}
 	h.rooms[room][c] = true
@@ -29,21 +29,18 @@ func (h *Hub) Leave(room string, c *Client) {
 
 	if clients, ok := h.rooms[room]; ok {
 		delete(clients, c)
-		if len(clients) == 0 {
-			delete(h.rooms, room)
-		}
+		close(c.send)
 	}
 }
 
-func (h *Hub) Emit(room string, event string, payload any) {
+func (h *Hub) Emit(room string, msg any) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	for c := range h.rooms[room] {
 		select {
-		case c.send <- Message{Event: event, Data: payload}:
+		case c.send <- msg:
 		default:
-			// drop if client is slow (FAST)
 		}
 	}
 }

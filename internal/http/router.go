@@ -8,21 +8,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(
-	userHandler *handlers.UserHandler,
-	providerHandler *handlers.ProviderHandler,
-	userAuth gin.HandlerFunc,
-	providerAuth gin.HandlerFunc,
-	locationHandler *handlers.LocationHandler,
-	complaintHandler *handlers.ComplaintHandler,
-	homepageHandler *handlers.HomepageHandler,
-	paymentHandler *handlers.PaymentHandler,
-	biddingHandler *handlers.BiddingHandler,
-	amcValidationHandler *handlers.AMCValidationHandler,
-	hub *socket.Hub,
-	bookingHandler *handlers.BookingHandler,
-	serviceTrackingHandler *handlers.ServiceTrackingHandler,
-) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler) *gin.Engine {
 
 	r := gin.Default()
 
@@ -38,7 +24,10 @@ func SetupRouter(
 	{
 		user.POST("/send-otp", userHandler.SendOTP)
 		user.POST("/verify-otp", userHandler.VerifyOTP)
+		user.GET("/:vehicleNumber", userVehicleHandler.GetVehicleByNumber)
+		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
 		user.GET("/profile", userAuth, userHandler.Profile)
+		user.PUT("/profile", userAuth, userHandler.CreateOrUpdateUserProfile)
 		user.POST("/location", userAuth, locationHandler.SaveUserLocation)
 		user.GET("/location", userAuth, locationHandler.GetUserLocation)
 		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
@@ -57,10 +46,22 @@ func SetupRouter(
 		bid.POST("/accept", biddingHandler.AcceptBid)
 	}
 	// === Websocket handling ===
+
 	r.GET("/ws", socket.HandleWebSocket(hub))
 	booking := r.Group("/booking")
 	{
 		booking.GET("/details/:serviceId",userAuth,bookingHandler.GetBookingDetails)
+	}
+	invoice := r.Group("/invoice", userAuth)
+	{
+		invoice.GET("/:serviceId", invoiceHandler.GetInvoice)
+		invoice.GET("/:serviceId/download", invoiceHandler.DownloadInvoice)
+	}
+	// ===Provider kyc =====
+	kyc := r.Group("/provider/kyc", providerAuth)
+	{
+		kyc.POST("/submit", kycHandler.SubmitKYC)
+		kyc.GET("", kycHandler.GetKYC)
 	}
 
 	// === Provider Routes ===
@@ -74,15 +75,23 @@ func SetupRouter(
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
 		provider.PUT("/dashboard", providerAuth, providerHandler.Dashboard)
+		provider.POST("/online", providerAuth, providerStatus.GoOnline)
+		provider.POST("/offline", providerAuth, providerStatus.GoOffline)
 		provider.GET("/my-services", providerAuth, providerHandler.GetMyAllServices)
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 	}
+	meta := r.Group("/meta")
+	{
+		meta.GET("/brands", metaHandler.GetBrands)
+		meta.GET("/services", metaHandler.GetServices)
+	}
 	if homepageHandler != nil {
 		r.GET("/homepage", homepageHandler.GetHomepage)
 	}
+
 
 	return r
 }

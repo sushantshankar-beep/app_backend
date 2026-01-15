@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            background: #f4f4f4;
+        }
+
+        .total {
+            text-align: right;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Invoice</h1>
+
+    <p><b>Invoice No:</b> {{.InvoiceNumber}}</p>
+    <p><b>Date:</b> {{.Date}}</p>
+
+    <table>
+        <tr>
+            <th>Service</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>GST</th>
+            <th>Total</th>
+        </tr>
+
+        {{range .Items}}
+        <tr>
+            <td>{{.Name}}</td>
+            <td>{{.Qty}}</td>
+            <td>{{.Price}}</td>
+            <td>{{.GSTPercent}}%</td>
+            <td>{{.GrossAmount}}</td>
+        </tr>
+        {{end}}
+    </table>
+
+    <div class="total">
+        <p>Subtotal: ₹{{.SubTotal}}</p>
+        <p>Tax: ₹{{.TaxAmount}}</p>
+        <h3>Total: ₹{{.TotalAmount}}</h3>
+    </div>
+
+</body>
+
+</html>

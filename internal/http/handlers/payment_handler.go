@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"github.com/gin-gonic/gin"
 	"app_backend/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 type PaymentHandler struct {

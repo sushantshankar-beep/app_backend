@@ -27,7 +27,7 @@ func (h *ProviderHandler) Dashboard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Earnings data fetched successfully",
+		"message": "dashboard  data fetched successfully",
 		"data":    result,
 	})
 }

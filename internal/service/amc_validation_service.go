@@ -10,12 +10,8 @@ type AMCValidationService struct {
 	amcRepo *repository.AMCRepo
 }
 
-func NewAMCValidationService(
-	amcRepo *repository.AMCRepo,
-) *AMCValidationService {
-	return &AMCValidationService{
-		amcRepo: amcRepo,
-	}
+func NewAMCValidationService(amcRepo *repository.AMCRepo) *AMCValidationService {
+	return &AMCValidationService{amcRepo: amcRepo}
 }
 
 type AMCValidationResult struct {
@@ -29,7 +25,7 @@ type AMCValidationResult struct {
 func (s *AMCValidationService) ValidateIssues(
 	ctx context.Context,
 	vehicleNumber string,
-	selectedIssues []string, // 👈 service TYPE names
+	selectedIssues []string,
 ) (*AMCValidationResult, error) {
 
 	amc, err := s.amcRepo.FindActiveByVehicle(ctx, vehicleNumber)
@@ -41,15 +37,12 @@ func (s *AMCValidationService) ValidateIssues(
 		}, nil
 	}
 
-	// Convert AMC valid services to map for O(1)
-	covered := make(map[string]bool)
+	covered := make(map[string]bool, len(amc.ValidServices))
 	for _, svc := range amc.ValidServices {
 		covered[svc] = true
 	}
 
-	var valid []string
-	var invalid []string
-
+	var valid, invalid []string
 	for _, issue := range selectedIssues {
 		if covered[issue] {
 			valid = append(valid, issue)
@@ -58,18 +51,16 @@ func (s *AMCValidationService) ValidateIssues(
 		}
 	}
 
-	result := &AMCValidationResult{
+	return &AMCValidationResult{
 		AMCAvailable:   true,
 		ValidIssues:    valid,
 		InvalidIssues:  invalid,
 		ProceedWithAMC: len(invalid) == 0,
-	}
-
-	if len(invalid) > 0 {
-		result.Message = "AMC not valid for selected problem(s)"
-	} else {
-		result.Message = "AMC applicable"
-	}
-
-	return result, nil
+		Message: func() string {
+			if len(invalid) > 0 {
+				return "AMC not valid for selected problem(s)"
+			}
+			return "AMC applicable"
+		}(),
+	}, nil
 }

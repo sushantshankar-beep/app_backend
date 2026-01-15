@@ -10,6 +10,7 @@ import (
 type OTPJob struct {
 	Phone string
 	Msg   string
+	Type string
 }
 
 type OTPQueue struct {
@@ -35,7 +36,7 @@ func (q *OTPQueue) Start() {
 			case <-ctx.Done():
 				return
 			case job := <-q.jobs:
-				if err := q.sms.SendOTP(ctx, job.Phone, job.Msg); err != nil {
+				if err := q.sms.SendOTP(ctx, job.Phone, job.Msg,job.Type); err != nil {
 					log.Println("OTP send failed:", err)
 				}
 			}

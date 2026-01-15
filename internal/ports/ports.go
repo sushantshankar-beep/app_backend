@@ -3,12 +3,15 @@ package ports
 import (
     "app_backend/internal/domain"
     "context"
+	"go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/bson"
 )
 
 type UserRepository interface {
 	FindByPhone(ctx context.Context, phone string) (*domain.User, error)
 	Create(ctx context.Context, u *domain.User) error
+	GetByID(ctx context.Context, id primitive.ObjectID) (*domain.User, error)
+	UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) (*domain.User, error)
 }
 
 type ProviderRepository interface {
@@ -25,7 +28,7 @@ type OTPStore interface {
 }
 
 type SMSClient interface {
-	SendOTP(ctx context.Context, phone, msg string) error
+	SendOTP(ctx context.Context, phone, msg string,Type string) error
 }
 
 type TokenService interface {
@@ -35,11 +38,17 @@ type TokenService interface {
 }
 
 type AcceptedServiceRepository interface {
-    Find(ctx context.Context, filter bson.M, skip, limit int) ([]domain.AcceptedService, error)
-    ListByProvider(ctx context.Context, providerID domain.ProviderID, skip, limit int) ([]domain.AcceptedService, error)
-    FindByIDAndProvider(ctx context.Context, id string, providerID domain.ProviderID) (*domain.AcceptedService, error)
-    Count(ctx context.Context, filter bson.M) (int64, error)
+	Create(ctx context.Context, svc *domain.AcceptedService) error
+	GetByID(ctx context.Context, id primitive.ObjectID) (*domain.AcceptedService, error)
+	Find(ctx context.Context, filter bson.M, skip, limit int) ([]domain.AcceptedService, error)
+	Count(ctx context.Context, filter bson.M) (int64, error)
+	ListByProvider(ctx context.Context, providerID domain.ProviderID, skip, limit int) ([]domain.AcceptedService, error)
+	FindByIDAndProvider(ctx context.Context, serviceID string, providerID domain.ProviderID) (*domain.AcceptedService, error)
+
+	UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) error
+	UpdatePaymentStatus(ctx context.Context, id primitive.ObjectID, status domain.PaymentStatus) error
 }
+
 type HomepageRepository interface {
 	Create(ctx context.Context, h *domain.Homepage) error
 	Update(ctx context.Context, h *domain.Homepage) error

@@ -22,8 +22,7 @@ func NewRedis() *redis.Client {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(result) // >>> bar
+	fmt.Println("Redis test value:", result)
 	return rdb
 
 }

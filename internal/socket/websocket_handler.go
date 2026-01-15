@@ -9,7 +9,7 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // allow all (prod: restrict)
+		return true
 	},
 }
 
@@ -26,27 +26,10 @@ func HandleWebSocket(hub *Hub) gin.HandlerFunc {
 			return
 		}
 
-		client := NewClient()
+		client := NewClient(conn)
 		hub.Join(room, client)
 
-		// READ loop (just keep connection alive)
-		go func() {
-			defer func() {
-				hub.Leave(room, client)
-				conn.Close()
-			}()
-			for {
-				if _, _, err := conn.ReadMessage(); err != nil {
-					break
-				}
-			}
-		}()
-
-		// WRITE loop
-		for msg := range client.send {
-			if err := conn.WriteJSON(msg); err != nil {
-				break
-			}
-		}
+		go client.ReadPump(hub, room)
+		go client.WritePump()
 	}
 }

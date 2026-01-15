@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"app_backend/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 type BookingHandler struct {

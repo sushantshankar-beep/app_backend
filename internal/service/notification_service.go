@@ -19,10 +19,8 @@ func (f *FirebaseNotificationService) SendToProvider(
 	body string,
 	data map[string]string,
 ) error {
-
-	// TODO: Plug Firebase Admin SDK here
 	log.Printf(
-		"🔔 Push → provider=%s | %s - %s | data=%v\n",
+		"Push → provider=%s | %s - %s | data=%v\n",
 		providerID,
 		title,
 		body,

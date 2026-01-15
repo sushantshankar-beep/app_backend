@@ -39,7 +39,6 @@ func (h *LocationHandler) SaveUserLocation(c *gin.Context) {
 
 func (h *LocationHandler) GetUserLocation(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)
-
 	loc, err := h.svc.GetLocation(c, userID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to fetch location"})

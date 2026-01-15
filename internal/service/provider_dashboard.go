@@ -35,25 +35,16 @@ func (s *ProviderService) GetDashboardStats(ctx context.Context, providerID doma
 
 	skip := (page - 1) * limit
 
-	services, err := s.AcceptedServiceRepo.Find(ctx, filter, skip, limit)
+	services, err := s.acceptedServiceRepo.Find(ctx, filter, skip, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	totalCompleted, _ := s.AcceptedServiceRepo.Count(ctx, bson.M{
-		"provider": providerID,
-		"status":   "completed",
-	})
+	totalCompleted, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "status": "completed"})
 
-	totalCancelled, _ := s.AcceptedServiceRepo.Count(ctx, bson.M{
-		"provider": providerID,
-		"status":   "cancelled",
-	})
+	totalCancelled, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "status": "cancelled"})
 
-	totalPending, _ := s.AcceptedServiceRepo.Count(ctx, bson.M{
-		"provider":      providerID,
-		"paymentStatus": "pending",
-	})
+	totalPending, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "paymentStatus": "pending"})
 
 	var totalAmount float64
 	earningsArray := make([]map[string]any, len(services))

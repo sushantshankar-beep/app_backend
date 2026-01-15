@@ -31,10 +31,7 @@ func (h *HomepageHandler) GetHomepage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Homepage fetched successfully",
-		"data":    homepage,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Homepage fetched successfully", "data": homepage})
 }
 
 func (h *HomepageHandler) CreateOrUpdateHomepage(c *gin.Context) {
@@ -59,8 +56,5 @@ func (h *HomepageHandler) CreateOrUpdateHomepage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Homepage saved successfully",
-		"data":    homepage,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Homepage saved successfully", "data": homepage})
 }

@@ -1,92 +1,214 @@
-// repository/accepted_service.go
 package repository
 
 import (
-    "app_backend/internal/domain"
-    "context"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
-    "go.mongodb.org/mongo-driver/bson/primitive"
+	"context"
+	"time"
+
+	"app_backend/internal/domain"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type AcceptedServiceRepo struct {
-    col *mongo.Collection
+	col *mongo.Collection
 }
+
+func NewAcceptedServiceRepo(db *mongo.Database) *AcceptedServiceRepo {
+	col := db.Collection("acceptedservices")
+
+	// 🔥 IMPORTANT INDEXES (RUN ONCE)
+	_, _ = col.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{
+			Keys: bson.M{"provider": 1, "paymentStatus": 1, "createdAt": -1},
+		},
+		{
+			Keys: bson.M{"user": 1, "createdAt": -1},
+		},
+	})
+
+	return &AcceptedServiceRepo{col: col}
+}
+
 func (r *AcceptedServiceRepo) Col() *mongo.Collection {
 	return r.col
 }
 
+/*
+CREATE SERVICE
+*/
+func (r *AcceptedServiceRepo) Create(ctx context.Context,svc *domain.AcceptedService) error {
 
-func NewAcceptedServiceRepo(db *mongo.Database) *AcceptedServiceRepo {
-    return &AcceptedServiceRepo{col: db.Collection("acceptedservices")}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	res, err := r.col.InsertOne(ctx, svc)
+	if err != nil {
+		return err
+	}
+
+	svc.ID = res.InsertedID.(primitive.ObjectID)
+	return nil
 }
 
-func (r *AcceptedServiceRepo) Find(ctx context.Context, filter bson.M, skip, limit int) ([]domain.AcceptedService, error) {
-    opts := options.Find().
-        SetSkip(int64(skip)).
-        SetLimit(int64(limit)).
-        SetSort(bson.M{"createdAt": -1})
+/*
+LIST SERVICES (GENERIC)
+*/
+func (r *AcceptedServiceRepo) Find(ctx context.Context,filter bson.M,skip, limit int) ([]domain.AcceptedService, error) {
 
-    cur, err := r.col.Find(ctx, filter, opts)
-    if err != nil {
-        return nil, err
-    }
-    defer cur.Close(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    var results []domain.AcceptedService
-    if err := cur.All(ctx, &results); err != nil {
-        return nil, err
-    }
+	opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.M{"createdAt": -1})
+	cur, err := r.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var results []domain.AcceptedService
+	if err := cur.All(ctx, &results); err != nil {
+		return nil, err
+	}
 
-    return results, nil
+	return results, nil
 }
 
-func (r *AcceptedServiceRepo) Count(ctx context.Context, filter bson.M) (int64, error) {
-    return r.col.CountDocuments(ctx, filter)
+/*
+COUNT
+*/
+func (r *AcceptedServiceRepo) Count(ctx context.Context,filter bson.M) (int64, error) {
+
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	return r.col.CountDocuments(ctx, filter)
 }
 
-func (r *AcceptedServiceRepo) ListByProvider(ctx context.Context, providerID domain.ProviderID, skip, limit int) ([]domain.AcceptedService, error) {
-    filter := bson.M{
-        "provider": providerID,
-        "paymentStatus": "paid",
-    }
+/*
+LIST BY PROVIDER (SAFE)
+*/
+func (r *AcceptedServiceRepo) ListByProvider(
+	ctx context.Context,
+	providerID domain.ProviderID,
+	skip, limit int,
+) ([]domain.AcceptedService, error) {
 
-    opts := options.Find().
-        SetSkip(int64(skip)).
-        SetLimit(int64(limit)).
-        SetSort(bson.M{"createdAt": -1})
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    cur, err := r.col.Find(ctx, filter, opts)
-    if err != nil {
-        return nil, err
-    }
-    defer cur.Close(ctx)
+	providerOID, err := primitive.ObjectIDFromHex(string(providerID))
+	if err != nil {
+		return nil, err
+	}
 
-    var services []domain.AcceptedService
-    if err := cur.All(ctx, &services); err != nil {
-        return nil, err
-    }
+	filter := bson.M{
+		"provider":      providerOID,
+		"paymentStatus": "paid",
+	}
 
-    return services, nil
+	opts := options.Find().
+		SetSkip(int64(skip)).
+		SetLimit(int64(limit)).
+		SetSort(bson.M{"createdAt": -1})
+
+	cur, err := r.col.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var services []domain.AcceptedService
+	if err := cur.All(ctx, &services); err != nil {
+		return nil, err
+	}
+
+	return services, nil
 }
 
-func (r *AcceptedServiceRepo) FindByIDAndProvider(ctx context.Context, id string, providerID domain.ProviderID) (*domain.AcceptedService, error) {
-    objID, err := primitive.ObjectIDFromHex(id)
-    if err != nil {
-        return nil, err
-    }
 
-    filter := bson.M{
-        "_id": objID,
-        "provider": providerID,
-        "paymentStatus": "paid",
-    }
+/*
+FIND BY ID + PROVIDER
+*/
+func (r *AcceptedServiceRepo) FindByIDAndProvider(
+	ctx context.Context,
+	serviceID string,
+	providerID domain.ProviderID,
+) (*domain.AcceptedService, error) {
 
-    var svc domain.AcceptedService
-    if err := r.col.FindOne(ctx, filter).Decode(&svc); err != nil {
-        return nil, err
-    }
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, err
+	}
 
-    return &svc, nil
+	providerOID, err := primitive.ObjectIDFromHex(string(providerID))
+	if err != nil {
+		return nil, err
+	}
+
+	filter := bson.M{
+		"_id":     serviceOID,
+		"provider": providerOID,
+	}
+
+	var svc domain.AcceptedService
+	if err := r.col.FindOne(ctx, filter).Decode(&svc); err != nil {
+		return nil, err
+	}
+
+	return &svc, nil
 }
+func (r *AcceptedServiceRepo) GetByID(
+	ctx context.Context,
+	id primitive.ObjectID,
+) (*domain.AcceptedService, error) {
+
+	var svc domain.AcceptedService
+	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&svc)
+	return &svc, err
+}
+
+func (r *AcceptedServiceRepo) UpdateStatus(
+	ctx context.Context,
+	id primitive.ObjectID,
+	status domain.ServiceStatus,
+	fields bson.M,
+) error {
+
+	update := bson.M{
+		"$set": bson.M{
+			"status":    status,
+			"updatedAt": time.Now(),
+		},
+	}
+	for k, v := range fields {
+		update["$set"].(bson.M)[k] = v
+	}
+
+	_, err := r.col.UpdateByID(ctx, id, update)
+	return err
+}
+
+func (r *AcceptedServiceRepo) UpdateByID(
+	ctx context.Context,
+	id primitive.ObjectID,
+	update bson.M,
+) error {
+	_, err := r.col.UpdateByID(ctx, id, update)
+	return err
+}
+
+func (r *AcceptedServiceRepo) UpdatePaymentStatus(
+	ctx context.Context,
+	id primitive.ObjectID,
+	status domain.PaymentStatus,
+) error {
+	_, err := r.col.UpdateByID(ctx, id, bson.M{
+		"$set": bson.M{
+			"paymentStatus": status,
+			"updatedAt":     time.Now(),
+		},
+	})
+	return err
+}
+

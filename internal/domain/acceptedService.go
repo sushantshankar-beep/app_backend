@@ -10,14 +10,14 @@ type AcceptedServiceID string
 type AcceptedService struct {
 	ID                   primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
 	ServiceRequest       primitive.ObjectID   `bson:"serviceRequest" json:"serviceRequest"`
-	ServiceRequestID     int64                `bson:"serviceRequestId" json:"serviceRequestId"`
+	ServiceNumber     	 string                `bson:"serviceNumber" json:"serviceNumber"`
 	NumericID            int64                `bson:"id" json:"numericId"`
 	User                 primitive.ObjectID   `bson:"user" json:"user"`
 	NotToSendProviders   []primitive.ObjectID `bson:"notToSendProviders,omitempty" json:"notToSendProviders,omitempty"`
 	Provider             primitive.ObjectID   `bson:"provider" json:"provider"`
 	AcceptedBid          primitive.ObjectID   `bson:"acceptedBid" json:"acceptedBid"`
 	OTP                  OTPInfo              `bson:"otp" json:"otp"`
-	Status               string               `bson:"status" json:"status"`
+	Status               ServiceStatus         `bson:"status" json:"status"`
 	ReachedAt            *time.Time           `bson:"reachedAt,omitempty" json:"reachedAt,omitempty"`
 	StartedAt            *time.Time           `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
 	CompletedAt          *time.Time           `bson:"completedAt,omitempty" json:"completedAt,omitempty"`
@@ -28,7 +28,7 @@ type AcceptedService struct {
 	CancelledBy          string               `bson:"cancelledBy,omitempty" json:"cancelledBy,omitempty"`
 	BasePrice            float64              `bson:"basePrice" json:"basePrice"`
 	FinalPrice           float64              `bson:"finalPrice" json:"finalPrice"`
-	PaymentStatus        string               `bson:"paymentStatus" json:"paymentStatus"`
+	PaymentStatus        PaymentStatus         `bson:"paymentStatus" json:"paymentStatus"`
 	ComplaintUser        *primitive.ObjectID  `bson:"complaintUser,omitempty" json:"complaintUser,omitempty"`
 	ComplaintProvider    *primitive.ObjectID  `bson:"complaintProvider,omitempty" json:"complaintProvider,omitempty"`
 	OrderID              string               `bson:"orderId,omitempty" json:"orderId,omitempty"`

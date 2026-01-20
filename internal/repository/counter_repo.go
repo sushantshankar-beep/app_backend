@@ -21,7 +21,7 @@ func (r *CounterRepo) Next(ctx context.Context, name string) (int64, error) {
 	var res struct {
 		Value int64 `bson:"value"`
 	}
-	err := r.col.FindOneAndUpdate(ctx,bson.M{"_id": name},bson.M{"$inc": bson.M{"value": 1}}).Decode(&res)
+	err := r.col.FindOneAndUpdate(ctx, bson.M{"_id": name}, bson.M{"$inc": bson.M{"value": 1}}).Decode(&res)
 	if err == mongo.ErrNoDocuments {
 		_, err = r.col.InsertOne(ctx, bson.M{
 			"_id":   name,

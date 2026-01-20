@@ -58,7 +58,7 @@ func (s *BiddingService) StartSearch(
 		return "", err
 	}
 
-	serviceNumber := fmt.Sprintf("BK-%05d", seq)
+	serviceNumber := fmt.Sprintf("VHBK%05d", seq)
 
 	svc := &domain.AcceptedService{
 		ServiceNumber: serviceNumber,

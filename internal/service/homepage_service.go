@@ -2,79 +2,53 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"app_backend/internal/domain"
-	"app_backend/internal/ports"
-	"app_backend/internal/validation"
+	"app_backend/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 type HomepageService struct {
-	repo ports.HomepageRepository
+	repo  *repository.HomepageRepo
+	redis *redis.Client
 }
 
-func NewHomepageService(repo ports.HomepageRepository) *HomepageService {
-	return &HomepageService{repo: repo}
-}
-
-func (s *HomepageService) GetHomepage(ctx context.Context, id string) (*domain.Homepage, error) {
-	return s.repo.FindByID(ctx, id)
-}
-
-func (s *HomepageService) CreateOrUpdateHomepage(ctx context.Context, req validation.HomepageRequest) (*domain.Homepage, error) {
-	homepage := &domain.Homepage{}
-	isUpdate := false
-
-	if req.ID != "" {
-		existing, err := s.repo.FindByID(ctx, req.ID)
-		if err != nil {
-			if err == domain.ErrNotFound {
-				return nil, domain.ErrNotFound
-			}
-			return nil, err
-		}
-		homepage = existing
-		isUpdate = true
+func NewHomepageService(
+	repo *repository.HomepageRepo,
+	redis *redis.Client,
+) *HomepageService {
+	return &HomepageService{
+		repo:  repo,
+		redis: redis,
 	}
+}
 
-	homepage.UserCohort = req.UserCohort
-	homepage.Location = domain.LocationInfo{
-		City:             req.Location.City,
-		Address:          req.Location.Address,
-		Latitude:         req.Location.Latitude,
-		Longitude:        req.Location.Longitude,
-		Pincode:          req.Location.Pincode,
-		FormattedAddress: req.Location.FormattedAddress,
-	}
+func (s *HomepageService) GetHomepage(
+	ctx context.Context,
+	country, state, city string,
+) (*domain.Homepage, error) {
 
-	homepage.Banners = make([]domain.Banner, len(req.Banners))
-	for i, b := range req.Banners {
-		homepage.Banners[i] = domain.Banner{
-			Title:             b.Title,
-			ImageURL:          b.ImageURL,
-			RedirectionURL:    b.RedirectionURL,
-			RedirectionParams: b.RedirectionParams,
+	cacheKey := fmt.Sprintf("homepage:%s:%s:%s", country, state, city)
+	if val, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		var cached domain.Homepage
+		if json.Unmarshal([]byte(val), &cached) == nil {
+			return &cached, nil
 		}
 	}
 
-	homepage.Categories = make([]domain.Category, len(req.Categories))
-	for i, c := range req.Categories {
-		homepage.Categories[i] = domain.Category{
-			Name:           c.Name,
-			IconURL:        c.IconURL,
-			RedirectionURL: c.RedirectionURL,
-		}
+	homepage, err := s.repo.FindByLocation(ctx, country, state, city)
+	if err != nil {
+		return nil, err
 	}
 
-	homepage.IsActive = req.IsActive
+	// async cache
+	go func() {
+		b, _ := json.Marshal(homepage)
+		s.redis.Set(context.Background(), cacheKey, b, 10*time.Minute)
+	}()
 
-	now := time.Now()
-	if !isUpdate {
-		homepage.CreatedAt = now
-		homepage.UpdatedAt = now
-		return homepage, s.repo.Create(ctx, homepage)
-	}
-
-	homepage.UpdatedAt = now
-	return homepage, s.repo.Update(ctx, homepage)
+	return homepage, nil
 }

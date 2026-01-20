@@ -6,6 +6,7 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	// "fmt"
@@ -45,16 +46,15 @@ func (h *UserHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	token, isNew, err := h.svc.VerifyOTP(c, req.Phone, req.Code)
+	resp, err := h.svc.VerifyOTP(c.Request.Context(), req.Phone, req.Code)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"isNew": isNew,
-	})
+
+	c.JSON(http.StatusOK, resp)
 }
+
 func (h *UserHandler) Profile(c *gin.Context) {
 	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
 	if !exists {

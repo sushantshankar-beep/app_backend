@@ -167,60 +167,67 @@ func (s *ProviderService) CreateOrUpdateProfile(
 		return nil, err
 	}
 
-	// ================= REQUIRED STRING FIELDS =================
-	requiredStrings := []string{"name","email","companyName","profileUrl","address","permanentAddress"}
+	// 🔍 CHECK IF PROFILE IS ALREADY COMPLETED
+	wasCompleted := isProviderProfileCompleted(provider)
 
-	for _, field := range requiredStrings {
-		v, ok := req[field]
-		if !ok {
-			return nil, errors.New(field + " is required")
-		}
-		str, ok := v.(string)
-		if !ok || strings.TrimSpace(str) == "" {
-			return nil, errors.New(field + " must be a non-empty string")
+	// ================= REQUIRED ONLY FOR FIRST TIME =================
+	if !wasCompleted {
+		required := []string{"name", "city","shopAddress"}
+
+		for _, field := range required {
+			v, ok := req[field]
+			if !ok {
+				return nil, errors.New(field + " is required")
+			}
+			str, ok := v.(string)
+			if !ok || strings.TrimSpace(str) == "" {
+				return nil, errors.New(field + " must be a non-empty string")
+			}
 		}
 	}
 
-	// ================= REQUIRED ARRAY FIELD =================
-	vehicleTypeRaw, ok := req["vehicleType"].([]any)
-	if !ok || len(vehicleTypeRaw) == 0 {
-		return nil, errors.New("vehicleType is required and must have at least one value")
-	}
-
-	// ================= ASSIGN CORE =================
+	// ================= ASSIGN STRINGS (OPTIONAL) =================
 	assignString(&provider.Name, req["name"])
 	assignString(&provider.Email, req["email"])
 	assignString(&provider.CompanyName, req["companyName"])
-	assignString(&provider.ProfileURL, req["profileUrl"]) // S3 URL
+	assignString(&provider.ProfileURL, req["profileUrl"])
 	assignString(&provider.Address, req["address"])
-	assignString(&provider.PermanentAddress, req["permanentAddress"])
+	assignString(&provider.PermanentAddress, req["shopAddress"])
 	assignString(&provider.AlternateContact, req["alternateContact"])
 	assignString(&provider.City, req["city"])
 	assignString(&provider.VehicleNumber, req["vehicleNumber"])
 	assignString(&provider.Description, req["description"])
 
-	// ================= ASSIGN ARRAYS =================
-	provider.VehicleType = toStringSlice(vehicleTypeRaw)
+	// ================= ARRAYS =================
+	if v, ok := req["vehicleType"].([]any); ok {
+		provider.VehicleType = toStringSlice(v)
+	}
 
 	if v, ok := req["providerServices"].([]any); ok {
 		provider.ProviderServices = toStringSlice(v)
 	}
+
 	if v, ok := req["providerBrands"].([]any); ok {
 		provider.ProviderBrands = toStringSlice(v)
 	}
 
-	// ================= PROOFS (OPTIONAL) =================
+	// ================= PROOFS =================
 	if v, ok := req["identityProof"].([]any); ok {
 		provider.IdentityProof = parseProofs(v)
 	}
+
 	if v, ok := req["addressProof"].([]any); ok {
 		provider.AddressProof = parseProofs(v)
 	}
 
 	// ================= FINAL STATE =================
-	provider.FormSubmitted = 1
-	provider.IsActive = "active"
 	provider.UpdatedAt = time.Now()
+
+	// ✅ MARK ACTIVE ONLY WHEN PROFILE IS NOW COMPLETE
+	if !wasCompleted && isProviderProfileCompleted(provider) {
+		provider.FormSubmitted = 1
+		provider.IsActive = "active"
+	}
 
 	if err := s.repo.Update(ctx, provider); err != nil {
 		return nil, err
@@ -228,6 +235,7 @@ func (s *ProviderService) CreateOrUpdateProfile(
 
 	return provider, nil
 }
+
 
 
 

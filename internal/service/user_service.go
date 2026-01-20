@@ -1,16 +1,17 @@
 package service
 
 import (
-	"context"
-	"time"
-	"errors"
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
 	"app_backend/internal/worker"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"time"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -20,11 +21,12 @@ type UserService struct {
 	otp     ports.OTPStore
 	token   ports.TokenService
 	queue   *worker.OTPQueue
+	counter *repository.CounterRepo
 	amcRepo *repository.AMCRepo
 }
 
-func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue) *UserService {
-	return &UserService{users: users, otp: otp, token: token, queue: q}
+func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo) *UserService {
+	return &UserService{users: users, otp: otp, token: token, queue: q, counter: counter}
 }
 
 func GenerateOTP() string {
@@ -54,40 +56,63 @@ func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.Object
 	return s.users.GetByID(ctx, userObjID)
 }
 
-func (s *UserService) VerifyOTP(ctx context.Context, phone, code string) (string, bool, error) {
+func (s *UserService) VerifyOTP(
+	ctx context.Context,
+	phone, code string,
+) (map[string]any, error) {
+
 	otp, err := s.otp.Find(ctx, phone, code)
 	if err != nil {
-		return "", false, domain.ErrOTPInvalid
+		return nil, domain.ErrOTPInvalid
 	}
 
 	if time.Now().After(otp.ExpiresAt) {
-		return "", false, domain.ErrOTPExpired
+		return nil, domain.ErrOTPExpired
 	}
+
 	_ = s.otp.Delete(ctx, phone)
 
 	u, err := s.users.FindByPhone(ctx, phone)
 	isNew := false
-	// HERE IF OTP IS VERIFIED THEN WE SAVE IT AS SERVICE NO EXTRA GENERATION LOGIC
+
 	if err == domain.ErrNotFound {
 		isNew = true
 
+		seq, _ := s.counter.Next(ctx, "user")
+		year := time.Now().Year()
+
 		u = &domain.User{
-			Phone:      phone,
-			ServiceOTP: code,
-			CreatedAt:  time.Now(),
+			Phone:             phone,
+			UserCode:          fmt.Sprintf("VHCR%d%05d", year, seq),
+			IsProfileComplete: false,
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
 		}
 
 		if err := s.users.Create(ctx, u); err != nil {
-			return "", false, err
+			return nil, err
 		}
-
-	} else if err != nil {
-		return "", false, err
 	}
-	fmt.Println(u.ID)
+
 	token, err := s.token.GenerateUserToken(u.ID)
-	return token, isNew, err
+	if err != nil {
+		return nil, err
+	}
+
+	nextScreen := "HOME"
+	if !u.IsProfileComplete {
+		nextScreen = "PROFILE"
+	}
+
+	return map[string]any{
+		"token":           token,
+		"isNew":           isNew,
+		"profileComplete": u.IsProfileComplete,
+		"userCode":        u.UserCode,
+		"nextScreen":      nextScreen,
+	}, nil
 }
+
 func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.UserID, req map[string]any) (*domain.User, string, error) {
 
 	objID, err := primitive.ObjectIDFromHex(string(userID))
@@ -111,6 +136,10 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "fcmToken", req["fcmToken"])
 	setString(update, "selectedCity", req["selectedCity"])
 	setString(update, "appStateStatus", req["appStateStatus"])
+	if update["name"] != nil &&
+		update["email"] != nil {
+		update["isProfileComplete"] = true
+	}
 	update["updatedAt"] = time.Now()
 
 	if len(update) == 1 {

@@ -8,6 +8,7 @@ import (
 	"app_backend/internal/auth"
 	"app_backend/internal/config"
 	"app_backend/internal/db"
+	"app_backend/internal/events"
 	httpServer "app_backend/internal/http"
 	"app_backend/internal/http/handlers"
 	"app_backend/internal/http/middleware"
@@ -18,10 +19,10 @@ import (
 	"app_backend/internal/sms"
 	"app_backend/internal/socket"
 	"app_backend/internal/worker"
-	"app_backend/internal/events"
 	"os"
-	"github.com/nats-io/nats.go"
+
 	"github.com/joho/godotenv"
+	"github.com/nats-io/nats.go"
 	// "go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -92,19 +93,19 @@ func main() {
 
 	worker.NewProviderConsumer(ports.AcceptedServiceRepository(acceptedServiceRepo))
 	paymentSvc := service.NewPaymentService(
-	paymentRepo,
-	invoiceRepo,
-	emitter,
-	ports.AcceptedServiceRepository(acceptedServiceRepo),
-	ports.ProviderRepo(providerRepo),
-	ports.NotificationService(notificationSvc),
-	bus,
-	cfg.PayUKey,
-	cfg.PayUSalt,
-	cfg.PayUBaseURL,
-	cfg.BaseURL,
-	rdb,
-)
+		paymentRepo,
+		invoiceRepo,
+		emitter,
+		ports.AcceptedServiceRepository(acceptedServiceRepo),
+		ports.ProviderRepo(providerRepo),
+		ports.NotificationService(notificationSvc),
+		bus,
+		cfg.PayUKey,
+		cfg.PayUSalt,
+		cfg.PayUBaseURL,
+		cfg.BaseURL,
+		rdb,
+	)
 	//Refund async worker
 	refundWorker := worker.NewRefundWorker(rdb, paymentSvc)
 	refundWorker.Start()
@@ -117,7 +118,7 @@ func main() {
 	otpQueue.Start()
 	defer otpQueue.Stop()
 
-	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue)
+	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo)
 	providerSvc := service.NewProviderService(
 		providerRepo,
 		counterRepo,
@@ -129,16 +130,16 @@ func main() {
 	invoiceSvc := service.NewInvoiceService(invoiceRepo)
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo)
-	homepageSvc := service.NewHomepageService(homepageRepo)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo,userRepo,providerRepo,serviceCatalogRepo)
-	metaSvc := service.NewMetaService(rdb,vehicleBrandRepo,serviceMasterRepo)
+	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo)
+	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 
 	// Bidding service
-	biddingSvc := service.NewBiddingService(rdb,emitter,acceptedServiceRepo,cancellationRepo,bidRepo,counterRepo)
-	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo,userRepo,providerRepo,emitter)
-	//HANDLERS 
+	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo, cancellationRepo, bidRepo, counterRepo)
+	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter)
+	//HANDLERS
 	userHandler := handlers.NewUserHandler(userSvc)
 	userVehicleHandler := handlers.NewUserVehicleHandler(userVehicleService)
 	providerHandler := handlers.NewProviderHandler(providerSvc)
@@ -159,7 +160,7 @@ func main() {
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
-	r := httpServer.SetupRouter(userHandler,providerHandler,userAuth,providerAuth,locationHandler,complaintHandler,homepageHandler,paymentHandler,biddingHandler,amcValidationHandler,hub,bookingHandler,serviceTrackingHandler,kycHandler,invoiceHandler,userVehicleHandler,providerStatusHandler,metaHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

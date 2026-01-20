@@ -52,15 +52,18 @@ func (h *ProviderHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	token, isNew, err := h.svc.VerifyOTP(c.Request.Context(), req.Phone, req.Code)
+	token, isNew, isProfileCompleted, err :=
+		h.svc.VerifyOTP(c.Request.Context(), req.Phone, req.Code)
+
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"isNew": isNew,
+		"token":              token,
+		"isNew":              isNew,
+		"isProfileCompleted": isProfileCompleted,
 	})
 }
 

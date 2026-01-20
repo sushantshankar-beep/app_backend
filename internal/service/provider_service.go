@@ -1,5 +1,5 @@
-package service
 
+package service
 import (
 	"context"
 	"time"
@@ -35,6 +35,17 @@ func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.Co
 		acceptedServiceRepo: acceptedRepo,
 	}
 }
+func isProviderProfileCompleted(p *domain.Provider) bool {
+	if p.Name == "" {
+		return false
+	}
+	if p.City == "" {
+		return false
+	}
+	return true
+}
+
+
 func assignString(dst *string, v any) {
 	if s, ok := v.(string); ok && s != "" {
 		*dst = s
@@ -94,18 +105,20 @@ func (s *ProviderService) SendOTP(ctx context.Context, phone string) error {
 func (s *ProviderService) VerifyOTP(
 	ctx context.Context,
 	phone, code string,
-) (string, bool, error) {
+) (string, bool,bool, error) {
 
 	otp, err := s.otp.Find(ctx, phone, code)
 	if err != nil {
-		return "", false, domain.ErrOTPInvalid
+		return "", false, false, domain.ErrOTPInvalid
 	}
 	if time.Now().After(otp.ExpiresAt) {
-		return "", false, domain.ErrOTPExpired
+		return "", false,false,domain.ErrOTPExpired
 	}
 	provider, err := s.repo.FindByPhone(ctx, phone)
-
-	isNew := false
+	var(
+		isNew  bool
+		isProfileCompleted bool
+	)
 	if err == domain.ErrNotFound {
 		isNew = true
 
@@ -121,14 +134,20 @@ func (s *ProviderService) VerifyOTP(
 		}
 
 		if err := s.repo.Create(ctx, provider); err != nil {
-			return "", false, err
+			return "", false,false,err
 		}
+		isProfileCompleted = false
+	}else if err != nil{
+		return "",false,false,err
+	}else{
+		isProfileCompleted = isProviderProfileCompleted(provider)  
 	}
 
 	// ✅ GENERATE PROVIDER JWT
 	token, err := s.token.GenerateProviderToken(provider.ID)
-	return token, isNew, err
+	return token, isNew,isProfileCompleted,err
 }
+
 
 
 /* ---------------- PROFILE ---------------- */

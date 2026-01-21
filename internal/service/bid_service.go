@@ -8,7 +8,7 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
-
+"go.mongodb.org/mongo-driver/bson"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -47,7 +47,6 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 
 	seq, _ := s.counterRepo.Next(ctx, "service")
 	serviceNumber := fmt.Sprintf("VHBK%05d", seq)
-
 	svc := &domain.AcceptedService{
 		User:          userOID,
 		Status:        domain.StatusSearching,
@@ -71,6 +70,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
 		return "", err
 	}
+	fmt.Println("AFTER INSERT svc.ID =", svc.ID.Hex())
 
 	// 🔥 Cache service meta (single source for sockets)
 	s.rdb.HSet(ctx, "service:meta:"+svc.ID.Hex(), map[string]any{
@@ -82,6 +82,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		"fuelType":      fuelType,
 		"serviceType":   serviceType,
 	})
+
 
 	// 🔥 Start provider discovery
 	go s.findProviders(
@@ -103,90 +104,158 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 /* ================= FIND PROVIDERS ================= */
 
 func (s *BiddingService) findProviders(
-    serviceID string,
-    lat, lng float64,
-    issues []string,
-    vehicleType string,
-    vehicleNumber string,
-    brand string,
-    modelYear int,
-    fuelType string,
-    serviceType string,
+	serviceID string,
+	lat, lng float64,
+	issues []string,
+	vehicleType string,
+	vehicleNumber string,
+	brand string,
+	modelYear int,
+	fuelType string,
+	serviceType string,
 ) {
-    ctx := context.Background()
+	ctx := context.Background()
 
-    // 🔹 fetch service
-    svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
-    if err != nil {
-        return
-    }
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return
+	}
 
-    // 🔹 fetch user
-    user, err := s.userRepo.FindByID(ctx, svc.User)
-    if err != nil {
-        return
-    }
+	// 🔹 Fetch service once
+	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(svc.User)
+	// 🔹 Fetch user once
+	user, err := s.userRepo.FindByID(ctx, svc.User)
+	if err != nil {
+		fmt.Println("❌ user not found:", err)
+		return
+	}
+	rejectedKey := "service:rejected:" + serviceID
+	attemptedKey := "service:attempted:" + serviceID
 
-    providers, err := s.rdb.GeoRadius(
-        ctx,
-        "providers:geo",
-        lng,
-        lat,
-        &redis.GeoRadiusQuery{
-            Radius:   10,
-            Unit:     "km",
-            WithDist: true,
-        },
-    ).Result()
-    if err != nil {
-        return
-    }
+	// 🔍 Radius expansion steps
+	radiusSteps := []float64{5, 10, 20, 50}
 
-    for _, p := range providers {
+	for _, radius := range radiusSteps {
 
-        providerID := p.Name
-        isRejected,_ := s.rdb.SIsMember(
-		ctx,
-		"service:rejected:"+serviceID,
-		providerID,
+		// 🔒 Re-check service status
+		var current domain.AcceptedService
+		if err := s.acceptedRepo.Col().
+			FindOne(ctx, bson.M{"_id": serviceOID}).
+			Decode(&current); err != nil {
+			return
+		}
+
+		if current.Status != domain.StatusSearching {
+			return
+		}
+
+		// 🔍 Find online providers
+		providers, err := s.rdb.GeoRadius(
+			ctx,
+			"providers:geo",
+			lng,
+			lat,
+			&redis.GeoRadiusQuery{
+				Radius:   radius,
+				Unit:     "km",
+				WithDist: true, // ✅ REQUIRED
+			},
 		).Result()
-		if isRejected {
+
+		if err != nil || len(providers) == 0 {
+			time.Sleep(3 * time.Second)
 			continue
 		}
-        distance := p.Dist
-        eta := estimateETA(distance)
 
-        s.rdb.Set(
-            ctx,
-            "service:dist:"+serviceID+":"+providerID,
-            distance,
-            15*time.Minute,
-        )
+		// 🕒 Allow socket joins
+		time.Sleep(2 * time.Second)
 
-        s.socket.Emit(
-            "provider:"+providerID,
-            "bid:request",
-            map[string]any{
-                "serviceId": serviceID,
-                "user": map[string]any{        
-                    "id":   svc.User.Hex(),
-                    "name": user.Name,
-                },
-                "vehicle": map[string]any{
-                    "type":   vehicleType,
-                    "number": vehicleNumber,
-                    "brand":  brand,
-                    "year":   modelYear,
-                    "fuel":   fuelType,
-                },
-                "serviceType": serviceType,
-                "issues":      issues,
-                "distanceKm":  distance,
-                "etaMin":      eta,
-                "expiresIn":   60,
-            },
-        )
-    }
+		for _, p := range providers {
+
+			providerID := p.Name
+
+			// ❌ Skip rejected providers
+			if rejected, _ := s.rdb.SIsMember(
+				ctx,
+				rejectedKey,
+				providerID,
+			).Result(); rejected {
+				continue
+			}
+
+			// ❌ Skip already attempted providers
+			if attempted, _ := s.rdb.SIsMember(
+				ctx,
+				attemptedKey,
+				providerID,
+			).Result(); attempted {
+				continue
+			}
+
+			distance := p.Dist
+			eta := estimateETA(distance)
+
+			// 🔹 Cache distance
+			s.rdb.Set(
+				ctx,
+				"service:dist:"+serviceID+":"+providerID,
+				distance,
+				15*time.Minute,
+			)
+
+			// 🔔 Emit bid request
+			s.socket.EmitWithRetry(
+				"provider:"+providerID,
+				"bid:request",
+				map[string]any{
+					"serviceId": serviceID,
+					"user": map[string]any{
+						"id":   svc.User.Hex(),
+						"name": user.Name,
+					},
+					"vehicle": map[string]any{
+						"type":   vehicleType,
+						"number": vehicleNumber,
+						"brand":  brand,
+						"year":   modelYear,
+						"fuel":   fuelType,
+					},
+					"serviceType": serviceType,
+					"issues":      issues,
+					"distanceKm":  distance,
+					"etaMin":      eta,
+					"radiusKm":    radius,
+					"expiresIn":   60,
+				},
+				1,
+			)
+
+			// 🔒 Mark provider as attempted
+			s.rdb.SAdd(ctx, attemptedKey, providerID)
+			s.rdb.Expire(ctx, attemptedKey, 30*time.Minute)
+		}
+
+		// ⏳ Wait before next radius
+		time.Sleep(6 * time.Second)
+
+		// 🔁 Increment retry count
+		_, _ = s.acceptedRepo.Col().UpdateByID(
+			ctx,
+			serviceOID,
+			bson.M{"$inc": bson.M{"retryCount": 1}},
+		)
+	}
+
+	// ❌ No provider found
+	_, _ = s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{"$set": bson.M{"status": "no_provider_foundx"}},
+	)
 }
 
 

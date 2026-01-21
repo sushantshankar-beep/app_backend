@@ -265,7 +265,7 @@ func (s *BiddingService) PlaceBid(
 	ctx context.Context,
 	serviceID string,
 	providerID string,
-	price float64,
+	price int,
 ) (string, error) {
 
 	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
@@ -347,6 +347,14 @@ func (s *BiddingService) AcceptBid(
 	); err != nil {
 		return err
 	}
+	s.rdb.Set(ctx,
+		"provider:busy:"+providerID,
+		serviceID,
+		2*time.Hour, // auto release safety
+	)
+
+	// ✅ REMOVE PROVIDER FROM GEO (VERY IMPORTANT)
+	s.rdb.ZRem(ctx, "providers:geo", providerID)
 
 	// 🔔 Notify PROVIDER
 	s.socket.Emit(

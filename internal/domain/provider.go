@@ -18,6 +18,7 @@ type Provider struct {
 	Address          string `bson:"address" json:"address"`
 	PermanentAddress string `bson:"permanentAddress" json:"permanentAddress"`
 	City             string `bson:"city" json:"city"`
+	FcmToken         string `bson:"fcmToken" json:"fcmToken"`
 	GSTNumber          string       `bson:"GSTNumber,omitempty" json:"gstNumber,omitempty"`
 	VehicleNumber      string       `bson:"vehicleNumber,omitempty" json:"vehicleNumber,omitempty"`
 	Description        string       `bson:"description,omitempty" json:"description,omitempty"`

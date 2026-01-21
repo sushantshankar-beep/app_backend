@@ -78,7 +78,7 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID,
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
-	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 10*time.Minute).Result()
+	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 5*time.Minute).Result()
 	if err != nil {
 		return nil, err
 	}

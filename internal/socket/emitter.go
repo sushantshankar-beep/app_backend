@@ -17,8 +17,8 @@ func (e *Emitter) Emit(room, event string, data any) {
 	e.hub.Broadcast(room, map[string]any{
 		"event": event,
 		"data":  data,
-	})
-	log.Printf("📡 socket emit %s -> %s\n", room, event)
+	},)
+	log.Printf("📡 socket emit %s -> %s\n", room, event,data)
 }
 func (e *Emitter) EmitWithRetry(
 	room string,
@@ -28,8 +28,6 @@ func (e *Emitter) EmitWithRetry(
 ) {
 	for i := 0; i < retries; i++ {
 		e.Emit(room, event, data)
-
-		// small delay to avoid burst duplicates
 		time.Sleep(150 * time.Millisecond)
 	}
 }

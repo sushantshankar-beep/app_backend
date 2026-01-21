@@ -145,6 +145,14 @@ func (s *BiddingService) findProviders(
     for _, p := range providers {
 
         providerID := p.Name
+        isRejected,_ := s.rdb.SIsMember(
+		ctx,
+		"service:rejected:"+serviceID,
+		providerID,
+		).Result()
+		if isRejected {
+			continue
+		}
         distance := p.Dist
         eta := estimateETA(distance)
 
@@ -294,6 +302,34 @@ func (s *BiddingService) AcceptBid(
 
 	return nil
 }
+func (s *BiddingService) RejectBid(
+	ctx context.Context,
+	serviceID string,
+	providerID string,
+) error {
+
+	key := "service:rejected:" + serviceID
+
+	// 🔒 add provider to rejected set
+	if err := s.rdb.SAdd(ctx, key, providerID).Err(); err != nil {
+		return err
+	}
+
+	// ⏱ auto cleanup
+	s.rdb.Expire(ctx, key, 30*time.Minute)
+
+	// 🔔 notify provider (optional)
+	s.socket.Emit(
+		"provider:"+providerID,
+		"bid:rejected",
+		map[string]any{
+			"serviceId": serviceID,
+		},
+	)
+
+	return nil
+}
+
 
 
 /* ================= HELPERS ================= */

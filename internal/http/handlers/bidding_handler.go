@@ -139,3 +139,35 @@ func (h *BiddingHandler) AcceptBid(c *gin.Context) {
 		"status": "bid_accepted",
 	})
 }
+func (h *BiddingHandler) RejectBid(c *gin.Context) {
+
+	var req struct {
+		ServiceID  string `json:"serviceId" binding:"required"`
+		ProviderID string `json:"providerId" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := c.GetString("userId")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := h.svc.RejectBid(
+		c.Request.Context(),
+		req.ServiceID,
+		req.ProviderID,
+	); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "bid_rejected",
+	})
+}
+

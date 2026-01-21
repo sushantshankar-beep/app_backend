@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"fmt"
 )
 
 type AcceptedServiceRepo struct {
@@ -39,19 +40,26 @@ func (r *AcceptedServiceRepo) Col() *mongo.Collection {
 /*
 CREATE SERVICE
 */
-func (r *AcceptedServiceRepo) Create(ctx context.Context,svc *domain.AcceptedService) error {
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+func (r *AcceptedServiceRepo) Create(
+	ctx context.Context,
+	svc *domain.AcceptedService,
+) error {
 
 	res, err := r.col.InsertOne(ctx, svc)
 	if err != nil {
 		return err
 	}
 
-	svc.ID = res.InsertedID.(primitive.ObjectID)
+	oid, ok := res.InsertedID.(primitive.ObjectID)
+	if !ok {
+		return fmt.Errorf("insertedID is not ObjectID")
+	}
+
+	svc.ID = oid // 🔥 THIS LINE IS CRITICAL
 	return nil
 }
+
+
 
 /*
 LIST SERVICES (GENERIC)

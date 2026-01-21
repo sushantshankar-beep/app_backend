@@ -1,3 +1,7 @@
+
+
+
+
 package socket
 
 import (
@@ -14,7 +18,17 @@ func NewHub() *Hub {
 		rooms: make(map[string]map[*Client]bool),
 	}
 }
-
+func (h *Hub) Emit(room string, msg any){
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.rooms[room] {
+		select {
+			case c.send <- msg:
+			default:
+				go h.Leave(room, c)
+			}
+		}
+}
 /* ================= ROOM MANAGEMENT ================= */
 
 func (h *Hub) Join(room string, c *Client) {
@@ -41,7 +55,10 @@ func (h *Hub) Leave(room string, c *Client) {
 
 /* ================= BROADCAST ================= */
 
-// ✅ THIS IS WHAT WAS MISSING
+
+
+
+
 func (h *Hub) Broadcast(room string, message any) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -54,8 +71,9 @@ func (h *Hub) Broadcast(room string, message any) {
 	for c := range clients {
 		select {
 		case c.send <- message:
+			// message delivered
 		default:
-			// drop dead clients
+			// client is dead or blocked → remove it
 			go h.Leave(room, c)
 		}
 	}

@@ -1,6 +1,8 @@
 package socket
 
-import "sync"
+import (
+	"sync"
+)
 
 type Hub struct {
 	mu    sync.RWMutex
@@ -13,11 +15,13 @@ func NewHub() *Hub {
 	}
 }
 
+/* ================= ROOM MANAGEMENT ================= */
+
 func (h *Hub) Join(room string, c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if h.rooms[room] == nil {
+	if _, ok := h.rooms[room]; !ok {
 		h.rooms[room] = make(map[*Client]bool)
 	}
 	h.rooms[room][c] = true
@@ -29,18 +33,30 @@ func (h *Hub) Leave(room string, c *Client) {
 
 	if clients, ok := h.rooms[room]; ok {
 		delete(clients, c)
-		close(c.send)
+		if len(clients) == 0 {
+			delete(h.rooms, room)
+		}
 	}
 }
 
-func (h *Hub) Emit(room string, msg any) {
+/* ================= BROADCAST ================= */
+
+// ✅ THIS IS WHAT WAS MISSING
+func (h *Hub) Broadcast(room string, message any) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	for c := range h.rooms[room] {
+	clients, ok := h.rooms[room]
+	if !ok {
+		return
+	}
+
+	for c := range clients {
 		select {
-		case c.send <- msg:
+		case c.send <- message:
 		default:
+			// drop dead clients
+			go h.Leave(room, c)
 		}
 	}
 }

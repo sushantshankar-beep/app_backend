@@ -1,10 +1,8 @@
 package service
-
 import (
 	"context"
-	// "errors"
-	"time"
 	"fmt"
+	"time"
 
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
@@ -42,7 +40,8 @@ func NewBiddingService(
 	}
 }
 
-// ================= START SEARCH =================
+/* ================= START SEARCH ================= */
+
 func (s *BiddingService) StartSearch(
 	ctx context.Context,
 	userID domain.UserID,
@@ -51,12 +50,9 @@ func (s *BiddingService) StartSearch(
 	lat, lng float64,
 ) (string, error) {
 
-	userOID, _ := primitive.ObjectIDFromHex(string(userID))
 
-	seq, err := s.counterRepo.Next(ctx, "service")
-	if err != nil {
-		return "", err
-	}
+	userOID, _ := primitive.ObjectIDFromHex(string(userID))
+	seq, _ := s.counterRepo.Next(ctx, "service")
 
 	serviceNumber := fmt.Sprintf("VHBK%05d", seq)
 
@@ -64,44 +60,34 @@ func (s *BiddingService) StartSearch(
 		ServiceNumber: serviceNumber,
 		User:          userOID,
 		Status:        domain.StatusSearching,
-		PaymentStatus: domain.PaymentPending,
 		ServiceType:   serviceType,
 		Issues:        issues,
 		ServiceLocation: &domain.Location{
 			Latitude:  lat,
 			Longitude: lng,
 		},
-		RetryCount: 0,
-		MaxRetries: 3,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
 		return "", err
 	}
 
-	go s.findProviders(svc.ID.Hex(), lat, lng, serviceType)
+	go s.findProviders(svc.ID.Hex(), lat, lng, serviceType, issues)
 	return svc.ID.Hex(), nil
 }
 
-// ================= PLACE BID =================
+/* ================= PLACE BID ================= */
+
 func (s *BiddingService) PlaceBid(
 	ctx context.Context,
-	serviceID string,
-	providerID string,
+	serviceID, providerID string,
 	price float64,
 ) (string, error) {
 
-	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		return "", err
-	}
-
-	providerOID, err := primitive.ObjectIDFromHex(providerID)
-	if err != nil {
-		return "", err
-	}
+	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+	providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
 	bid := &domain.BidLog{
 		ServiceID:  serviceOID,
@@ -115,29 +101,101 @@ func (s *BiddingService) PlaceBid(
 		return "", err
 	}
 
-	// 🔥 SEND TO USER LISTENING ON SERVICE ROOM
-	s.socket.EmitWithRetry(
+	// 🔹 provider meta
+	meta, _ := s.rdb.HGetAll(ctx, "provider:meta:"+providerID).Result()
+	distance, _ := s.rdb.Get(ctx, "service:dist:"+serviceID+":"+providerID).Float64()
+	eta := estimateETA(distance)
+
+	s.socket.Emit(
 		"user:"+serviceID,
 		"bid:update",
 		map[string]any{
-			"bidId":      bidOID.Hex(),
-			"providerId": providerID,
-			"price":      price,
+			"bidId": bidOID.Hex(),
+			"price": price,
+			"provider": map[string]any{
+				"id":       providerID,
+				"name":     meta["name"],
+				"rating":   meta["rating"],
+				"distance": distance,
+				"etaMin":   eta,
+			},
 		},
-		1,
 	)
 
 	return bidOID.Hex(), nil
 }
 
-// ================= ACCEPT BID =================
-func (s *BiddingService) AcceptBid(ctx context.Context,serviceID string,bidID string,providerID string,price float64) error {
+/* ================= FIND PROVIDERS ================= */
 
-	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
-	bidOID, _ := primitive.ObjectIDFromHex(bidID)
-	providerOID, _ := primitive.ObjectIDFromHex(providerID)
+func (s *BiddingService) findProviders(
+	serviceID string,
+	lat, lng float64,
+	serviceType string,
+	issues []string,
+) {
+	ctx := context.Background()
 
-	err := s.acceptedRepo.UpdateByID(
+	providers, _ := s.rdb.GeoRadius(
+		ctx,
+		"providers:geo",
+		lng, lat,
+		&redis.GeoRadiusQuery{
+			Radius: 10,
+			Unit:   "km",
+			WithDist: true,
+		},
+	).Result()
+
+	for _, p := range providers {
+		providerID := p.Name
+		distance := p.Dist
+		eta := estimateETA(distance)
+
+		// cache distance
+		s.rdb.Set(ctx,
+			"service:dist:"+serviceID+":"+providerID,
+			distance,
+			15*time.Minute,
+		)
+
+		s.socket.Emit(
+			"provider:"+providerID,
+			"bid:request",
+			map[string]any{
+				"serviceId":   serviceID,
+				"serviceType": serviceType,
+				"issues":      issues,
+				"distance":    distance,
+				"etaMin":      eta,
+			},
+		)
+	}
+}
+func (s *BiddingService) AcceptBid(
+	ctx context.Context,
+	serviceID string,
+	bidID string,
+	providerID string,
+	price float64,
+) error {
+
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	bidOID, err := primitive.ObjectIDFromHex(bidID)
+	if err != nil {
+		return err
+	}
+
+	providerOID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return err
+	}
+
+	// update accepted service
+	if err := s.acceptedRepo.UpdateByID(
 		ctx,
 		serviceOID,
 		bson.M{
@@ -150,10 +208,11 @@ func (s *BiddingService) AcceptBid(ctx context.Context,serviceID string,bidID st
 				"updatedAt":     time.Now(),
 			},
 		},
-	)
-	if err != nil {
+	); err != nil {
 		return err
 	}
+
+	// notify provider
 	s.socket.EmitWithRetry(
 		"provider:"+providerID,
 		"bid:accepted",
@@ -163,73 +222,13 @@ func (s *BiddingService) AcceptBid(ctx context.Context,serviceID string,bidID st
 		},
 		1,
 	)
+
 	return nil
 }
-// ================= FIND PROVIDERS =================
-func (s *BiddingService) findProviders(
-	serviceID string,
-	lat, lng float64,
-	serviceType string,
-) {
-	ctx := context.Background()
-	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 
-	radiusSteps := []float64{5, 10, 20, 50}
+/* ================= HELPERS ================= */
 
-	for _, radius := range radiusSteps {
-
-		var svc domain.AcceptedService
-		if err := s.acceptedRepo.Col().
-			FindOne(ctx, bson.M{"_id": serviceOID}).
-			Decode(&svc); err != nil {
-			return
-		}
-
-		if svc.Status != domain.StatusSearching {
-			return
-		}
-
-		providers, err := s.rdb.GeoRadius(
-			ctx,
-			"providers:geo",
-			lng, lat,
-			&redis.GeoRadiusQuery{
-				Radius: radius,
-				Unit:   "km",
-			},
-		).Result()
-
-		if err != nil {
-			continue
-		}
-
-		for _, p := range providers {
-			providerID := p.Name //1✅ this1is provide
-
-			s.socket.EmitWithRetry(
-				"provider:"+providerID,
-				"bid:request",
-				map[string]any{
-					"serviceId":   serviceID,
-					"serviceType": serviceType,
-					"radius":      radius,
-				},
-				1,
-			)
-		}
-
-		time.Sleep(6 * time.Second)
-
-		_, _ = s.acceptedRepo.Col().UpdateByID(
-			ctx,
-			serviceOID,
-			bson.M{"$inc": bson.M{"retryCount": 1}},
-		)
-	}
-
-	_, _ = s.acceptedRepo.Col().UpdateByID(
-		ctx,
-		serviceOID,
-		bson.M{"$set": bson.M{"status": "no_provider_found"}},
-	)
+func estimateETA(distanceKm float64) int {
+	avgSpeed := 30.0 // km/h
+	return int((distanceKm / avgSpeed) * 60)
 }

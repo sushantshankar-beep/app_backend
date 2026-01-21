@@ -33,6 +33,6 @@ type BidLog struct {
 	ID          primitive.ObjectID `bson:_id,ometempty" json: "id"`
     ServiceID   primitive.ObjectID `bson:"serviceId"`
     ProviderID  primitive.ObjectID `bson:"providerId"`
-    Price       float64            `bson:"price"`
+    Price       int            `bson:"price"`
     CreatedAt   time.Time          `bson:"createdAt"`
 }

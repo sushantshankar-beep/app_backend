@@ -71,7 +71,7 @@ func (h *BiddingHandler) FindMechanics(c *gin.Context) {
 func (h *BiddingHandler) PlaceBid(c *gin.Context) {
 	var req struct {
 		ServiceID string  `json:"serviceId" binding:"required"`
-		Price     float64 `json:"price" binding:"required,gt=0"`
+		Price     int `json:"price" binding:"required,gt=0"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

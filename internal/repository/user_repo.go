@@ -108,6 +108,21 @@ func (r *UserRepo) SetPrimaryVehicle(
 
 		return err
 	}
+func (r *UserRepo) FindByID(
+	ctx context.Context,
+	id primitive.ObjectID,
+) (*domain.User, error) {
+
+	var user domain.User
+	if err := r.col.FindOne(
+		ctx,
+		bson.M{"_id": id},
+	).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
 
 
 func (r *UserRepo) AddFallbackVehicle(ctx context.Context,userID primitive.ObjectID,vehicleID primitive.ObjectID) error {

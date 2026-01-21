@@ -1,5 +1,6 @@
 package repository
 
+
 import (
 	"context"
 	"time"
@@ -125,6 +126,26 @@ func (r *AcceptedServiceRepo) ListByProvider(
 
 	return services, nil
 }
+func (r *AcceptedServiceRepo) FindByID(
+	ctx context.Context,
+	id string,
+) (*domain.AcceptedService, error) {
+
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+
+	var svc domain.AcceptedService
+	if err := r.col.FindOne(
+		ctx,
+		bson.M{"_id": oid},
+	).Decode(&svc); err != nil {
+		return nil, err
+	}
+
+	return &svc, nil
+}
 
 
 /*
@@ -211,4 +232,3 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 	})
 	return err
 }
-

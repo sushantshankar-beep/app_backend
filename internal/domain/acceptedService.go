@@ -40,6 +40,12 @@ type AcceptedService struct {
 	MaxRetries           int 			      `bson:"maxRetries" json:"maxRetries"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
+	FuelType   string    `bson:"fuelType" json:"fuelType"`
+	VehicleType string    `bson:"vehicleType" json:"vehicleType"`
+	VehicleNumber string   `bson:"vehicleNumber" json:"vehicleNumber"`
+	Brand       string    	`bson:"brand" json:"brand"`
+	ModelYear   int        	`bson:"modelYear" json:"modelYear"`
+
 }
 
 type OTPInfo struct {

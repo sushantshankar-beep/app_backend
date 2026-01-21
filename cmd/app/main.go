@@ -70,7 +70,7 @@ func main() {
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(db)
 	complaintRepo := repository.NewComplaintRepo(db)
 	amcRepo := repository.NewAMCRepo(db)
-	cancellationRepo := repository.NewCancellationRepo(db)
+	// cancellationRepo := repository.NewCancellationRepo(db)
 	serviceCatalogRepo := repository.NewServiceCatalogRepo(db)
 	kycRepo := repository.NewKYCRepo(db)
 	bidRepo := repository.NewBidRepo(db)
@@ -137,7 +137,7 @@ func main() {
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 
 	// Bidding service
-	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo, cancellationRepo, bidRepo, counterRepo)
+	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo, counterRepo)
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter)
 	//HANDLERS
 	userHandler := handlers.NewUserHandler(userSvc)

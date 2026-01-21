@@ -1,4 +1,5 @@
 package service
+
 import (
 	"context"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"app_backend/internal/socket"
 
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -17,7 +17,7 @@ type BiddingService struct {
 	rdb          *redis.Client
 	socket       *socket.Emitter
 	acceptedRepo *repository.AcceptedServiceRepo
-	cancelRepo   *repository.CancellationRepo
+	userRepo     *repository.UserRepo
 	bidRepo      *repository.BidRepo
 	counterRepo  *repository.CounterRepo
 }
@@ -26,7 +26,7 @@ func NewBiddingService(
 	rdb *redis.Client,
 	socket *socket.Emitter,
 	acceptedRepo *repository.AcceptedServiceRepo,
-	cancelRepo *repository.CancellationRepo,
+	userRepo     *repository.UserRepo,
 	bidRepo *repository.BidRepo,
 	counterRepo *repository.CounterRepo,
 ) *BiddingService {
@@ -34,32 +34,29 @@ func NewBiddingService(
 		rdb:          rdb,
 		socket:       socket,
 		acceptedRepo: acceptedRepo,
-		cancelRepo:   cancelRepo,
-		bidRepo:      bidRepo,
-		counterRepo:  counterRepo,
+		userRepo: userRepo,
+		bidRepo: bidRepo,
+		counterRepo: counterRepo,
 	}
 }
 
 /* ================= START SEARCH ================= */
 
-func (s *BiddingService) StartSearch(
-	ctx context.Context,
-	userID domain.UserID,
-	serviceType string,
-	issues []string,
-	lat, lng float64,
-) (string, error) {
-
-
+func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,vehicleType string,vehicleNumber string,brand string,modelYear int,fuelType string,serviceType string,issues []string,lat, lng float64) (string, error){
 	userOID, _ := primitive.ObjectIDFromHex(string(userID))
-	seq, _ := s.counterRepo.Next(ctx, "service")
 
+	seq, _ := s.counterRepo.Next(ctx, "service")
 	serviceNumber := fmt.Sprintf("VHBK%05d", seq)
 
 	svc := &domain.AcceptedService{
-		ServiceNumber: serviceNumber,
 		User:          userOID,
 		Status:        domain.StatusSearching,
+		VehicleType:   vehicleType,
+		VehicleNumber: vehicleNumber,
+		ServiceNumber: serviceNumber,
+		Brand:         brand,
+		ModelYear:     modelYear,
+		FuelType:      fuelType,
 		ServiceType:   serviceType,
 		Issues:        issues,
 		ServiceLocation: &domain.Location{
@@ -69,20 +66,128 @@ func (s *BiddingService) StartSearch(
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+	
 
 	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
 		return "", err
 	}
 
-	go s.findProviders(svc.ID.Hex(), lat, lng, serviceType, issues)
+	// 🔥 Cache service meta (single source for sockets)
+	s.rdb.HSet(ctx, "service:meta:"+svc.ID.Hex(), map[string]any{
+		"userId":        userID,
+		"vehicleType":   vehicleType,
+		"vehicleNumber": vehicleNumber,
+		"brand":         brand,
+		"modelYear":     modelYear,
+		"fuelType":      fuelType,
+		"serviceType":   serviceType,
+	})
+
+	// 🔥 Start provider discovery
+	go s.findProviders(
+		svc.ID.Hex(),
+		lat,
+		lng,
+		issues,
+		vehicleType,
+		vehicleNumber,
+		brand,
+		modelYear,
+		fuelType,
+		serviceType,
+	)
+
 	return svc.ID.Hex(), nil
 }
+
+/* ================= FIND PROVIDERS ================= */
+
+func (s *BiddingService) findProviders(
+    serviceID string,
+    lat, lng float64,
+    issues []string,
+    vehicleType string,
+    vehicleNumber string,
+    brand string,
+    modelYear int,
+    fuelType string,
+    serviceType string,
+) {
+    ctx := context.Background()
+
+    // 🔹 fetch service
+    svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
+    if err != nil {
+        return
+    }
+
+    // 🔹 fetch user
+    user, err := s.userRepo.FindByID(ctx, svc.User)
+    if err != nil {
+        return
+    }
+
+    providers, err := s.rdb.GeoRadius(
+        ctx,
+        "providers:geo",
+        lng,
+        lat,
+        &redis.GeoRadiusQuery{
+            Radius:   10,
+            Unit:     "km",
+            WithDist: true,
+        },
+    ).Result()
+    if err != nil {
+        return
+    }
+
+    for _, p := range providers {
+
+        providerID := p.Name
+        distance := p.Dist
+        eta := estimateETA(distance)
+
+        s.rdb.Set(
+            ctx,
+            "service:dist:"+serviceID+":"+providerID,
+            distance,
+            15*time.Minute,
+        )
+
+        s.socket.Emit(
+            "provider:"+providerID,
+            "bid:request",
+            map[string]any{
+                "serviceId": serviceID,
+                "user": map[string]any{        
+                    "id":   svc.User.Hex(),
+                    "name": user.Name,
+                },
+                "vehicle": map[string]any{
+                    "type":   vehicleType,
+                    "number": vehicleNumber,
+                    "brand":  brand,
+                    "year":   modelYear,
+                    "fuel":   fuelType,
+                },
+                "serviceType": serviceType,
+                "issues":      issues,
+                "distanceKm":  distance,
+                "etaMin":      eta,
+                "expiresIn":   60,
+            },
+        )
+    }
+}
+
 
 /* ================= PLACE BID ================= */
 
 func (s *BiddingService) PlaceBid(
 	ctx context.Context,
-	serviceID, providerID string,
+	serviceID string,
+	providerID string,
 	price float64,
 ) (string, error) {
 
@@ -101,11 +206,14 @@ func (s *BiddingService) PlaceBid(
 		return "", err
 	}
 
-	// 🔹 provider meta
-	meta, _ := s.rdb.HGetAll(ctx, "provider:meta:"+providerID).Result()
-	distance, _ := s.rdb.Get(ctx, "service:dist:"+serviceID+":"+providerID).Float64()
+	distance, _ := s.rdb.Get(
+		ctx,
+		"service:dist:"+serviceID+":"+providerID,
+	).Float64()
+
 	eta := estimateETA(distance)
 
+	// 🔥 SEND BID TO USER
 	s.socket.Emit(
 		"user:"+serviceID,
 		"bid:update",
@@ -113,63 +221,14 @@ func (s *BiddingService) PlaceBid(
 			"bidId": bidOID.Hex(),
 			"price": price,
 			"provider": map[string]any{
-				"id":       providerID,
-				"name":     meta["name"],
-				"rating":   meta["rating"],
-				"distance": distance,
-				"etaMin":   eta,
+				"id":         providerID,
+				"distanceKm": distance,
+				"etaMin":     eta,
 			},
 		},
 	)
 
 	return bidOID.Hex(), nil
-}
-
-/* ================= FIND PROVIDERS ================= */
-
-func (s *BiddingService) findProviders(
-	serviceID string,
-	lat, lng float64,
-	serviceType string,
-	issues []string,
-) {
-	ctx := context.Background()
-
-	providers, _ := s.rdb.GeoRadius(
-		ctx,
-		"providers:geo",
-		lng, lat,
-		&redis.GeoRadiusQuery{
-			Radius: 10,
-			Unit:   "km",
-			WithDist: true,
-		},
-	).Result()
-
-	for _, p := range providers {
-		providerID := p.Name
-		distance := p.Dist
-		eta := estimateETA(distance)
-
-		// cache distance
-		s.rdb.Set(ctx,
-			"service:dist:"+serviceID+":"+providerID,
-			distance,
-			15*time.Minute,
-		)
-
-		s.socket.Emit(
-			"provider:"+providerID,
-			"bid:request",
-			map[string]any{
-				"serviceId":   serviceID,
-				"serviceType": serviceType,
-				"issues":      issues,
-				"distance":    distance,
-				"etaMin":      eta,
-			},
-		)
-	}
 }
 func (s *BiddingService) AcceptBid(
 	ctx context.Context,
@@ -194,12 +253,12 @@ func (s *BiddingService) AcceptBid(
 		return err
 	}
 
-	// update accepted service
+	// 🔒 Assign provider & lock service
 	if err := s.acceptedRepo.UpdateByID(
 		ctx,
 		serviceOID,
-		bson.M{
-			"$set": bson.M{
+		map[string]any{
+			"$set": map[string]any{
 				"provider":      providerOID,
 				"acceptedBid":   bidOID,
 				"finalPrice":    price,
@@ -212,23 +271,36 @@ func (s *BiddingService) AcceptBid(
 		return err
 	}
 
-	// notify provider
-	s.socket.EmitWithRetry(
+	// 🔔 Notify PROVIDER
+	s.socket.Emit(
 		"provider:"+providerID,
 		"bid:accepted",
 		map[string]any{
 			"serviceId": serviceID,
 			"price":     price,
 		},
-		1,
+	)
+
+	// 🔔 Notify USER (recommended)
+	s.socket.Emit(
+		"user:"+serviceID,
+		"service:assigned",
+		map[string]any{
+			"serviceId":  serviceID,
+			"providerId": providerID,
+			"price":      price,
+		},
 	)
 
 	return nil
 }
 
+
 /* ================= HELPERS ================= */
 
 func estimateETA(distanceKm float64) int {
-	avgSpeed := 30.0 // km/h
-	return int((distanceKm / avgSpeed) * 60)
+	if distanceKm <= 1 {
+		return 5
+	}
+	return int(distanceKm*4 + 5)
 }

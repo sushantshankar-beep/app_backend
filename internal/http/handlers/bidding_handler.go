@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"net/http"
+
 	"app_backend/internal/domain"
 	"app_backend/internal/service"
+
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 type BiddingHandler struct {
@@ -16,43 +18,48 @@ func NewBiddingHandler(svc *service.BiddingService) *BiddingHandler {
 }
 
 /*
-POST /bidding/find
+POST /bid/find
 */
 func (h *BiddingHandler) FindMechanics(c *gin.Context) {
+
 	var req struct {
-		Lat         float64  `json:"lat" binding:"required"`
-		Lng         float64  `json:"lng" binding:"required"`
-		ServiceType string   `json:"serviceType" binding:"required"`
-		Issues      []string `json:"issues"`
+		Lat           float64  `json:"lat" binding:"required"`
+		Lng           float64  `json:"lng" binding:"required"`
+		VehicleType   string   `json:"vehicleType" binding:"required"`
+		VehicleNumber string   `json:"vehicleNumber" binding:"required"`
+		Brand         string   `json:"brand" binding:"required"`
+		ModelYear     int      `json:"modelYear" binding:"required"`
+		FuelType      string   `json:"fuelType" binding:"required"`
+		ServiceType   string   `json:"serviceType" binding:"required"`
+		Issues        []string `json:"issues"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	userID := c.GetString("userId")
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "unauthorized",
-		})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
 	serviceID, err := h.svc.StartSearch(
 		c.Request.Context(),
 		domain.UserID(userID),
+		req.VehicleType,
+		req.VehicleNumber,
+		req.Brand,
+		req.ModelYear,
+		req.FuelType,
 		req.ServiceType,
 		req.Issues,
 		req.Lat,
 		req.Lng,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -61,10 +68,6 @@ func (h *BiddingHandler) FindMechanics(c *gin.Context) {
 		"serviceId": serviceID,
 	})
 }
-
-/*
-POST /bidding/bid
-*/
 func (h *BiddingHandler) PlaceBid(c *gin.Context) {
 	var req struct {
 		ServiceID string  `json:"serviceId" binding:"required"`
@@ -98,30 +101,40 @@ func (h *BiddingHandler) PlaceBid(c *gin.Context) {
 		"bidId":  bidID,
 	})
 }
-
 /*
-POST /bidding/accept
+POST /bid/accept
 */
 func (h *BiddingHandler) AcceptBid(c *gin.Context) {
+
 	var req struct {
 		ServiceID  string  `json:"serviceId" binding:"required"`
 		BidID      string  `json:"bidId" binding:"required"`
 		ProviderID string  `json:"providerId" binding:"required"`
-		Price      float64 `json:"price" binding:"required"`
+		Price      float64 `json:"price" binding:"required,gt=0"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.svc.AcceptBid(c.Request.Context(),req.ServiceID,req.BidID,req.ProviderID,req.Price); err != nil {
-		c.JSON(http.StatusConflict, gin.H{
-			"error": err.Error(),
-		})
+	userID := c.GetString("userId")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
+	if err := h.svc.AcceptBid(
+		c.Request.Context(),
+		req.ServiceID,
+		req.BidID,
+		req.ProviderID,
+		req.Price,
+	); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status": "bid_accepted",
 	})

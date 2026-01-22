@@ -44,7 +44,7 @@ func main() {
 	log.Println("AWS session initialized successfully")
 	
 
-	s3Uploader := s3.NewUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"))
+	s3Uploader := s3.NewUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"),os.Getenv("AWS_S3_FOLDER"))
 
 	//mongo
 	client, err := db.Connect(cfg.MongoURI)
@@ -151,6 +151,7 @@ func main() {
 	// Bidding service
 	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo, counterRepo)
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter)
+	imageUploadS3 := service.NewImageUploadS3Service()
 	//HANDLERS
 	userHandler := handlers.NewUserHandler(userSvc)
 	userVehicleHandler := handlers.NewUserVehicleHandler(userVehicleService)
@@ -169,10 +170,11 @@ func main() {
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
 	providerStatusHandler := handlers.NewProviderStatusHandler(rdb)
 	metaHandler := handlers.NewMetaHandler(metaSvc)
+    imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

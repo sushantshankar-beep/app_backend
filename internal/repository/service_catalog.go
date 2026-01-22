@@ -14,7 +14,7 @@ type ServiceCatalogRepo struct {
 
 func NewServiceCatalogRepo(db *mongo.Database) *ServiceCatalogRepo {
 	return &ServiceCatalogRepo{
-		col: db.Collection("service_catalog"),
+		col: db.Collection("serviceMaster"),
 	}
 }
 
@@ -24,8 +24,18 @@ func (r *ServiceCatalogRepo) FindByName(
 ) (*domain.ServiceCatalog, error) {
 
 	var svc domain.ServiceCatalog
-	if err := r.col.FindOne(ctx, bson.M{"name": name}).Decode(&svc); err != nil {
+
+	filter := bson.M{
+		"name": bson.M{
+			"$regex":   name,
+			"$options": "i", // case-insensitive
+		},
+	}
+
+	if err := r.col.FindOne(ctx, filter).Decode(&svc); err != nil {
 		return nil, err
 	}
+
 	return &svc, nil
 }
+

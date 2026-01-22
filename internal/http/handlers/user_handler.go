@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"net/http"
-
+    "strings"
 	"app_backend/internal/domain"
 	"app_backend/internal/http/middleware"
+	"app_backend/internal/s3"
 	"app_backend/internal/service"
-
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	// "fmt"
@@ -78,23 +78,36 @@ func (h *UserHandler) Profile(c *gin.Context) {
 }
 
 func (h *UserHandler) CreateOrUpdateUserProfile(c *gin.Context) {
-
 	userID := c.GetString(middleware.ContextKeyUserID)
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
 	var req map[string]any
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
-		return
+	contentType := c.GetHeader("Content-Type")
+
+	if strings.Contains(contentType, "multipart/form-data") {
+		req = make(map[string]any)
+		fields := []string{"name", "email", "fcmToken", "selectedCity", "appStateStatus"}
+		for _, field := range fields {
+			if val := c.PostForm(field); val != "" {
+				req[field] = val
+			}
+		}
+	} else {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
 	}
 
-	user, action, err := h.svc.CreateOrUpdateProfile(
-		c.Request.Context(),
-		domain.UserID(userID),
-		req,
-	)
+	if urls, exists := s3.GetUploadedURLs(c, "profileImage"); exists && len(urls) > 0 {
+		req["imageUrl"] = urls[0]
+	}
+
+	user, action, err := h.svc.CreateOrUpdateProfile(c.Request.Context(),domain.UserID(userID),req,)
+	
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

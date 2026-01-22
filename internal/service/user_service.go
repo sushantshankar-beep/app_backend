@@ -136,6 +136,7 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "fcmToken", req["fcmToken"])
 	setString(update, "selectedCity", req["selectedCity"])
 	setString(update, "appStateStatus", req["appStateStatus"])
+	setString(update, "image_url", req["imageUrl"])
 	if update["name"] != nil &&
 		update["email"] != nil {
 		update["isProfileComplete"] = true

@@ -21,6 +21,7 @@ import (
 type Uploader struct {
 	s3Client   *s3.S3
 	bucketName string
+	folder     string
 }
 
 type FieldConfig struct {
@@ -28,10 +29,11 @@ type FieldConfig struct {
 	ContextKey    string
 }
 
-func NewUploader(sess *session.Session, bucketName string) *Uploader {
+func NewUploader(sess *session.Session, bucketName string, folder string) *Uploader {
 	return &Uploader{
 		s3Client:   s3.New(sess),
 		bucketName: bucketName,
+		folder:     strings.Trim(folder, "/"),
 	}
 }
 
@@ -112,7 +114,9 @@ func (u *Uploader) Upload(fieldConfigs []FieldConfig) gin.HandlerFunc {
 					}
 				}
 
-				key := fmt.Sprintf("%d_%s", time.Now().UnixNano()/int64(time.Millisecond), fileHeader.Filename)
+				safeName := strings.ReplaceAll(fileHeader.Filename, " ", "_")
+
+                key := fmt.Sprintf("%s/%d_%s",u.folder,time.Now().UnixMilli(),safeName)
 
 				uploadInput := &s3.PutObjectInput{
 					Bucket:      aws.String(u.bucketName),

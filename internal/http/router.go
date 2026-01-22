@@ -10,7 +10,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler) *gin.Engine {
 
 	r := gin.Default()
 
@@ -26,9 +26,9 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	{
 		user.POST("/send-otp", userHandler.SendOTP)
 		user.POST("/verify-otp", userHandler.VerifyOTP)
-		user.GET("/vehicleNumber/:vehicleNumber", userVehicleHandler.GetVehicleByNumber)
+		user.GET("/vehicleNumber/:vehicleNumber",userAuth, userVehicleHandler.GetVehicleByNumber)
 		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
-		user.GET("/vehicleData", userVehicleHandler.GetVehicleData)
+		user.GET("/vehicleData", userAuth, userVehicleHandler.GetVehicleData)
 		user.GET("/profile", userAuth, userHandler.Profile)
 		user.PUT("/profile", userAuth, s3Uploader.Upload([]s3.FieldConfig{
 			{FormFieldName: "profileImage",ContextKey:    "profileImage",}}), 
@@ -99,10 +99,20 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		meta.GET("/brands", metaHandler.GetBrands)
 		meta.GET("/services", metaHandler.GetServices)
 	}
+
+	imageUpload := r.Group("/upload-image")
+	{
+		imageUpload.POST("", s3Uploader.Upload([]s3.FieldConfig{
+				{
+					FormFieldName: "image",
+					ContextKey:    "image",
+				},
+		}), imageUploadS3Handler.UploadSingle)
+	}
+	
 	if homepageHandler != nil {
 		r.GET("/homepage", homepageHandler.GetHomepage)
 	}
-
 
 	return r
 }

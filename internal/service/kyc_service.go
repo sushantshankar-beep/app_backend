@@ -19,8 +19,7 @@ type KYCService struct {
 }
 
 func NewKYCService(repo *repository.KYCRepo) *KYCService {
-	uploader, _ := s3.NewUploader()
-	return &KYCService{repo: repo, uploader: uploader}
+	return &KYCService{repo: repo}
 }
 
 func (s *KYCService) SubmitKYC(ctx context.Context, providerID string, req *domain.ProviderKYC) error {

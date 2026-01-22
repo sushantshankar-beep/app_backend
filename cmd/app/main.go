@@ -19,11 +19,10 @@ import (
 	"app_backend/internal/sms"
 	"app_backend/internal/socket"
 	"app_backend/internal/worker"
+	"app_backend/internal/s3"
 	"os"
-
 	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
-	// "go.mongodb.org/mongo-driver/mongo"
 )
 
 func main() {
@@ -36,6 +35,16 @@ func main() {
 	}
 
 	cfg := config.Load()
+
+	//aws-S3
+	awsSession, err := config.InitAWSSession()
+	if err != nil {
+		log.Fatal("Failed to initialize AWS session:", err)
+	}
+	log.Println("AWS session initialized successfully")
+	
+
+	s3Uploader := s3.NewUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"))
 
 	//mongo
 	client, err := db.Connect(cfg.MongoURI)
@@ -79,12 +88,15 @@ func main() {
 	counterRepo := repository.NewCounterRepo(db)
 	vehicleBrandRepo := repository.NewVehicleBrandRepo(db)
 	serviceMasterRepo := repository.NewServiceMasterRepo(db)
-
+	carBrandModelRepo := repository.NewCarBrandModelRepo(db)
+	bikeBrandModelRepo := repository.NewBikeBrandModelRepo(db)
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
 	notificationSvc := service.NewFirebaseNotificationService()
 	kycService := service.NewKYCService(kycRepo)
 	userVehicleService := service.NewUserVehicleService(
+		carBrandModelRepo,
+		bikeBrandModelRepo,
 		vehicleRepo,
 		userRepo,
 	)
@@ -160,7 +172,7 @@ func main() {
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc)
 	providerAuth := middleware.AuthProvider(tokenSvc)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

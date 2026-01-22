@@ -6,10 +6,11 @@ import (
 	// "app_backend/internal/repository"
 	"github.com/gin-gonic/gin"
 	// "github.com/redis/go-redis/v9"
+	"app_backend/internal/s3"
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,) *gin.Engine {
 
 	r := gin.Default()
 
@@ -25,10 +26,13 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	{
 		user.POST("/send-otp", userHandler.SendOTP)
 		user.POST("/verify-otp", userHandler.VerifyOTP)
-		user.GET("/:vehicleNumber", userVehicleHandler.GetVehicleByNumber)
+		user.GET("/vehicleNumber/:vehicleNumber", userVehicleHandler.GetVehicleByNumber)
 		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
+		user.GET("/vehicleData", userVehicleHandler.GetVehicleData)
 		user.GET("/profile", userAuth, userHandler.Profile)
-		user.PUT("/profile", userAuth, userHandler.CreateOrUpdateUserProfile)
+		user.PUT("/profile", userAuth, s3Uploader.Upload([]s3.FieldConfig{
+			{FormFieldName: "profileImage",ContextKey:    "profileImage",}}), 
+		userHandler.CreateOrUpdateUserProfile)
 		user.POST("/location", userAuth, locationHandler.SaveUserLocation)
 		user.GET("/location", userAuth, locationHandler.GetUserLocation)
 		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
@@ -72,7 +76,12 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/send-otp", providerHandler.SendOTP)
 		provider.POST("/verify-otp", providerHandler.VerifyOTP)
 		provider.GET("/profile", providerAuth, providerHandler.Profile)
-		provider.PUT("/profile-update", providerAuth, providerHandler.CreateOrUpdateProfile)
+		provider.PUT("/profile-update", providerAuth, s3Uploader.Upload([]s3.FieldConfig{
+		    {
+			  FormFieldName: "profileImage",
+			  ContextKey:    "profileImage",
+		    },
+	    }), providerHandler.CreateOrUpdateProfile )
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)

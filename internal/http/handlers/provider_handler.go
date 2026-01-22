@@ -4,12 +4,12 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-
-	"app_backend/internal/domain"
-	"app_backend/internal/http/middleware"
-	"app_backend/internal/service"
-
+    "strings"
+    "app_backend/internal/s3"
 	"github.com/gin-gonic/gin"
+	"app_backend/internal/domain"
+	"app_backend/internal/service"
+	"app_backend/internal/http/middleware"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -90,20 +90,49 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 }
 
 func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
+
 	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
 	providerID := domain.ProviderID(providerObjID.Hex())
 
 	var req map[string]any
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
+	contentType := c.GetHeader("Content-Type")
+
+	if strings.Contains(contentType, "multipart/form-data") {
+		req = make(map[string]any)
+		
+		fields := []string{
+			"name", "email", "companyName", "address", "shopAddress",
+			"alternateContact", "city", "vehicleNumber", "description", "gstNumber",
+		}
+		for _, field := range fields {
+			if val := c.PostForm(field); val != "" {
+				req[field] = val
+			}
+		}
+		
+		arrayFields := map[string]string{
+			"vehicleType":      "vehicleType",
+			"providerServices": "providerServices",
+			"providerBrands":   "providerBrands",
+		}
+		for formKey, reqKey := range arrayFields {
+			if vals := c.PostFormArray(formKey); len(vals) > 0 {
+				req[reqKey] = vals
+			}
+		}
+	} else {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+			return
+		}
 	}
 
-	updated, err := h.svc.CreateOrUpdateProfile(
-		c.Request.Context(),
-		providerID,
-		req,
-	)
+	if urls, exists := s3.GetUploadedURLs(c, "profileImage"); exists && len(urls) > 0 {
+		req["profileUrl"] = urls[0]
+	}
+
+	updated, err := h.svc.CreateOrUpdateProfile(c.Request.Context(),providerID,req)
+	
 	if err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "provider not found"})

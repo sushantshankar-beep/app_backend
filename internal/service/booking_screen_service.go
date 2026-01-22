@@ -71,13 +71,6 @@ func (s *BookingService) BuildBookingScreen(
 		return nil, errors.New("no issues attached to service")
 	}
 
-	issue := svc.Issues[0]
-
-	catalog, err := s.catalogRepo.FindByName(ctx, issue)
-	if err != nil {
-		return nil, errors.New("service catalog not found for issue")
-	}
-
 	/* ---------------- Price Calculation ---------------- */
 
 	gst := svc.FinalPrice * 18 / 100
@@ -121,8 +114,6 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"billing": map[string]any{
-			"discount":    catalog.Discount,
-			"coupon":      catalog.CouponAmount,
 			"serviceAmount":    svc.FinalPrice,
 			"gst":         gst,
 			"totalAmount": total,

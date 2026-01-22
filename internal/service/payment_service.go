@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"app_backend/internal/events"
 	// "go.mongodb.org/mongo-driver/bson/primitive"
+	"math"
 )
 
 type PaymentService struct {
@@ -102,9 +103,8 @@ func (s *PaymentService) InitiatePayment(
 	PAYU_SALT := s.salt
 
 	firstname := name
-
-	finalAmount := price * 1.18
-	amount := strconv.FormatFloat(finalAmount, 'f', 2, 64)
+	finalAmount := math.Round(price*1.18*100) / 100
+	amount := fmt.Sprintf("%.2f", finalAmount)
 
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
 
@@ -155,6 +155,10 @@ func (s *PaymentService) InitiatePayment(
 
 
 func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]string) error {
+	fmt.Println("🔥 PAYU RAW WEBHOOK DATA ↓↓↓")
+	for k, v := range data {
+		fmt.Println(k, "=", v)
+	}
 	txn, err := s.repo.GetByTxnID(ctx, data["txnid"])
 	if err != nil {
 		return errors.New("transaction not found")
@@ -165,18 +169,25 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	verifyStr := fmt.Sprintf(
 		"%s|%s|||||||||||%s|%s|%s|%s|%s|%s",
 		s.salt,
-		data["status"],
+		data["status"],      
 		data["email"],
 		data["firstname"],
 		data["productinfo"],
-		data["amount"],
+		data["amount"],     
 		data["txnid"],
 		s.key,
 	)
-	
-	if sha512Hash(verifyStr) != data["hash"] {
+
+	calculated := sha512Hash(verifyStr)
+
+	fmt.Println("VERIFY STRING:", verifyStr)
+	fmt.Println("CALCULATED HASH:", calculated)
+	fmt.Println("PAYU HASH:", data["hash"])
+
+	if calculated != data["hash"] {
 		return errors.New("hash verification failed")
 	}
+
 	status := "failed"
 	if data["status"] == "success" {
 		status = "paid"

@@ -74,11 +74,11 @@ func sha512Hash(input string) string {
 
 /* ---------------- INITIATE PAYMENT ---------------- */
 
-func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID, name, email, phone string, price float64) (map[string]string, error) {
+func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID, name,phone string, price float64) (map[string]string, error) {
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
-	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 5*time.Minute).Result()
+	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 1*time.Minute).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,6 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID,
 		amountStr,
 		serviceID,
 		name,
-		email,
 		s.salt,
 	)
 	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{

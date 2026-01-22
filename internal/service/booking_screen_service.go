@@ -10,6 +10,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"fmt"
 )
 
 type BookingService struct {
@@ -54,11 +55,6 @@ func (s *BookingService) BuildBookingScreen(
 
 	/* ---------------- Load User ---------------- */
 
-	user, err := s.userRepo.GetByID(ctx, svc.User)
-	if err != nil {
-		return nil, errors.New("user not found")
-	}
-
 	/* ---------------- Load Provider ---------------- */
 
 	provider, err := s.providerRepo.FindByID(
@@ -70,15 +66,21 @@ func (s *BookingService) BuildBookingScreen(
 	}
 
 	/* ---------------- Load Service Catalog ---------------- */
+    fmt.Println("this is service type",svc.ServiceType)
+	if len(svc.Issues) == 0 {
+		return nil, errors.New("no issues attached to service")
+	}
 
-	catalog, err := s.catalogRepo.FindByName(ctx, svc.ServiceType)
+	issue := svc.Issues[0]
+
+	catalog, err := s.catalogRepo.FindByName(ctx, issue)
 	if err != nil {
-		return nil, errors.New("service catalog not found")
+		return nil, errors.New("service catalog not found for issue")
 	}
 
 	/* ---------------- Price Calculation ---------------- */
 
-	gst := svc.FinalPrice * catalog.GSTPercent / 100
+	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
 	/* ---------------- Build Screen Payload ---------------- */
@@ -98,13 +100,8 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"booking": map[string]any{
-			"bookingId": svc.NumericID,
+			"bookingId": svc.ServiceNumber,
 			"status":    "BID_ACCEPTED",
-		},
-
-		"user": map[string]any{
-			"name":  user.Name,
-			"phone": user.Phone,
 		},
 
 		"provider": map[string]any{
@@ -117,13 +114,16 @@ func (s *BookingService) BuildBookingScreen(
 		"vehicle": map[string]any{
 			"problem": svc.ServiceType,
 			"date":    time.Now().Format("2006-01-02"),
+			"vehicleNumber": svc.VehicleNumber,
+			"brand" : svc.Brand,
+			"fuelType": svc.FuelType,
+			"year":svc.ModelYear,
 		},
 
 		"billing": map[string]any{
-			"basePrice":   catalog.BasePrice,
 			"discount":    catalog.Discount,
 			"coupon":      catalog.CouponAmount,
-			"subtotal":    svc.FinalPrice,
+			"serviceAmount":    svc.FinalPrice,
 			"gst":         gst,
 			"totalAmount": total,
 			"currency":    "INR",

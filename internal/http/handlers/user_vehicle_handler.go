@@ -1,16 +1,10 @@
 package handlers
 
 import (
-	// "net/http"
-
-	// "app_backend/internal/domain"
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
-
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	// "context"
 )
 
 type UserVehicleHandler struct {
@@ -27,8 +21,7 @@ func NewUserVehicleHandler(
 GET /user/vehicle
 */
 func (h *UserVehicleHandler) GetVehicleByNumber(c *gin.Context) {
-	number := c.Query("vehicleNumber")
-	fmt.Println("this is vehicle number :", number)
+	number := c.Param("vehicleNumber")
 
 	v, exists, err := h.svc.GetVehicleByNumber(
 		c.Request.Context(),
@@ -77,5 +70,24 @@ func (h *UserVehicleHandler) SaveVehicle(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"saved":   true,
 		"vehicle": v,
+	})
+}
+
+/* Get /user/vehicleData */
+func (h *UserVehicleHandler) GetVehicleData(c *gin.Context) {
+	vehicleType := c.Query("vehicleType")
+	make := c.Query("make")
+	model := c.Query("model")
+
+	data, err := h.svc.GetVehicleData(c.Request.Context(), vehicleType, make, model)
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to fetch vehicles"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"data":  data,
+		"count": len(data),
 	})
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"app_backend/internal/events"
+	// "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type PaymentService struct {
@@ -74,30 +75,56 @@ func sha512Hash(input string) string {
 
 /* ---------------- INITIATE PAYMENT ---------------- */
 
-func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID, name, email, phone string, price float64) (map[string]string, error) {
+func (s *PaymentService) InitiatePayment(
+	ctx context.Context,
+	serviceID,
+	userID,
+	name,
+	phone string,
+	price float64,
+) (map[string]string, error) {
+	email := fmt.Sprintf("app%s@vahanwire.com",serviceID)
+	fmt.Println("this is email",email)
+
+	// 🔒 Lock service
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
-	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 5*time.Minute).Result()
+	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 2*time.Minute).Result()
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return nil, errors.New("service already reserved")
+		return nil, errors.New("payment already in progress")
 	}
+
+	PAYU_KEY := s.key
+	PAYU_SALT := s.salt
+
+	firstname := name
+
 	finalAmount := price * 1.18
-	amountStr := strconv.FormatFloat(finalAmount, 'f', 2, 64)
+	amount := strconv.FormatFloat(finalAmount, 'f', 2, 64)
+
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
+
+	productinfo := "vahanwire service"
+
+	// 🔐 PAYU HASH STRING
 	hashStr := fmt.Sprintf(
 		"%s|%s|%s|%s|%s|%s|||||||||||%s",
-		s.key,
+		PAYU_KEY,
 		txnid,
-		amountStr,
-		serviceID,
-		name,
+		amount,
+		productinfo,
+		firstname,
 		email,
-		s.salt,
+		PAYU_SALT,
 	)
+
+	hash := sha512Hash(hashStr)
+
+	// 💾 Save transaction
 	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
 		TxnID:         txnid,
 		Amount:        finalAmount,
@@ -112,14 +139,20 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, serviceID, userID,
 
 	return map[string]string{
 		"txnid":   txnid,
-		"amount":  amountStr,
-		"key":     s.key,
-		"hash":    sha512Hash(hashStr),
+		"amount":  amount,
+		"key":     PAYU_KEY,
+		"hash":    hash,
+		"email":      email,
+		"firstname":  firstname,
+		"productinfo": productinfo,
+		"phone":      phone,
 		"payuUrl": s.payuURL + "/_payment",
-		"surl":    s.baseURL + "/api/payment/webhook",
-		"furl":    s.baseURL + "/api/payment/webhook",
+		"surl":    s.baseURL + "/payment/webhook",
+		"furl":    s.baseURL + "/payment/webhook",
 	}, nil
 }
+
+
 
 func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]string) error {
 	txn, err := s.repo.GetByTxnID(ctx, data["txnid"])

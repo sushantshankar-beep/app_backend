@@ -3,23 +3,30 @@ package service
 import (
 	"context"
 	"time"
-
-	"app_backend/internal/domain"
+    "errors"
+ 	"app_backend/internal/domain"
+	"go.mongodb.org/mongo-driver/bson"
 	"app_backend/internal/repository"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	// "fmt"
 )
 
 type UserVehicleService struct {
+	carBrandModelRepo *repository.CarBrandModelRepo
+	bikeBrandModelRepo *repository.BikeBrandModelRepo
 	vehicleRepo *repository.VehicleRepo
 	userRepo    *repository.UserRepo
+
 }
 
 func NewUserVehicleService(
+	carBrandModelRepo *repository.CarBrandModelRepo,
+	bikeBrandModelRepo *repository.BikeBrandModelRepo,
 	vehicleRepo *repository.VehicleRepo,
 	userRepo *repository.UserRepo,
 ) *UserVehicleService {
 	return &UserVehicleService{
+		carBrandModelRepo: carBrandModelRepo,
+		bikeBrandModelRepo: bikeBrandModelRepo,
 		vehicleRepo: vehicleRepo,
 		userRepo:    userRepo,
 	}
@@ -81,4 +88,41 @@ func (s *UserVehicleService) SaveVehicleForUser(ctx context.Context, userID prim
 	}
 
 	return v, nil
+}
+
+func (s *UserVehicleService) GetVehicleData( ctx context.Context, vehicleType string, make string, model string ) ([]domain.Brand, error) {
+
+	if vehicleType != "" && vehicleType != "car" && vehicleType != "bike" {
+		return nil, errors.New("vehicleType must be car or bike")
+	}
+
+	if vehicleType == "car" {
+		return s.getCarData(ctx, make, model)
+	} else if vehicleType == "bike" {
+		return s.getBikeData(ctx, make, model)
+	}
+
+	return nil, errors.New("vehicleType is required")
+}
+
+func (s *UserVehicleService) getCarData(ctx context.Context, make string, model string) ([]domain.Brand, error) {
+	filter := bson.M{}
+	if make != "" {
+		filter["make"] = make
+	}
+	if model != "" {
+		filter["models.model"] = model
+	}
+	return s.carBrandModelRepo.GetAll(ctx, filter)
+}
+
+func (s *UserVehicleService) getBikeData(ctx context.Context, make string, model string) ([]domain.Brand, error) {
+	filter := bson.M{}
+	if make != "" {
+		filter["make"] = make
+	}
+	if model != "" {
+		filter["models.model"] = model
+	}
+	return s.bikeBrandModelRepo.GetAll(ctx, filter)
 }

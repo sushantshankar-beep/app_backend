@@ -18,7 +18,6 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		ServiceID string  `json:"serviceId"`
 		UserID    string  `json:"userId"`
 		Name      string  `json:"name"`
-		Email     string  `json:"email"`
 		Phone     string  `json:"phone"`
 		Price     float64 `json:"price"`
 	}
@@ -30,7 +29,6 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		req.ServiceID,
 		req.UserID,
 		req.Name,
-		req.Email,
 		req.Phone,
 		req.Price,
 	)

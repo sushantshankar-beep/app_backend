@@ -7,6 +7,7 @@ import (
 	"app_backend/internal/domain"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"fmt"
 )
 
 type PaymentRepository struct {
@@ -52,6 +53,7 @@ func (r *PaymentRepository) CreateTransaction(ctx context.Context, txn *domain.P
 func (r *PaymentRepository) GetByTxnID(ctx context.Context, txnid string) (*domain.PaymentTransaction, error) {
 	var txn domain.PaymentTransaction
 	err := r.txnCol.FindOne(ctx, bson.M{"txnid": txnid}).Decode(&txn)
+	fmt.Println(err)
 	return &txn, err
 }
 

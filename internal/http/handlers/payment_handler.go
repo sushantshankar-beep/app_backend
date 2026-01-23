@@ -41,11 +41,11 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 }
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 
-	serviceID := c.Param("serviceId")
+	txnID := c.Param("txnId")
 
 	resp, err := h.paymentSvc.VerifyPayment(
 		c.Request.Context(),
-		serviceID,
+		txnID,
 	)
 
 	if err != nil {

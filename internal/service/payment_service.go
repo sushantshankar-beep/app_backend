@@ -239,19 +239,19 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 }
 func (s *PaymentService) VerifyPayment(
 	ctx context.Context,
-	serviceID string,
+	txnID string,
 ) (map[string]any, error) {
 
-	txn, err := s.repo.GetLatestByServiceID(ctx, serviceID)
+	txn, err := s.repo.GetByTxnID(ctx, txnID)
 	if err != nil {
 		return nil, errors.New("no payment found")
 	}
-	ttl := s.getRetryTTL(ctx, serviceID)
+	ttl := s.getRetryTTL(ctx, txnID)
 
 	reason := domain.PaymentFailReason(txn.FailReason)
 
 	resp := map[string]any{
-		"serviceId": serviceID,
+		"serviceId": txn.ServiceID,
 		"txnid":     txn.TxnID,
 		"amount":    txn.Amount,
 		"status":    txn.Status,

@@ -39,3 +39,20 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 
 	c.JSON(200, resp)
 }
+func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
+
+	serviceID := c.Param("serviceId")
+
+	resp, err := h.paymentSvc.VerifyPayment(
+		c.Request.Context(),
+		serviceID,
+	)
+
+	if err != nil {
+		c.JSON(404, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, resp)
+}
+

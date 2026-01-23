@@ -4,21 +4,21 @@ import "errors"
 
 /* ================== SERVICE STATUS ================== */
 
-type ServiceStatus string
+// type ServiceStatus string
 
-const (
-	StatusSearching        ServiceStatus = "searching"
-	StatusProviderAssigned ServiceStatus = "provider_assigned"
+// const (
+// 	StatusSearching        ServiceStatus = "searching"
+// 	StatusProviderAssigned ServiceStatus = "provider_assigned"
 
-	StatusNotStarted      ServiceStatus = "not_started"
-	StatusStarted         ServiceStatus = "started"
-	StatusReachedLocation ServiceStatus = "reached_location"
-	StatusOTPVerified     ServiceStatus = "otp_verified"
+// 	StatusNotStarted      ServiceStatus = "not_started"
+// 	StatusStarted         ServiceStatus = "started"
+// 	StatusReachedLocation ServiceStatus = "reached_location"
+// 	StatusOTPVerified     ServiceStatus = "otp_verified"
 
-	StatusInProgress ServiceStatus = "in_progress"
-	StatusCompleted  ServiceStatus = "completed"
-	StatusCancelled  ServiceStatus = "cancelled"
-)
+// 	StatusInProgress ServiceStatus = "in_progress"
+// 	StatusCompleted  ServiceStatus = "completed"
+// 	StatusCancelled  ServiceStatus = "cancelled"
+// )
 
 /* ================== PAYMENT STATUS ================== */
 

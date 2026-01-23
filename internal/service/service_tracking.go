@@ -34,13 +34,19 @@ func NewServiceTrackingService(
 	}
 }
 
-/* ---------------- USER TRACKING SCREEN ---------------- */
+/* ============================================================
+                     TRACKING SCREENS
+============================================================ */
+
 func (s *ServiceTrackingService) UserTrackingScreen(
 	ctx context.Context,
 	serviceID string,
 ) (map[string]any, error) {
 
-	objID, _ := primitive.ObjectIDFromHex(serviceID)
+	objID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, err
+	}
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -54,29 +60,29 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 	return map[string]any{
 		"screen": "SERVICE_TRACKING",
-		"otp":    user.ServiceOTP,
 		"status": svc.Status,
+		"otp":    user.ServiceOTP,
 
-		"provider": map[string]any{
-			"id":    provider.ID,
-			"name":  provider.Name,
-			"phone": provider.Phone,
-		},
+		"provider": provider,
 
 		"locations": map[string]any{
 			"user":     svc.ServiceLocation,
 			"provider": svc.ProviderLocation,
 		},
+
+		"timestamps": svc.Timestamps,
 	}, nil
 }
 
-/* ---------------- PROVIDER TRACKING SCREEN ---------------- */
 func (s *ServiceTrackingService) ProviderTrackingScreen(
 	ctx context.Context,
 	serviceID string,
 ) (map[string]any, error) {
 
-	objID, _ := primitive.ObjectIDFromHex(serviceID)
+	objID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, err
+	}
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -96,10 +102,93 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 		},
 		"service": svc.ServiceType,
 		"status":  svc.Status,
+		"timestamps": svc.Timestamps,
 	}, nil
 }
 
-/* ---------------- VERIFY OTP ---------------- */
+/* ============================================================
+                     STATUS ENGINE
+============================================================ */
+
+func (s *ServiceTrackingService) UpdateStatus(
+	ctx context.Context,
+	serviceID string,
+	newStatus domain.ServiceStatus,
+) error {
+
+	objID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": objID}).
+		Decode(&svc); err != nil {
+		return errors.New("service not found")
+	}
+
+	// Validate flow
+	if !domain.CanTransition(svc.Status, newStatus) {
+		return errors.New("invalid service state transition")
+	}
+
+	now := time.Now()
+
+	update := bson.M{
+		"status":    newStatus,
+		"updatedAt": now,
+	}
+
+	ts := bson.M{}
+
+	switch newStatus {
+	case domain.StatusStarted:
+		ts["jobStartedAt"] = now
+
+	case domain.StatusReachedLocation:
+		ts["reachedAt"] = now
+
+	case domain.StatusOTPVerified:
+		ts["otpVerifiedAt"] = now
+
+	case domain.StatusInProgress:
+		ts["startedAt"] = now
+
+	case domain.StatusCompleted:
+		ts["completedAt"] = now
+	}
+
+	if len(ts) > 0 {
+		update["timestamps"] = ts
+	}
+
+	if _, err := s.acceptedRepo.Col().
+		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
+		return err
+	}
+
+	// SOCKET
+	userRoom := "user:" + svc.ID.Hex()
+	providerRoom := "provider:" + svc.Provider.Hex()
+
+	payload := map[string]any{
+		"serviceId": svc.ID.Hex(),
+		"status":    newStatus,
+		"timestamps": ts,
+	}
+
+	s.socket.EmitWithRetry(userRoom, "service:status_update", payload, 1)
+	s.socket.EmitWithRetry(providerRoom, "service:status_update", payload, 1)
+
+	return nil
+}
+
+
+/* ============================================================
+                     OTP VERIFY
+============================================================ */
+
 func (s *ServiceTrackingService) VerifyOTP(
 	ctx context.Context,
 	serviceID string,
@@ -128,14 +217,10 @@ func (s *ServiceTrackingService) VerifyOTP(
 			"$set": bson.M{
 				"otp.verified":   true,
 				"otp.verifiedAt": now,
-				"status":         "STARTED",
+				"status":"otp_verified",
 			},
 		},
 	)
 
-	// 🔴 SOCKET UPDATE TO BOTH
-	room := svc.ServiceRequest.Hex()
-	s.socket.EmitWithRetry(room, "otp:verified", true, 3)
-
-	return nil
+	return s.UpdateStatus(ctx, serviceID, domain.StatusOTPVerified)
 }

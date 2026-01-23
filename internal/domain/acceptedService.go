@@ -45,7 +45,12 @@ type AcceptedService struct {
 	VehicleNumber string   `bson:"vehicleNumber" json:"vehicleNumber"`
 	Brand       string    	`bson:"brand" json:"brand"`
 	ModelYear   int        	`bson:"modelYear" json:"modelYear"`
+	Timestamps ServiceTimestamps `bson:"timestamps"`
 
+}
+type ServiceTimestamps struct {
+    StartedAt   *time.Time `bson:"startedAt,omitempty"`
+    CompletedAt *time.Time `bson:"completedAt,omitempty"`
 }
 
 type OTPInfo struct {
@@ -59,4 +64,37 @@ type DashboardStats struct {
 	TodaysEarning     float64 `json:"todaysEarning"`
 	ServicesCompleted int     `json:"servicesCompleted"`
 	CancelledServices int     `json:"cancelledServices"`
+
 }
+func CanTransition(from, to ServiceStatus) bool {
+    allowed := map[ServiceStatus][]ServiceStatus{
+        StatusCreated:  {StatusAssigned, StatusCancelled},
+        StatusAssigned: {StatusStarted},
+        StatusStarted:  {StatusCompleted},
+    }
+
+    for _, s := range allowed[from] {
+        if s == to {
+            return true
+        }
+    }
+
+    return false
+}
+
+type ServiceStatus string
+
+const (
+    StatusCreated   ServiceStatus = "created"
+    StatusAssigned  ServiceStatus = "assigned"
+    StatusStarted   ServiceStatus = "started"
+    StatusCompleted ServiceStatus = "completed"
+    StatusCancelled ServiceStatus = "cancelled"
+	StatusSearching        ServiceStatus = "searching"
+	StatusProviderAssigned ServiceStatus = "provider_assigned"
+	StatusNotStarted      ServiceStatus = "not_started"
+	StatusReachedLocation ServiceStatus = "reached_location"
+	StatusOTPVerified     ServiceStatus = "otp_verified"
+
+	StatusInProgress ServiceStatus = "in_progress"
+)

@@ -16,46 +16,123 @@ AFTER PAYMENT SUCCESS
 */
 func (s *PaymentService) afterPaymentSuccess(txnID string) {
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 
+	// ---------------- LOAD TXN ----------------
 	txn, err := s.repo.GetByTxnID(ctx, txnID)
 	if err != nil || txn.InvoiceGenerated {
-		log.Println("❌ afterPaymentSuccess exit:", err)
 		return
 	}
 
-	serviceOID, _ := primitive.ObjectIDFromHex(txn.ServiceID)
+	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
+	if err != nil {
+		return
+	}
 
-	err = s.acceptedServiceRepo.UpdatePaymentStatus(
+	// ---------------- UPDATE FIRST ----------------
+	_ = s.acceptedServiceRepo.UpdatePaymentStatus(
 		ctx,
 		serviceOID,
 		domain.PaymentPaid,
 	)
 
+	// ---------------- LOAD SERVICE ----------------
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
-		log.Println("❌ UpdatePaymentStatus:", err)
+		return
 	}
+
+	// ---------------- PARALLEL FETCH USER + DIST ----------------
+	var (
+		user     *domain.User
+		distance float64
+	)
+
+	errCh := make(chan error, 2)
+
+	go func() {
+		u, err := s.userRepo.GetByID(ctx, svc.User)
+		if err == nil {
+			user = u
+		}
+		errCh <- err
+	}()
+
+	go func() {
+		if svc.Provider != primitive.NilObjectID {
+			key := "service:dist:" + svc.ID.Hex() + ":" + svc.Provider.Hex()
+			distance, _ = s.redis.Get(ctx, key).Float64()
+		}
+		errCh <- nil
+	}()
+
+	<-errCh
+	<-errCh
+
+	eta := estimateETA(distance)
+
+	// ---------------- PROVIDER PAYLOAD ----------------
+	providerPayload := map[string]any{
+		"serviceId": svc.ID.Hex(),
+		"serviceNo": svc.ServiceNumber,
+
+		"user": map[string]any{
+			"id":   user.ID,
+			"name": user.Name,
+		},
+
+		"vehicle": map[string]any{
+			"type":   svc.VehicleType,
+			"number": svc.VehicleNumber,
+			"brand":  svc.Brand,
+			"fuel":   svc.FuelType,
+			"year":   svc.ModelYear,
+		},
+
+		"issues": svc.Issues,
+
+		"payment": map[string]any{
+			"status": "paid",
+			"amount": svc.FinalPrice,
+		},
+
+		"tracking": map[string]any{
+			"distanceKm": distance,
+			"etaMin":     eta,
+		},
+	}
+
+	// ---------------- SOCKET EMITS ----------------
+
+	// 👉 Provider full payload
+	if svc.Provider != primitive.NilObjectID  {
+		s.socket.Emit(
+			"provider:"+svc.Provider.Hex(),
+			"payment:success",
+			providerPayload,
+		)
+	}
+
+	// 👉 User lightweight
+	s.socket.Emit(
+		"user:"+svc.ID.Hex(),
+		"payment:success",
+		map[string]any{
+			"serviceId": svc.ID.Hex(),
+		},
+	)
+
+	// ---------------- ASYNC SIDE EFFECTS ----------------
+	go s.invoiceSvc.GenerateInvoice(context.Background(), txn.UserID, txn.ServiceID, nil)
 
 	s.events.Publish("payment.success", events.PaymentEvent{
 		TxnID:     txnID,
-		ServiceID: txn.ServiceID,
+		ServiceID: svc.ID.Hex(),
 		Status:    "paid",
 	})
-
-	go s.invoiceSvc.GenerateInvoice(ctx, txn.UserID, txn.ServiceID, nil)
-
-	/* 🔥 SOCKET SUCCESS */
-
-	s.socket.EmitWithRetry(
-		"user:"+txn.ServiceID,
-		"payment:success",
-		map[string]any{
-			"serviceId": txn.ServiceID,
-			"amount":    txn.Amount,
-		},
-		1,
-	)
 }
+
 
 /*
 AFTER PAYMENT FAILURE
@@ -86,15 +163,10 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		reason = domain.FailUnknown
 	}
 
-	if err := domain.CanEnterPaymentGrace(svc); err != nil {
-		log.Println("⚠️ cannot enter grace:", err)
-		return
-	}
-
 	if err := s.acceptedServiceRepo.UpdatePaymentStatus(
 		ctx,
 		serviceOID,
-		domain.PaymentFailedGrace,
+		domain.PaymentFailed,
 	); err != nil {
 		log.Println("❌ update grace:", err)
 	}
@@ -114,6 +186,15 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		},
 		1,
 	)
+	if svc.Provider != primitive.NilObjectID  {
+		s.socket.Emit(
+			"provider:"+svc.Provider.Hex(),
+			"payment:failed",
+			map[string]any{
+				"serviceId": svc.ID.Hex(),
+			},
+		)
+	}
 }
 
 

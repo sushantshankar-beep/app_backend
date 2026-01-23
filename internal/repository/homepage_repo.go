@@ -25,7 +25,7 @@ func (r *HomepageRepo) FindByLocation(
 ) (*domain.Homepage, error) {
 
 	filter := bson.M{
-		"isActive": true,
+		"isActive": "active",
 		"$or": []bson.M{
 			{"scope.city": city},
 			{"scope.state": state},

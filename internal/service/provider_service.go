@@ -358,3 +358,29 @@ func (s *ProviderService) CompleteService(ctx context.Context,serviceID string) 
 		},
 	})
 }
+
+
+func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.ProviderID,	pdfURL string ) (*domain.Provider, error) {
+
+	provider, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if provider.IsAgreementSubmitted {
+		return nil, domain.ErrAlreadySubmitted
+	}
+
+	now := time.Now()
+
+	provider.IsAgreementSubmitted = true
+	provider.AgreementPDF = pdfURL
+	provider.AgreementSubmittedAt = &now
+	provider.UpdatedAt = now
+
+	if err := s.repo.Update(ctx, provider); err != nil {
+		return nil, err
+	}
+
+	return provider, nil
+}

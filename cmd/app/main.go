@@ -149,7 +149,7 @@ func main() {
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 
 	// Bidding service
-	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo, counterRepo)
+	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo)
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter)
 	imageUploadS3 := service.NewImageUploadS3Service()
 	//HANDLERS

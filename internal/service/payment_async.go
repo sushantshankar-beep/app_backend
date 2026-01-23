@@ -105,7 +105,7 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 
 	s.socket.EmitWithRetry(
 		room,
-		"payment:retry_window",
+		"payment:failed",
 		map[string]any{
 			"serviceId": svc.ID.Hex(),
 			"ttl":       ttl,

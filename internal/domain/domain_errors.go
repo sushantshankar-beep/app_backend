@@ -6,4 +6,5 @@ var (
 	ErrNotFound   = errors.New("not found")
 	ErrOTPInvalid = errors.New("invalid otp")
 	ErrOTPExpired = errors.New("otp expired")
+	ErrAlreadySubmitted = errors.New("agreement already submitted")
 )

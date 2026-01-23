@@ -30,7 +30,7 @@ func (r *AMCRepo) FindActiveByUser(ctx context.Context,userID primitive.ObjectID
 	var amc domain.AMC
 	err := r.col.FindOne(ctx, bson.M{
 		"userId":   userID,
-		"isActive": true,
+		"isActive": "active",
 	}).Decode(&amc)
 
 	if err == mongo.ErrNoDocuments {

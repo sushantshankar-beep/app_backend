@@ -384,3 +384,7 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 
 	return provider, nil
 }
+
+func (s *ProviderService) Logout(ctx context.Context, providerID domain.ProviderID, token string) error {
+	return nil
+}

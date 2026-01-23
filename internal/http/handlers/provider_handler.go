@@ -253,3 +253,16 @@ func (h *ProviderHandler) SubmitProviderAgreement(c *gin.Context) {
 	})
 }
 
+func (h *ProviderHandler) Logout(c *gin.Context) {
+	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
+	providerID := domain.ProviderID(providerObjID.Hex())
+	
+	token := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+	
+	if err := h.svc.Logout(c.Request.Context(), providerID, token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+}

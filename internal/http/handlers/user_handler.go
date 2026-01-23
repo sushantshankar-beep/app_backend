@@ -115,3 +115,17 @@ func (h *UserHandler) CreateOrUpdateUserProfile(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"status": action, "user": user})
 }
+
+func (h *UserHandler) Logout(c *gin.Context) {
+	userObjID := c.MustGet(middleware.ContextKeyUserObjectID).(primitive.ObjectID)
+	userID := domain.UserID(userObjID.Hex())
+
+	token := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+	
+	if err := h.svc.Logout(c.Request.Context(), userID, token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"strings"
 
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
@@ -20,7 +21,8 @@ import (
 	"app_backend/internal/events"
 	// "go.mongodb.org/mongo-driver/bson/primitive"
 	"math"
-)
+// 	"go.mongodb.org/mongo-driver/bson/primitive"
+ )
 
 type PaymentService struct {
 	repo        *repository.PaymentRepository
@@ -151,7 +153,29 @@ func (s *PaymentService) InitiatePayment(
 		"furl":    s.baseURL + "/payment/webhook",
 	}, nil
 }
+func classifyPayUFailure(data map[string]string) domain.PaymentFailReason {
 
+	if data["status"] == "userCancelled" {
+		return domain.FailUserCancelled
+	}
+
+	msg := strings.ToLower(
+		data["error_Message"] + " " +
+			data["field9"] + " " +
+			data["unmappedstatus"],
+	)
+
+	switch {
+	case strings.Contains(msg, "bank"):
+		return domain.FailBankDecline
+	case strings.Contains(msg, "timeout"):
+		return domain.FailTimeout
+	case strings.Contains(msg, "gateway"):
+		return domain.FailGateway
+	default:
+		return domain.FailUnknown
+	}
+}
 
 
 func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]string) error {
@@ -169,20 +193,20 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	verifyStr := fmt.Sprintf(
 		"%s|%s|||||||||||%s|%s|%s|%s|%s|%s",
 		s.salt,
-		data["status"],      
+		data["status"],
 		data["email"],
 		data["firstname"],
 		data["productinfo"],
-		data["amount"],     
+		data["amount"],
 		data["txnid"],
-		s.key,
+		data["key"], // USE key from webhook, not config
 	)
 
 	calculated := sha512Hash(verifyStr)
 
-	fmt.Println("VERIFY STRING:", verifyStr)
-	fmt.Println("CALCULATED HASH:", calculated)
-	fmt.Println("PAYU HASH:", data["hash"])
+	fmt.Println("🔐 VERIFY STRING:", verifyStr)
+	fmt.Println("🔐 CALCULATED HASH:", calculated)
+	fmt.Println("🔐 PAYU HASH:", data["hash"])
 
 	if calculated != data["hash"] {
 		return errors.New("hash verification failed")
@@ -193,6 +217,11 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		status = "paid"
 		go s.afterPaymentSuccess(txn.TxnID)
 	} else {
+		reason := classifyPayUFailure(data)
+		_ = s.repo.UpdateTxn(ctx, txn.TxnID, bson.M{
+		"status":     status,
+		"failReason": reason,
+	})
 		go s.afterPaymentFailed(txn.TxnID)
 	}
 	s.redis.Del(ctx, "payment:reserve:"+txn.ServiceID)
@@ -205,6 +234,59 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		"method":   data["mode"],
 	})
 }
+func (s *PaymentService) VerifyPayment(
+	ctx context.Context,
+	serviceID string,
+) (map[string]any, error) {
+
+	txn, err := s.repo.GetLatestByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, errors.New("no payment found")
+	}
+	ttl := s.getRetryTTL(ctx, serviceID)
+
+	reason := domain.PaymentFailReason(txn.FailReason)
+
+	resp := map[string]any{
+		"serviceId": serviceID,
+		"txnid":     txn.TxnID,
+		"amount":    txn.Amount,
+		"status":    txn.Status,
+		"reason":    txn.FailReason,
+		"retryTtl":  ttl,
+		"userMsg":   userMessageForReason(reason),
+	}
+
+	return resp, nil
+}
+func userMessageForReason(r domain.PaymentFailReason) string {
+
+	switch r {
+	case domain.FailBankDecline:
+		return "Bank declined the transaction. Try again or use another method."
+	case domain.FailUserCancelled:
+		return "You cancelled the payment."
+	case domain.FailTimeout:
+		return "Payment timed out. Retry quickly."
+	case domain.FailGateway:
+		return "Payment gateway error. Please retry."
+	default:
+		return "Payment failed. Try again."
+	}
+}
+func (s *PaymentService) getRetryTTL(ctx context.Context, serviceID string) int {
+
+	key := "payment:reserve:" + serviceID
+
+	ttl, err := s.redis.TTL(ctx, key).Result()
+	if err != nil || ttl < 0 {
+		return 0
+	}
+
+	return int(ttl.Seconds())
+}
+
+
 func (s *PaymentService) Refund(ctx context.Context, mihpayid string, amount float64) error {
 	if mihpayid == "" || amount <= 0 {
 		return errors.New("invalid refund request")

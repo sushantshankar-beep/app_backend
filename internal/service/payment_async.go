@@ -8,41 +8,52 @@ import (
 	"app_backend/internal/events"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"log"
 )
 
 /*
 AFTER PAYMENT SUCCESS
 */
 func (s *PaymentService) afterPaymentSuccess(txnID string) {
+
 	ctx := context.Background()
 
 	txn, err := s.repo.GetByTxnID(ctx, txnID)
 	if err != nil || txn.InvoiceGenerated {
+		log.Println("❌ afterPaymentSuccess exit:", err)
 		return
 	}
 
-	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
-	if err != nil {
-		return
-	}
+	serviceOID, _ := primitive.ObjectIDFromHex(txn.ServiceID)
 
-	_ = s.acceptedServiceRepo.UpdatePaymentStatus(
+	err = s.acceptedServiceRepo.UpdatePaymentStatus(
 		ctx,
 		serviceOID,
 		domain.PaymentPaid,
 	)
 
+	if err != nil {
+		log.Println("❌ UpdatePaymentStatus:", err)
+	}
+
 	s.events.Publish("payment.success", events.PaymentEvent{
 		TxnID:     txnID,
 		ServiceID: txn.ServiceID,
-		Status:    string(domain.PaymentPaid),
+		Status:    "paid",
 	})
 
-	go s.invoiceSvc.GenerateInvoice(
-		context.Background(),
-		txn.UserID,
-		txn.ServiceID,
-		nil,
+	go s.invoiceSvc.GenerateInvoice(ctx, txn.UserID, txn.ServiceID, nil)
+
+	/* 🔥 SOCKET SUCCESS */
+
+	s.socket.EmitWithRetry(
+		"user:"+txn.ServiceID,
+		"payment:success",
+		map[string]any{
+			"serviceId": txn.ServiceID,
+			"amount":    txn.Amount,
+		},
+		1,
 	)
 }
 
@@ -50,6 +61,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 AFTER PAYMENT FAILURE
 */
 func (s *PaymentService) afterPaymentFailed(txnID string) {
+
 	ctx := context.Background()
 
 	txn, err := s.repo.GetByTxnID(ctx, txnID)
@@ -59,43 +71,51 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 
 	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
 	if err != nil {
+		log.Println("❌ invalid service id:", txn.ServiceID)
 		return
 	}
 
 	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
+		log.Println("❌ accepted service:", err)
 		return
+	}
+
+	reason := domain.PaymentFailReason(txn.FailReason)
+	if reason == "" {
+		reason = domain.FailUnknown
 	}
 
 	if err := domain.CanEnterPaymentGrace(svc); err != nil {
+		log.Println("⚠️ cannot enter grace:", err)
 		return
 	}
 
-	_ = s.acceptedServiceRepo.UpdatePaymentStatus(
+	if err := s.acceptedServiceRepo.UpdatePaymentStatus(
 		ctx,
 		serviceOID,
 		domain.PaymentFailedGrace,
-	)
+	); err != nil {
+		log.Println("❌ update grace:", err)
+	}
+
+	ttl := 300
+	msg := userMessageForReason(reason)
+	room := "user:" + txn.ServiceID
 
 	s.socket.EmitWithRetry(
-		"user:"+svc.User.Hex(),
+		room,
 		"payment:retry_window",
 		map[string]any{
 			"serviceId": svc.ID.Hex(),
-			"ttl":       300,
-			"message":   "Payment failed. Retry within 5 minutes.",
+			"ttl":       ttl,
+			"message":   msg,
+			"reason": reason,
 		},
-		2,
+		1,
 	)
-
-	s.events.Publish("payment.failed.grace", events.PaymentEvent{
-		TxnID:     txnID,
-		ServiceID: txn.ServiceID,
-		Status:    "grace",
-	})
-
-	go s.releaseProviderAfterGrace(svc.ID.Hex(), svc.Provider.Hex())
 }
+
 
 /*
 RELEASE PROVIDER AFTER GRACE

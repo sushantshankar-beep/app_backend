@@ -20,6 +20,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		payment.POST("/initiate",userAuth, paymentHandler.InitiatePayment)
 		payment.POST("/webhook", paymentHandler.PayUWebhook)
 		payment.POST("/refund", userAuth, paymentHandler.Refund)
+		payment.GET("/verify/:serviceId", userAuth, paymentHandler.VerifyPayment)
 	}
 	// === User Routes ===
 	user := r.Group("/user")

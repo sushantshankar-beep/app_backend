@@ -16,6 +16,7 @@ type PaymentTransaction struct {
 	CreatedAt     time.Time `bson:"createdAt"`
 	UpdatedAt     time.Time `bson:"updatedAt"`
 	InvoiceGenerated bool `bson:"invoiceGenerated" json:"invoiceGenerated"`
+	FailReason string `bson:"failReason,omitempty" json:"failReason,omitempty"`
 }
 
 type PaymentWebhook struct {
@@ -32,4 +33,14 @@ const (
 	PaymentFailed        PaymentStatus = "failed"
 	PaymentFailedGrace   PaymentStatus = "failed_pending_release"
 )
+type PaymentFailReason string
+
+const (
+	FailUserCancelled PaymentFailReason = "user_cancelled"
+	FailBankDecline   PaymentFailReason = "bank_declined"
+	FailTimeout       PaymentFailReason = "timeout"
+	FailGateway       PaymentFailReason = "gateway_error"
+	FailUnknown       PaymentFailReason = "unknown"
+)
+
 

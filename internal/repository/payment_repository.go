@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 	"time"
-
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"app_backend/internal/domain"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -20,6 +20,27 @@ func NewPaymentRepository(db *mongo.Database) *PaymentRepository {
 		webhookCol: db.Collection("payment_webhooks"),
 	}
 }
+func (r *PaymentRepository) GetLatestByServiceID(
+	ctx context.Context,
+	serviceID string,
+) (*domain.PaymentTransaction, error) {
+
+	var txn domain.PaymentTransaction
+
+	err := r.txnCol.FindOne(
+		ctx,
+		bson.M{"serviceId": serviceID},
+		options.FindOne().SetSort(bson.M{"createdAt": -1}),
+	).Decode(&txn)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
+}
+
+
 
 func (r *PaymentRepository) CreateTransaction(ctx context.Context, txn *domain.PaymentTransaction) error {
 	txn.CreatedAt = time.Now()

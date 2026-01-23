@@ -167,3 +167,8 @@ func setString(update bson.M, key string, v any) {
 func (s *UserService) GetActiveAMCByUser(ctx context.Context, userID primitive.ObjectID) (*domain.AMC, error) {
 	return s.amcRepo.FindActiveByUser(ctx, userID)
 }
+
+
+func (s *UserService) Logout(ctx context.Context, userID domain.UserID, token string) error {
+	return nil
+}

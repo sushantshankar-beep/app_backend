@@ -90,6 +90,15 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
+		provider.POST("/agreement",providerAuth, s3Uploader.Upload([]s3.FieldConfig{
+				{
+					FormFieldName: "agreementPdf",
+					ContextKey:    "agreementPdf",
+				},
+			}),
+			providerHandler.SubmitProviderAgreement,
+		)
+		
 		provider.PUT("/dashboard", providerAuth, providerHandler.Dashboard)
 		provider.POST("/online", providerAuth, providerStatus.GoOnline)
 		provider.POST("/offline", providerAuth, providerStatus.GoOffline)

@@ -109,6 +109,7 @@ func main() {
 		invoiceRepo,
 		emitter,
 		ports.AcceptedServiceRepository(acceptedServiceRepo),
+		userRepo,
 		ports.ProviderRepo(providerRepo),
 		ports.NotificationService(notificationSvc),
 		bus,

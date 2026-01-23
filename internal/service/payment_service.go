@@ -31,6 +31,7 @@ type PaymentService struct {
 	redis       *redis.Client
 
 	acceptedServiceRepo ports.AcceptedServiceRepository
+	userRepo            *repository.UserRepo
 	providerRepo        ports.ProviderRepo
 	notify              ports.NotificationService
 	events              *events.Bus
@@ -46,6 +47,7 @@ func NewPaymentService(
 	invoiceRepo *repository.InvoiceRepo,
 	socket *socket.Emitter,
 	acceptedRepo ports.AcceptedServiceRepository,
+	userRepo   *repository.UserRepo,
 	providerRepo ports.ProviderRepo,
 	notify ports.NotificationService,
 	eventsBus *events.Bus,
@@ -58,6 +60,7 @@ func NewPaymentService(
 		invoiceSvc:          NewInvoiceService(invoiceRepo),
 		socket:              socket,
 		acceptedServiceRepo: acceptedRepo,
+		userRepo:			 userRepo,
 		providerRepo:        providerRepo,
 		notify:              notify,
 		events:              eventsBus,

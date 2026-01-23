@@ -93,7 +93,7 @@ func main() {
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
 	notificationSvc := service.NewFirebaseNotificationService()
-	kycService := service.NewKYCService(kycRepo)
+	kycService := service.NewKYCService(kycRepo,providerRepo)
 	userVehicleService := service.NewUserVehicleService(
 		carBrandModelRepo,
 		bikeBrandModelRepo,

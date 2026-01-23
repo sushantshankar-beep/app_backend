@@ -7,50 +7,59 @@ import (
 	"app_backend/internal/domain"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type KYCRepo struct {
-	col *mongo.Collection
+	collection *mongo.Collection
 }
 
 func NewKYCRepo(db *mongo.Database) *KYCRepo {
 	return &KYCRepo{
-		col: db.Collection("provider_kyc"),
+		collection: db.Collection("provider_kyc"),
 	}
 }
 
 func (r *KYCRepo) Upsert(ctx context.Context, kyc *domain.ProviderKYC) error {
-	filter := bson.M{"providerId": kyc.ProviderID}
-
-	update := bson.M{
-		"$set": bson.M{
-			"documentType":        kyc.DocumentType,
-			"documentUrl":         kyc.DocumentURL,
-			"electricityBillUrl":  kyc.ElectricityBillURL,
-			"cancelledChequeUrl":  kyc.CancelledChequeURL,
-			"accountHolderName":   kyc.AccountHolderName,
-			"accountNumber":       kyc.AccountNumber,
-			"branchName":          kyc.BranchName,
-			"ifsc":                kyc.IFSC,
-			"upiId":               kyc.UPIID,
-			"gstNumber":           kyc.GSTNumber,
-			"status":              kyc.Status,
-			"updatedAt":           time.Now(),
-		},
-		"$setOnInsert": bson.M{
-			"createdAt": time.Now(),
-		},
+	existing, _ := r.FindByProvider(ctx, kyc.ProviderID.Hex())
+	
+	now := time.Now()
+	kyc.UpdatedAt = now
+	
+	if existing != nil {
+		kyc.ID = existing.ID
+		kyc.CreatedAt = existing.CreatedAt
+		
+		filter := bson.M{"_id": existing.ID}
+		update := bson.M{"$set": kyc}
+		
+		_, err := r.collection.UpdateOne(ctx, filter, update)
+		return err
 	}
-
-	opts := options.Update().SetUpsert(true)
-	_, err := r.col.UpdateOne(ctx, filter, update, opts)
-	return err
+	
+	kyc.CreatedAt = now
+	result, err := r.collection.InsertOne(ctx, kyc)
+	if err != nil {
+		return err
+	}
+	
+	kyc.ID = result.InsertedID.(primitive.ObjectID)
+	return nil
 }
 
 func (r *KYCRepo) FindByProvider(ctx context.Context, providerID string) (*domain.ProviderKYC, error) {
+	objID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
+	
 	var kyc domain.ProviderKYC
-	err := r.col.FindOne(ctx, bson.M{"providerId": providerID}).Decode(&kyc)
-	return &kyc, err
+	err = r.collection.FindOne(ctx, bson.M{"providerId": objID}).Decode(&kyc)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &kyc, nil
 }
+

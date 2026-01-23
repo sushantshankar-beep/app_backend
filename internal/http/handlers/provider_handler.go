@@ -102,7 +102,7 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 		
 		fields := []string{
 			"name", "email", "companyName", "address", "shopAddress",
-			"alternateContact", "city", "vehicleNumber", "description", "gstNumber",
+			"alternateContact", "city", "vehicleNumber", "description",
 		}
 		for _, field := range fields {
 			if val := c.PostForm(field); val != "" {

@@ -61,21 +61,6 @@ func toStringSlice(src []any) []string {
 	return out
 }
 
-func parseProofs(src []any) []domain.Proof {
-	out := make([]domain.Proof, 0, len(src))
-	for _, v := range src {
-		m, ok := v.(map[string]any)
-		if !ok {
-			continue
-		}
-		out = append(out, domain.Proof{
-			Type:     m["type"].(string),
-			File:     m["file"].(string),
-			Verified: "pending",
-		})
-	}
-	return out
-}
 
 
 /* ---------------- OTP ---------------- */
@@ -199,26 +184,33 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	assignString(&provider.Description, req["description"])
 
 	// ================= ARRAYS =================
-	if v, ok := req["vehicleType"].([]any); ok {
-		provider.VehicleType = toStringSlice(v)
-	}
 
-	if v, ok := req["providerServices"].([]any); ok {
-		provider.ProviderServices = toStringSlice(v)
-	}
+   if v, ok := req["vehicleType"]; ok {
+	   switch t := v.(type) {
+	    case []any:
+		   provider.VehicleType = toStringSlice(t)
+	    case []string:
+		  provider.VehicleType = t
+    	}
+    }
 
-	if v, ok := req["providerBrands"].([]any); ok {
-		provider.ProviderBrands = toStringSlice(v)
-	}
+    if v, ok := req["providerServices"]; ok {
+	   switch t := v.(type) {
+	   case []any:
+		provider.ProviderServices = toStringSlice(t)
+	    case []string:
+		 provider.ProviderServices = t
+	    }
+    }
 
-	// ================= PROOFS =================
-	if v, ok := req["identityProof"].([]any); ok {
-		provider.IdentityProof = parseProofs(v)
-	}
-
-	if v, ok := req["addressProof"].([]any); ok {
-		provider.AddressProof = parseProofs(v)
-	}
+    if v, ok := req["providerBrands"]; ok {
+	  switch t := v.(type) {
+	  case []any:
+	 	provider.ProviderBrands = toStringSlice(t)
+	  case []string:
+	 	provider.ProviderBrands = t
+	  }
+    }
 
 	// ================= FINAL STATE =================
 	provider.UpdatedAt = time.Now()

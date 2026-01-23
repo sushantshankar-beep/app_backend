@@ -18,7 +18,7 @@ type User struct {
 	Email               string               `bson:"email" json:"email"`
 	ImageUrl            string               `bson:"image_url" json:"image_url"`
 	ReferralCode        string               `bson:"referralCode" json:"referralCode"`
-	IsActive            bool                 `bson:"isActive" json:"isActive"`
+	IsActive            string               `bson:"isActive" json:"isActive"`
 	FcmToken            string               `bson:"fcmToken" json:"fcmToken"`
 	AppStateStatus      string               `bson:"appStateStatus" json:"appStateStatus"`
 	IsProfileComplete   bool                 `bson:"isProfileComplete" json:"isProfileComplete"`

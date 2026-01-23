@@ -38,6 +38,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/location", userAuth, locationHandler.GetUserLocation)
 		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
+		user.POST("/logout", userAuth, userHandler.Logout)
 	}
 	service := r.Group("/service")
 	{
@@ -107,6 +108,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
+		provider.POST("/logout", providerAuth, providerHandler.Logout)
 	}
 	meta := r.Group("/meta")
 	{

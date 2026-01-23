@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"math"
+	"errors"
 	"net/http"
 	"strconv"
     "strings"
@@ -209,3 +210,46 @@ func (h *ProviderHandler) GetMyService(c *gin.Context) {
 		"data":    svc,
 	})
 }
+
+func (h *ProviderHandler) SubmitProviderAgreement(c *gin.Context) {
+
+	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
+	providerID := domain.ProviderID(providerObjID.Hex())
+
+	val := c.PostForm("isAgreementSubmitted")
+	if val != "true" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "isAgreementSubmitted must be true",
+		})
+		return
+	}
+
+	urls, exists := s3.GetUploadedURLs(c, "agreementPdf")
+	if !exists || len(urls) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "agreementPdf is required",
+		})
+		return
+	}
+
+	updated, err := h.svc.SubmitAgreement( c.Request.Context(), providerID, urls[0])
+
+	if err != nil {
+		if errors.Is(err, domain.ErrAlreadySubmitted) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "agreement already submitted",
+			})
+			return
+		}		
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Agreement submitted successfully",
+		"data":    updated,
+	})
+}
+

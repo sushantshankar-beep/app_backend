@@ -3,6 +3,7 @@ package handlers
 import (
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
+	"fmt"
 )
 
 type PaymentHandler struct {
@@ -42,6 +43,7 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 
 	txnID := c.Param("txnId")
+	fmt.Println("this is txn id ",txnID)
 
 	resp, err := h.paymentSvc.VerifyPayment(
 		c.Request.Context(),

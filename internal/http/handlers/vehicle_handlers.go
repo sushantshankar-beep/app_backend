@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"net/http"
-
+     "strings"
 	"app_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +17,7 @@ func NewMetaHandler(s *service.MetaService) *MetaHandler {
 }
 
 func (h *MetaHandler) GetBrands(c *gin.Context) {
-	vehicle := c.Query("vehicle")
+	vehicle := strings.ToLower(c.Query("vehicle"))
 	if vehicle == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "vehicle required"})
 		return

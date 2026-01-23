@@ -98,27 +98,16 @@ func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 			"email":            p.Email,
 			"alternateContact": p.AlternateContact,
 			"profileUrl":       p.ProfileURL,
-
 			"address":          p.Address,
 			"permanentAddress": p.PermanentAddress,
 			"city":             p.City,
-
-			"GSTNumber":    p.GSTNumber,
 			"vehicleNumber": p.VehicleNumber,
 			"description":   p.Description,
-
 			"vehicleType":      p.VehicleType,
 			"providerBrands":   p.ProviderBrands,
 			"providerServices": p.ProviderServices,
-
-			"identityProof": p.IdentityProof,
-			"addressProof":  p.AddressProof,
-			"cancelCheque":  p.CancelCheque,
-			"bankDetails":   p.BankDetails,
-
 			"formSubmitted": p.FormSubmitted,
 			"isActive":      p.IsActive,
-
 			"updatedAt": time.Now(),
 		},
 	}
@@ -166,4 +155,23 @@ func (r *ProviderRepo) FindOne(
 	result any,
 ) error {
 	return r.col.FindOne(ctx, filter).Decode(result)
+}
+
+func (r *ProviderRepo) UpdateKYCID(ctx context.Context, providerID string, kycID primitive.ObjectID) error {
+
+	objID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return err
+	}
+	
+	filter := bson.M{"_id": objID}
+	update := bson.M{
+		"$set": bson.M{
+			"kycId":     kycID,
+			"updatedAt": time.Now(),
+		},
+	}
+	
+	_, err = r.col.UpdateOne(ctx, filter, update)
+	return err
 }

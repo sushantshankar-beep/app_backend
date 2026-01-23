@@ -67,7 +67,11 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	// ===Provider kyc =====
 	kyc := r.Group("/provider/kyc", providerAuth)
 	{
-		kyc.POST("/submit", kycHandler.SubmitKYC)
+		kyc.POST("", s3Uploader.Upload([]s3.FieldConfig{
+			{FormFieldName: "aadhaarFront", ContextKey: "aadhaarFront"},
+			{FormFieldName: "aadhaarBack", ContextKey: "aadhaarBack"},
+			{FormFieldName: "pan", ContextKey: "pan"},
+		}), kycHandler.CreateOrUpdateKYC)
 		kyc.GET("", kycHandler.GetKYC)
 	}
 

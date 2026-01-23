@@ -108,7 +108,7 @@ func (s *PaymentService) InitiatePayment(
 	PAYU_SALT := s.salt
 
 	firstname := name
-	finalAmount := math.Round(price*1.18*100) / 100
+	finalAmount := math.Round(price*100) / 100
 	amount := fmt.Sprintf("%.2f", finalAmount)
 
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())

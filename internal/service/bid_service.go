@@ -19,6 +19,7 @@ type BiddingService struct {
 	acceptedRepo *repository.AcceptedServiceRepo
 	userRepo     *repository.UserRepo
 	bidRepo      *repository.BidRepo
+	providerRepo *repository.ProviderRepo
 	counterRepo  *repository.CounterRepo
 }
 
@@ -28,6 +29,7 @@ func NewBiddingService(
 	acceptedRepo *repository.AcceptedServiceRepo,
 	userRepo     *repository.UserRepo,
 	bidRepo *repository.BidRepo,
+	providerRepo *repository.ProviderRepo,
 	counterRepo *repository.CounterRepo,
 ) *BiddingService {
 	return &BiddingService{
@@ -36,6 +38,7 @@ func NewBiddingService(
 		acceptedRepo: acceptedRepo,
 		userRepo: userRepo,
 		bidRepo: bidRepo,
+		providerRepo: providerRepo,
 		counterRepo: counterRepo,
 	}
 }
@@ -277,6 +280,13 @@ func (s *BiddingService) PlaceBid(
 		Price:      price,
 		CreatedAt:  time.Now(),
 	}
+	provider, err := s.providerRepo.FindByID(
+		ctx,
+		domain.ProviderID(providerID),
+	)
+	if err != nil {
+		return "", err
+	}
 
 	bidOID, err := s.bidRepo.Insert(ctx, bid)
 	if err != nil {
@@ -300,7 +310,10 @@ func (s *BiddingService) PlaceBid(
 			"provider": map[string]any{
 				"id":         providerID,
 				"distanceKm": distance,
+				"name":       provider.Name,
 				"etaMin":     eta,
+				"profileUrl": provider.ProfileURL,
+				"rating":     provider.Rating,
 			},
 		},
 	)
@@ -387,15 +400,14 @@ func (s *BiddingService) RejectBid(
 
 	key := "service:rejected:" + serviceID
 
-	// 🔒 add provider to rejected set
+	// add to rejected set
 	if err := s.rdb.SAdd(ctx, key, providerID).Err(); err != nil {
 		return err
 	}
 
-	// ⏱ auto cleanup
 	s.rdb.Expire(ctx, key, 30*time.Minute)
 
-	// 🔔 notify provider (optional)
+	// 🔔 PROVIDER
 	s.socket.Emit(
 		"provider:"+providerID,
 		"bid:rejected",
@@ -404,8 +416,19 @@ func (s *BiddingService) RejectBid(
 		},
 	)
 
+	// 🔔 USER
+	s.socket.Emit(
+		"user:"+serviceID,
+		"bid:rejected",
+		map[string]any{
+			"serviceId":  serviceID,
+			"providerId": providerID,
+		},
+	)
+
 	return nil
 }
+
 
 
 

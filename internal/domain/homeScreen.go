@@ -17,7 +17,7 @@ type Homepage struct {
 	BottomNav []BottomNavItem `bson:"bottomNav" json:"bottomNav"`
 
 	Priority int  `bson:"priority" json:"priority"`
-	IsActive bool `bson:"isActive" json:"isActive"`
+	IsActive string `bson:"isActive" json:"isActive"`
 
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`

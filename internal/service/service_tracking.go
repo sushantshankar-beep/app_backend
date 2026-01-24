@@ -11,6 +11,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"log"
 )
 
 type ServiceTrackingService struct {
@@ -127,6 +128,12 @@ func (s *ServiceTrackingService) UpdateStatus(
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
 	}
+	log.Printf(
+		"STATE CHANGE REQUEST service=%s from=%s to=%s\n",
+		serviceID,
+		svc.Status,
+		newStatus,
+	)
 
 	// Validate flow
 	if !domain.CanTransition(svc.Status, newStatus) {

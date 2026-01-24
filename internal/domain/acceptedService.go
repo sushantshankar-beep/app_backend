@@ -67,20 +67,44 @@ type DashboardStats struct {
 
 }
 func CanTransition(from, to ServiceStatus) bool {
-    allowed := map[ServiceStatus][]ServiceStatus{
-        StatusCreated:  {StatusAssigned, StatusCancelled},
-        StatusAssigned: {StatusStarted},
-        StatusStarted:  {StatusCompleted},
-    }
+	allowed := map[ServiceStatus][]ServiceStatus{
 
-    for _, s := range allowed[from] {
-        if s == to {
-            return true
-        }
-    }
+		// Pre-runtime → Start Job
+		StatusCreated:          {StatusSearching, StatusConfirmed, StatusCancelled},
+		StatusSearching:        {StatusProviderAssigned, StatusConfirmed, StatusStarted},
+		StatusProviderAssigned:{StatusConfirmed, StatusNotStarted, StatusStarted},
+		StatusAssigned:        {StatusConfirmed, StatusStarted, StatusCancelled},
+		StatusConfirmed:       {StatusStarted, StatusCancelled},
+		StatusNotStarted:      {StatusStarted, StatusCancelled},
 
-    return false
+		// Runtime journey
+		StatusStarted:         {StatusReachedLocation},
+		StatusReachedLocation: {StatusOTPVerified},
+
+		// OTP → Service
+		StatusOTPVerified: {StatusInProgress},
+
+		StatusInProgress: {StatusCompleted},
+
+		// End states
+		StatusCompleted: {},
+		StatusCancelled: {},
+	}
+
+	if from == to {
+		return true
+	}
+
+	for _, s := range allowed[from] {
+		if s == to {
+			return true
+		}
+	}
+	return false
 }
+
+
+
 
 type ServiceStatus string
 
@@ -97,4 +121,6 @@ const (
 	StatusOTPVerified     ServiceStatus = "otp_verified"
 
 	StatusInProgress ServiceStatus = "in_progress"
+	StatusConfirmed ServiceStatus = "confirmed"
+
 )

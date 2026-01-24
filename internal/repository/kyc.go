@@ -63,3 +63,18 @@ func (r *KYCRepo) FindByProvider(ctx context.Context, providerID string) (*domai
 	return &kyc, nil
 }
 
+func (r *KYCRepo) FindByProviderID(ctx context.Context, providerID string) (*domain.ProviderKYC, error) {
+
+    objID, err := primitive.ObjectIDFromHex(providerID)
+    if err != nil {
+        return nil, err
+    }
+
+    var kyc domain.ProviderKYC
+    err = r.collection.FindOne(ctx, bson.M{"providerId": objID}).Decode(&kyc)
+    if err == mongo.ErrNoDocuments {
+        return nil, nil
+    }
+
+    return &kyc, err
+}

@@ -122,6 +122,10 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"etaMinutes": etaMinutes,
 			"distanceKm": distanceKm,
 		},
+		"booking": map[string]any{
+			"bookingId": svc.ServiceNumber,
+			"status":    "BID_ACCEPTED",
+		},
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,

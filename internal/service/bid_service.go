@@ -8,10 +8,11 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
-"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
+	"errors"
 )
 
 type BiddingService struct {
@@ -43,6 +44,7 @@ func NewBiddingService(
 		counterRepo: counterRepo,
 	}
 }
+var ErrServiceAlreadyAssigned = errors.New("service already assigned")
 
 /* ================= START SEARCH ================= */
 
@@ -276,6 +278,14 @@ func (s *BiddingService) PlaceBid(
 	providerID string,
 	price int,
 ) (string, error) {
+	locked, _ := s.rdb.Exists(
+		ctx,
+		"service:locked:"+serviceID,
+	).Result()
+
+	if locked == 1 {
+		return "", ErrServiceAlreadyAssigned
+	}
 
 	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 	providerOID, _ := primitive.ObjectIDFromHex(providerID)
@@ -348,6 +358,36 @@ func (s *BiddingService) AcceptBid(
 	if err != nil {
 		return err
 	}
+	res, err := s.acceptedRepo.Col().UpdateOne(
+		ctx,
+		bson.M{
+			"_id":    serviceOID,
+			"status": domain.StatusSearching,
+		},
+		bson.M{
+			"$set": bson.M{
+				"provider":      providerOID,
+				"acceptedBid":   bidOID,
+				"finalPrice":    price,
+				"status":        domain.StatusProviderAssigned,
+				"paymentStatus": domain.PaymentPending,
+				"updatedAt":     time.Now(),
+			},
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if res.MatchedCount == 0 {
+		return ErrServiceAlreadyAssigned
+	}
+	s.rdb.Set(ctx,
+		"service:locked:"+serviceID,
+		"1",
+		30*time.Minute,
+	)
 	pos, err := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
 	if err != nil {
 		log.Println("redis geopos failed:", err)

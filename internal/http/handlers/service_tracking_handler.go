@@ -6,6 +6,7 @@ import (
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"app_backend/internal/domain"
+	"fmt"
 )
 
 type ServiceTrackingHandler struct {
@@ -46,11 +47,12 @@ func (h *ServiceTrackingHandler) VerifyOTP(c *gin.Context) {
 	var req struct {
 		OTP string `json:"otp"`
 		Lat float64 `json:"lat"`
-		Long float64 `json:"otp"`
+		Long float64 `json:"long"`
 	}
 	c.BindJSON(&req)
 
 	serviceID := c.Param("id")
+	fmt.Println("otp through handler",req.OTP)
 
 	if err := h.svc.VerifyOTP(c.Request.Context(), serviceID, req.OTP,req.Lat,req.Long); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})

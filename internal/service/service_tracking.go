@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"math"
+	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -309,6 +310,8 @@ func (s *ServiceTrackingService) VerifyOTP(
 	if err != nil {
 		return err
 	}
+	fmt.Println(user.ServiceOTP)
+	fmt.Println(inputOTP)
 
 	if user.ServiceOTP != inputOTP {
 		return errors.New("invalid otp")

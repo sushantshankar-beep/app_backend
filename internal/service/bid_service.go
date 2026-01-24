@@ -46,7 +46,7 @@ func NewBiddingService(
 
 /* ================= START SEARCH ================= */
 
-func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,vehicleType string,vehicleNumber string,brand string,modelYear int,fuelType string,serviceType string,issues []string,lat, lng float64) (string, error){
+func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,vehicleType string,vehicleNumber string,brand string,modelYear int,fuelType string,serviceType string,issues []string,lat, lng float64,model string) (string, error){
 	userOID, _ := primitive.ObjectIDFromHex(string(userID))
 
 	seq, _ := s.counterRepo.Next(ctx, "service")
@@ -62,6 +62,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		FuelType:      fuelType,
 		ServiceType:   serviceType,
 		Issues:        issues,
+		Model:         model,
 		UserLocation: &domain.UserLocation{
 			Lat:  lat,
 			Long: lng,
@@ -84,6 +85,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		"brand":         brand,
 		"modelYear":     modelYear,
 		"fuelType":      fuelType,
+		"model" :         model,
 		"serviceType":   serviceType,
 	})
 
@@ -100,6 +102,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		modelYear,
 		fuelType,
 		serviceType,
+		model,
 	)
 
 	return svc.ID.Hex(), nil
@@ -117,6 +120,7 @@ func (s *BiddingService) findProviders(
 	modelYear int,
 	fuelType string,
 	serviceType string,
+	model string,
 ) {
 	ctx := context.Background()
 
@@ -227,6 +231,7 @@ func (s *BiddingService) findProviders(
 						"brand":  brand,
 						"year":   modelYear,
 						"fuel":   fuelType,
+						"model": model,
 					},
 					"serviceType": serviceType,
 					"issues":      issues,

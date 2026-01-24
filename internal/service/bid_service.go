@@ -11,6 +11,7 @@ import (
 "go.mongodb.org/mongo-driver/bson"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"log"
 )
 
 type BiddingService struct {
@@ -61,9 +62,9 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		FuelType:      fuelType,
 		ServiceType:   serviceType,
 		Issues:        issues,
-		ServiceLocation: &domain.Location{
-			Latitude:  lat,
-			Longitude: lng,
+		UserLocation: &domain.UserLocation{
+			Lat:  lat,
+			Long: lng,
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -342,21 +343,36 @@ func (s *BiddingService) AcceptBid(
 	if err != nil {
 		return err
 	}
-
+	pos, err := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
+	if err != nil {
+		log.Println("redis geopos failed:", err)
+	}
+	var lat, long float64
+	if len(pos) > 0 && pos[0] != nil {
+		long = pos[0].Longitude
+		lat = pos[0].Latitude
+	}
+	now := time.Now()
+	set := bson.M{
+		"provider":      providerOID,
+		"acceptedBid":   bidOID,
+		"finalPrice":    price,
+		"status":        domain.StatusProviderAssigned,
+		"paymentStatus": domain.PaymentPending,
+		"updatedAt":     now,
+	}
+	if lat != 0 && long != 0 {
+		set["providerLocation"] = bson.M{
+			"lat":       lat,
+			"long":      long,
+			"updatedAt": now,
+		}
+	}
 	// 🔒 Assign provider & lock service
 	if err := s.acceptedRepo.UpdateByID(
 		ctx,
 		serviceOID,
-		map[string]any{
-			"$set": map[string]any{
-				"provider":      providerOID,
-				"acceptedBid":   bidOID,
-				"finalPrice":    price,
-				"status":        domain.StatusProviderAssigned,
-				"paymentStatus": domain.PaymentPending,
-				"updatedAt":     time.Now(),
-			},
-		},
+		bson.M{"$set": set},
 	); err != nil {
 		return err
 	}

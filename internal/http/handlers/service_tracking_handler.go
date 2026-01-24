@@ -45,12 +45,14 @@ func (h *ServiceTrackingHandler) ProviderTracking(c *gin.Context) {
 func (h *ServiceTrackingHandler) VerifyOTP(c *gin.Context) {
 	var req struct {
 		OTP string `json:"otp"`
+		Lat float64 `json:"lat"`
+		Long float64 `json:"otp"`
 	}
 	c.BindJSON(&req)
 
 	serviceID := c.Param("id")
 
-	if err := h.svc.VerifyOTP(c.Request.Context(), serviceID, req.OTP); err != nil {
+	if err := h.svc.VerifyOTP(c.Request.Context(), serviceID, req.OTP,req.Lat,req.Long); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
@@ -62,6 +64,8 @@ func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
 
 	var req struct {
 		Status string `json:"status"`
+		Lat    float64 `json:"lat"`
+		Long   float64  `json:"long"`
 	}
 
 	if err := c.BindJSON(&req); err != nil {
@@ -73,6 +77,7 @@ func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
 		c.Request.Context(),
 		serviceID,
 		domain.ServiceStatus(req.Status),
+		req.Lat,req.Long,
 	); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return

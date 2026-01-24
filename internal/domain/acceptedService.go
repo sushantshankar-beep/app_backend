@@ -1,5 +1,6 @@
 package domain
 
+
 import (
 	"time"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -34,8 +35,7 @@ type AcceptedService struct {
 	OrderID              string               `bson:"orderId,omitempty" json:"orderId,omitempty"`
 	ServiceType          string               `bson:"serviceType,omitempty" json:"serviceType,omitempty"`
 	Issues               []string             `bson:"issues,omitempty" json:"issues,omitempty"`
-	ProviderLocation     *Location            `bson:"providerLocation,omitempty" json:"providerLocation,omitempty"`
-	ServiceLocation      *Location            `bson:"serviceLocation,omitempty" json:"serviceLocation,omitempty"`
+	ProviderLocation     *ProviderLocation            `bson:"providerLocation,omitempty" json:"providerLocation,omitempty"`
 	RetryCount 			 int 			  	  `bson:"retryCount" json:"retryCount"`
 	MaxRetries           int 			      `bson:"maxRetries" json:"maxRetries"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
@@ -46,8 +46,19 @@ type AcceptedService struct {
 	Brand       string    	`bson:"brand" json:"brand"`
 	ModelYear   int        	`bson:"modelYear" json:"modelYear"`
 	Timestamps ServiceTimestamps `bson:"timestamps"`
+	UserLocation *UserLocation `bson:"userLocation" json:"userLocation"`
 
 }
+type UserLocation struct {
+	Lat  float64 `bson:"lat"`
+	Long float64 `bson:"long"`
+}
+
+type ProviderLocation struct {
+	Lat  float64 `bson:"lat"`
+	Long float64 `bson:"long"`
+}
+
 type ServiceTimestamps struct {
     StartedAt   *time.Time `bson:"startedAt,omitempty"`
     CompletedAt *time.Time `bson:"completedAt,omitempty"`

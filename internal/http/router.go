@@ -46,6 +46,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		service.GET("/:id/user-tracking", userAuth, serviceTrackingHandler.UserTracking)
 		service.GET("/:id/provider-tracking", providerAuth, serviceTrackingHandler.ProviderTracking)
 		service.POST("/:id/verify-otp", providerAuth, serviceTrackingHandler.VerifyOTP)
+		service.POST("/:id/status", providerAuth, serviceTrackingHandler.UpdateStatus)
 	}
 	bid := r.Group("/bid", userAuth)
 	{

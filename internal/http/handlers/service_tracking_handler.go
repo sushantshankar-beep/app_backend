@@ -5,6 +5,7 @@ import (
 
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
+	"app_backend/internal/domain"
 )
 
 type ServiceTrackingHandler struct {
@@ -56,3 +57,29 @@ func (h *ServiceTrackingHandler) VerifyOTP(c *gin.Context) {
 
 	c.JSON(200, gin.H{"status": "verified"})
 }
+func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
+	serviceID := c.Param("id")
+
+	var req struct {
+		Status string `json:"status"`
+	}
+
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if err := h.svc.UpdateStatus(
+		c.Request.Context(),
+		serviceID,
+		domain.ServiceStatus(req.Status),
+	); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status": "updated",
+	})
+}
+

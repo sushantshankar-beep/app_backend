@@ -38,7 +38,7 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	if err := h.redis.Set(ctx,"provider:online:"+providerID,"1",5*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(ctx,"provider:online:"+providerID,"1",0).Err(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "redis error"})
 		return
 	}

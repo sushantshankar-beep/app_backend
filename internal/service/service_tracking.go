@@ -58,17 +58,39 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
+	gstMain := "18%"
+	gst := svc.FinalPrice * 18 / 100
+	total := svc.FinalPrice + gst
 
 	return map[string]any{
 		"screen": "SERVICE_TRACKING",
 		"status": svc.Status,
 		"otp":    user.ServiceOTP,
+		"provider": map[string]any{
+			"id":         provider.ID,
+			"name":       provider.Name,
+			"rating":     provider.Rating,
+			"etaMinutes": 6,
+		},
 
-		"provider": provider,
+		"vehicle": map[string]any{
+			"problem": svc.ServiceType,
+			"date":    time.Now().Format("2006-01-02"),
+			"vehicleNumber": svc.VehicleNumber,
+			"brand" : svc.Brand,
+			"fuelType": svc.FuelType,
+			"year":svc.ModelYear,
+		},
 
 		"locations": map[string]any{
 			"user":     svc.ServiceLocation,
 			"provider": svc.ProviderLocation,
+		},
+		"billing": map[string]any{
+			"serviceAmount":    svc.FinalPrice,
+			"gst":         gstMain,
+			"totalAmount": total,
+			"currency":    "INR",
 		},
 
 		"timestamps": svc.Timestamps,

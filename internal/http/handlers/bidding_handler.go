@@ -32,6 +32,7 @@ func (h *BiddingHandler) FindMechanics(c *gin.Context) {
 		FuelType      string   `json:"fuelType" binding:"required"`
 		ServiceType   string   `json:"serviceType" binding:"required"`
 		Issues        []string `json:"issues"`
+		Model         string   `json:"model" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -57,6 +58,7 @@ func (h *BiddingHandler) FindMechanics(c *gin.Context) {
 		req.Issues,
 		req.Lat,
 		req.Lng,
+		req.Model,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

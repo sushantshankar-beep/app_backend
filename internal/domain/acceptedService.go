@@ -45,6 +45,7 @@ type AcceptedService struct {
 	VehicleNumber string   `bson:"vehicleNumber" json:"vehicleNumber"`
 	Brand       string    	`bson:"brand" json:"brand"`
 	ModelYear   int        	`bson:"modelYear" json:"modelYear"`
+	Model      string      `bson:"model" json:"model"`
 	Timestamps ServiceTimestamps `bson:"timestamps"`
 	UserLocation *UserLocation `bson:"userLocation" json:"userLocation"`
 

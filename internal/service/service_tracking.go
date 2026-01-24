@@ -134,6 +134,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
+			"model":         svc.Model,
 		},
 
 		"locations": map[string]any{

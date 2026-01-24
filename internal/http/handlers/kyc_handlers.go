@@ -19,7 +19,6 @@ func NewKYCHandler(svc *service.KYCService) *KYCHandler {
 }
 
 func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
-
 	providerID := c.GetString("providerId")
 	if providerID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -37,41 +36,30 @@ func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
 	upiID := strings.TrimSpace(c.PostForm("upiId"))
 	gstNumber := strings.ToUpper(strings.TrimSpace(c.PostForm("gstNumber")))
 
-	if len(aadhaarFront) == 0 || len(aadhaarBack) == 0 || len(pan) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "aadhaar front, aadhaar back and pan are required",
-		})
-		return
-	}
-
 	if accountHolderName == "" || accountNumber == "" || ifsc == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "account holder name, account number and IFSC are required",
 		})
 		return
 	}
-
 	if !validation.IsValidAccountNumber(accountNumber) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid account number (must be 9–18 digits)",
 		})
 		return
 	}
-
 	if !validation.IsValidIFSC(ifsc) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid IFSC code",
 		})
 		return
 	}
-
 	if gstNumber != "" && !validation.IsValidGST(gstNumber) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid GST number",
 		})
 		return
 	}
-
 	if upiID != "" && !validation.IsValidUPI(upiID) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid UPI ID",
@@ -80,11 +68,6 @@ func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
 	}
 
 	kyc := &domain.ProviderKYC{
-		Documents: []domain.KYCDocument{
-			{Type: domain.DOC_AADHAAR_FRONT, URL: aadhaarFront[0]},
-			{Type: domain.DOC_AADHAAR_BACK, URL: aadhaarBack[0]},
-			{Type: domain.DOC_PAN, URL: pan[0]},
-		},
 		Bank: domain.ProviderBankDetails{
 			AccountHolderName: accountHolderName,
 			AccountNumber:     accountNumber,
@@ -95,12 +78,21 @@ func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
 		},
 	}
 
+	if len(aadhaarFront) > 0 {
+		kyc.Documents = append(kyc.Documents, domain.KYCDocument{Type: domain.DOC_AADHAAR_FRONT, URL: aadhaarFront[0]})
+	}
+	if len(aadhaarBack) > 0 {
+		kyc.Documents = append(kyc.Documents, domain.KYCDocument{Type: domain.DOC_AADHAAR_BACK, URL: aadhaarBack[0]})
+	}
+	if len(pan) > 0 {
+		kyc.Documents = append(kyc.Documents, domain.KYCDocument{Type: domain.DOC_PAN, URL: pan[0]})
+	}
+
 	result, err := h.svc.CreateOrUpdateKYC(c.Request.Context(), providerID, kyc)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"message": "KYC submitted successfully",
 		"data":    result,

@@ -241,3 +241,23 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 	})
 	return err
 }
+
+func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, userID string, status domain.ServiceStatus) ([]domain.AcceptedService, error) {
+	filter := bson.M{
+		"user":   userID,
+		"status": status,
+	}
+
+	var bookings []domain.AcceptedService
+	cursor, err := r.col.Find(ctx, filter, &options.FindOptions{
+		Sort: bson.M{"createdAt": -1},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := cursor.All(ctx, &bookings); err != nil {
+		return nil, err
+	}
+
+	return bookings, nil
+}

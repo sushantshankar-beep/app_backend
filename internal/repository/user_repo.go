@@ -89,25 +89,27 @@ func (r *UserRepo) UpdateRaw(
 	_, err := r.col.UpdateByID(ctx, userID, update)
 	return err
 }
-func (r *UserRepo) SetPrimaryVehicle(
-		ctx context.Context,
-		userID primitive.ObjectID,
-		vehicleID primitive.ObjectID,
-	) error {
 
-		_, err := r.col.UpdateOne(
-			ctx,
-			bson.M{
-				"_id": userID,
-				"primaryVehicleId": primitive.NilObjectID,
-			},
-			bson.M{
-				"$set": bson.M{"primaryVehicleId": vehicleID},
-			},
-		)
+func (r *UserRepo) SetPrimaryVehicle( ctx context.Context, userID primitive.ObjectID, vehicleID primitive.ObjectID ) error {
 
-		return err
-	}
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{
+			"_id": userID,
+			"$or": []bson.M{
+				{"primaryVehicleId": bson.M{"$exists": false}},
+				{"primaryVehicleId": nil},
+			},
+		},
+		bson.M{
+			"$set": bson.M{"primaryVehicleId": vehicleID},
+		},
+	)
+
+	return err
+}
+
+
 func (r *UserRepo) FindByID(
 	ctx context.Context,
 	id primitive.ObjectID,
@@ -124,18 +126,34 @@ func (r *UserRepo) FindByID(
 	return &user, nil
 }
 
+func (r *UserRepo) AddFallbackVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	vehicleID primitive.ObjectID,
+) error {
 
-func (r *UserRepo) AddFallbackVehicle(ctx context.Context,userID primitive.ObjectID,vehicleID primitive.ObjectID) error {
 	_, err := r.col.UpdateOne(
 		ctx,
 		bson.M{"_id": userID},
-		bson.M{
-			"$addToSet": bson.M{
-				"fallbackVehicleIds": vehicleID,
+		mongo.Pipeline{
+			{
+				{"$set", bson.M{
+					"fallbackVehicleIds": bson.M{
+						"$cond": bson.M{
+							"if": bson.M{"$isArray": "$fallbackVehicleIds"},
+							"then": bson.M{
+								"$setUnion": []interface{}{
+									"$fallbackVehicleIds",
+									[]primitive.ObjectID{vehicleID},
+								},
+							},
+							"else": []primitive.ObjectID{vehicleID},
+						},
+					},
+				}},
 			},
 		},
 	)
 
 	return err
 }
-

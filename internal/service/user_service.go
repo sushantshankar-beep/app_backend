@@ -138,6 +138,15 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "appStateStatus", req["appStateStatus"])
 	setString(update, "image_url", req["imageUrl"])
 	setString(update,"isActive",req["isActive"])
+
+	if isCreate {
+		update["isActive"] = domain.USER_ACTIVE
+	}
+
+	if val, ok := req["isActive"]; ok {
+		setString(update, "isActive", val)
+	}
+
 	if update["name"] != nil &&
 		update["email"] != nil {
 		update["isProfileComplete"] = true
@@ -171,4 +180,19 @@ func (s *UserService) GetActiveAMCByUser(ctx context.Context, userID primitive.O
 
 func (s *UserService) Logout(ctx context.Context, userID domain.UserID, token string) error {
 	return nil
+}
+
+func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID) error {
+	_ , err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	update := bson.M{
+		"isActive":  domain.USER_DELETED,
+		"updatedAt": time.Now(),
+	}
+
+	_, err = s.users.UpdateByID(ctx, userID, update)
+	return err
 }

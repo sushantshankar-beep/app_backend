@@ -129,3 +129,27 @@ func (h *UserHandler) Logout(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
+
+func (h *UserHandler) DeleteUser(c *gin.Context) {
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userObjID := userObjIDAny.(primitive.ObjectID)
+
+	if err := h.svc.DeleteUser(c.Request.Context(), userObjID); err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "User deleted successfully",
+	})
+}

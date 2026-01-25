@@ -121,3 +121,31 @@ func (s *BookingService) BuildBookingScreen(
 		},
 	}, nil
 }
+
+
+func (s *BookingService) GetUserBookings(ctx context.Context, userID, status string) ([]domain.AcceptedService, error) {
+	sStatus, err := mapStatus(status)
+	if err != nil {
+		return nil, err
+	}
+
+	bookings, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userID, sStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	return bookings, nil
+}
+
+func mapStatus(status string) (domain.ServiceStatus, error) {
+	switch status {
+	case "ongoing":
+		return domain.StatusStarted, nil
+	case "completed":
+		return domain.StatusCompleted, nil
+	case "cancelled":
+		return domain.StatusCancelled, nil
+	default:
+		return "", errors.New("invalid status")
+	}
+}

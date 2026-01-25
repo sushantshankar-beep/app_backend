@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"errors"
+	"sync"
 )
 
 type BiddingService struct {
@@ -124,6 +125,7 @@ func (s *BiddingService) findProviders(
 	serviceType string,
 	model string,
 ) {
+
 	ctx := context.Background()
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
@@ -131,27 +133,25 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	// 🔹 Fetch service once
-	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(svc.User)
-	// 🔹 Fetch user once
-	user, err := s.userRepo.FindByID(ctx, svc.User)
-	if err != nil {
-		fmt.Println("❌ user not found:", err)
-		return
-	}
-	rejectedKey := "service:rejected:" + serviceID
-	attemptedKey := "service:attempted:" + serviceID
+	lockKey := "service:locked:" + serviceID
 
-	// 🔍 Radius expansion steps
+	// radius plan
 	radiusSteps := []float64{5, 10, 20, 50}
+
+	const (
+		maxConcurrentEmits = 25
+		maxAttemptsPerProv = 3
+		cooldownSeconds    = 60
+	)
 
 	for _, radius := range radiusSteps {
 
-		// 🔒 Re-check service status
+		// 🛑 stop if assigned
+		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			return
+		}
+
+		// 🔒 DB state
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -163,7 +163,6 @@ func (s *BiddingService) findProviders(
 			return
 		}
 
-		// 🔍 Find online providers
 		providers, err := s.rdb.GeoRadius(
 			ctx,
 			"providers:geo",
@@ -172,102 +171,106 @@ func (s *BiddingService) findProviders(
 			&redis.GeoRadiusQuery{
 				Radius:   radius,
 				Unit:     "km",
-				WithDist: true, // ✅ REQUIRED
+				WithDist: true,
 			},
 		).Result()
 
 		if err != nil || len(providers) == 0 {
-			time.Sleep(3 * time.Second)
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		// 🕒 Allow socket joins
-		time.Sleep(2 * time.Second)
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, maxConcurrentEmits)
 
 		for _, p := range providers {
 
-			providerID := p.Name
+			pid := p.Name
+			dist := p.Dist
 
-			// ❌ Skip rejected providers
-			if rejected, _ := s.rdb.SIsMember(
-				ctx,
-				rejectedKey,
-				providerID,
-			).Result(); rejected {
+			// 🔐 cooldown check
+			cooldownKey := "service:cooldown:" + serviceID + ":" + pid
+
+			if s.rdb.Exists(ctx, cooldownKey).Val() == 1 {
 				continue
 			}
 
-			// ❌ Skip already attempted providers
-			if attempted, _ := s.rdb.SIsMember(
-				ctx,
-				attemptedKey,
-				providerID,
-			).Result(); attempted {
+			// 🔢 attempt counter
+			attemptKey := "service:attempts:" + serviceID + ":" + pid
+			attempts,_ := s.rdb.Get(ctx, attemptKey).Int64()
+
+			if attempts >= maxAttemptsPerProv {
 				continue
 			}
 
-			distance := p.Dist
-			eta := estimateETA(distance)
-
-			// 🔹 Cache distance
-			s.rdb.Set(
+			// reserve cooldown immediately (atomic)
+			ok, _ := s.rdb.SetNX(
 				ctx,
-				"service:dist:"+serviceID+":"+providerID,
-				distance,
-				15*time.Minute,
-			)
+				cooldownKey,
+				"1",
+				time.Duration(cooldownSeconds)*time.Second,
+			).Result()
 
-			// 🔔 Emit bid request
-			s.socket.EmitWithRetry(
-				"provider:"+providerID,
-				"bid:request",
-				map[string]any{
-					"serviceId": serviceID,
-					"user": map[string]any{
-						"id":   svc.User.Hex(),
-						"name": user.Name,
-					},
-					"vehicle": map[string]any{
-						"type":   vehicleType,
-						"number": vehicleNumber,
-						"brand":  brand,
-						"year":   modelYear,
-						"fuel":   fuelType,
-						"model": model,
-					},
-					"serviceType": serviceType,
-					"issues":      issues,
-					"distanceKm":  distance,
-					"etaMin":      eta,
-					"radiusKm":    radius,
-					"expiresIn":   60,
-				},
-				1,
-			)
+			if !ok {
+				continue
+			}
 
-			// 🔒 Mark provider as attempted
-			s.rdb.SAdd(ctx, attemptedKey, providerID)
-			s.rdb.Expire(ctx, attemptedKey, 30*time.Minute)
+			// increment attempts
+			s.rdb.Incr(ctx, attemptKey)
+			s.rdb.Expire(ctx, attemptKey, 2*time.Hour)
+
+			wg.Add(1)
+
+			go func(providerID string, distance float64) {
+				defer wg.Done()
+
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				// stop mid-flight
+				if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+					return
+				}
+
+				s.socket.EmitWithRetry(
+					"provider:"+providerID,
+					"bid:request",
+					map[string]any{
+						"serviceId": serviceID,
+						"vehicle": map[string]any{
+							"type":   vehicleType,
+							"number": vehicleNumber,
+							"brand":  brand,
+							"year":   modelYear,
+							"fuel":   fuelType,
+							"model":  model,
+						},
+						"serviceType": serviceType,
+						"issues":      issues,
+						"distanceKm":  distance,
+						"etaMin":      estimateETA(distance),
+						"radiusKm":    radius,
+						"expiresIn":   60,
+					},
+					1,
+				)
+
+			}(pid, dist)
 		}
 
-		// ⏳ Wait before next radius
-		time.Sleep(6 * time.Second)
+		wg.Wait()
 
-		// 🔁 Increment retry count
-		_, _ = s.acceptedRepo.Col().UpdateByID(
-			ctx,
-			serviceOID,
-			bson.M{"$inc": bson.M{"retryCount": 1}},
-		)
+		time.Sleep(2 * time.Second)
 	}
 
-	// ❌ No provider found
-	_, _ = s.acceptedRepo.Col().UpdateByID(
+	// ❌ nobody accepted
+	s.acceptedRepo.Col().UpdateByID(
 		ctx,
 		serviceOID,
-		bson.M{"$set": bson.M{"status": "no_provider_foundx"}},
+		bson.M{"$set": bson.M{"status": domain.StatusCancelled}},
 	)
 }
+
 
 
 /* ================= PLACE BID ================= */
@@ -362,7 +365,6 @@ func (s *BiddingService) AcceptBid(
 		ctx,
 		bson.M{
 			"_id":    serviceOID,
-			"status": domain.StatusSearching,
 		},
 		bson.M{
 			"$set": bson.M{

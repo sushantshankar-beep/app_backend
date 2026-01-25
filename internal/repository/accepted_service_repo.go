@@ -1,16 +1,16 @@
 package repository
 
-
 import (
 	"context"
 	"time"
 
 	"app_backend/internal/domain"
+	"fmt"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"fmt"
 )
 
 type AcceptedServiceRepo struct {
@@ -243,11 +243,42 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 }
 
 func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, userID string, status domain.ServiceStatus) ([]domain.AcceptedService, error) {
-	filter := bson.M{
-		"user":   userID,
-		"status": status,
+	objID, err := primitive.ObjectIDFromHex(userID)
+if err != nil {
+    return nil, fmt.Errorf("invalid userID: %w", err)
+}
+
+filter := bson.M{
+    "user": objID,
+    "status": status,
+}
+    
+	var bookings []domain.AcceptedService
+	cursor, err := r.col.Find(ctx, filter, &options.FindOptions{
+		Sort: bson.M{"createdAt": -1},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := cursor.All(ctx, &bookings); err != nil {
+		return nil, err
 	}
 
+	return bookings, nil
+}
+
+
+func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, userID string, status domain.ServiceStatus) ([]domain.AcceptedService, error) {
+	objID, err := primitive.ObjectIDFromHex(userID)
+    if err != nil {
+       return nil, fmt.Errorf("invalid userID: %w", err)
+    }
+
+   filter := bson.M{
+     "provider": objID,
+     "status": status,
+    }
+    
 	var bookings []domain.AcceptedService
 	cursor, err := r.col.Find(ctx, filter, &options.FindOptions{
 		Sort: bson.M{"createdAt": -1},

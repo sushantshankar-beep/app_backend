@@ -6,7 +6,6 @@ import (
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"app_backend/internal/domain"
-	"fmt"
 )
 
 type ServiceTrackingHandler struct {
@@ -44,30 +43,45 @@ func (h *ServiceTrackingHandler) ProviderTracking(c *gin.Context) {
 }
 
 func (h *ServiceTrackingHandler) VerifyOTP(c *gin.Context) {
-	var req struct {
-		OTP string `json:"otp"`
-		Lat float64 `json:"lat"`
-		Long float64 `json:"long"`
-	}
-	c.BindJSON(&req)
 
 	serviceID := c.Param("id")
-	fmt.Println("otp through handler",req.OTP)
 
-	if err := h.svc.VerifyOTP(c.Request.Context(), serviceID, req.OTP,req.Lat,req.Long); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+	var req struct {
+		OTP  string  `json:"otp"`
+		Lat  float64 `json:"lat"`
+		Long float64 `json:"long"`
+	}
+
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request"})
 		return
 	}
 
-	c.JSON(200, gin.H{"status": "verified"})
+	resp, err := h.svc.VerifyOTP(
+		c.Request.Context(),
+		serviceID,
+		req.OTP,
+		req.Lat,
+		req.Long,
+	)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	resp["status"] = "verified"
+
+	c.JSON(200, resp)
 }
+
 func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
+
 	serviceID := c.Param("id")
 
 	var req struct {
-		Status string `json:"status"`
+		Status string  `json:"status"`
 		Lat    float64 `json:"lat"`
-		Long   float64  `json:"long"`
+		Long   float64 `json:"long"`
 	}
 
 	if err := c.BindJSON(&req); err != nil {
@@ -75,18 +89,20 @@ func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.UpdateStatus(
+	resp, err := h.svc.UpdateStatus(
 		c.Request.Context(),
 		serviceID,
 		domain.ServiceStatus(req.Status),
-		req.Lat,req.Long,
-	); err != nil {
+		req.Lat,
+		req.Long,
+	)
+
+	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"status": "updated",
-	})
+	c.JSON(200, resp)
 }
+
 

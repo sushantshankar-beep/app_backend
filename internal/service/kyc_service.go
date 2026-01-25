@@ -20,7 +20,12 @@ func NewKYCService(kycRepo *repository.KYCRepo, providerRepo *repository.Provide
 	}
 }
 
-func (s *KYCService) CreateOrUpdateKYC(ctx context.Context, providerID string, req *domain.ProviderKYC) (*domain.ProviderKYC, error) {
+func (s *KYCService) CreateOrUpdateKYC(
+	ctx context.Context,
+	providerID string,
+	req *domain.ProviderKYC,
+) (*domain.ProviderKYC, error) {
+
 	objID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
 		return nil, errors.New("invalid provider id")
@@ -33,7 +38,7 @@ func (s *KYCService) CreateOrUpdateKYC(ctx context.Context, providerID string, r
 
 	if existing != nil {
 		req.ID = existing.ID
-		
+
 		existingDocs := make(map[domain.DocumentType]domain.KYCDocument)
 		for _, doc := range existing.Documents {
 			existingDocs[doc.Type] = doc
@@ -45,6 +50,7 @@ func (s *KYCService) CreateOrUpdateKYC(ctx context.Context, providerID string, r
 			} else if req.Documents[i].ID.IsZero() {
 				req.Documents[i].ID = primitive.NewObjectID()
 			}
+
 			req.Documents[i].Verified = domain.VERIFICATION_PENDING
 		}
 
@@ -60,26 +66,27 @@ func (s *KYCService) CreateOrUpdateKYC(ctx context.Context, providerID string, r
 				req.Documents = append(req.Documents, doc)
 			}
 		}
+
 	} else {
 		req.ID = primitive.NewObjectID()
+
 		for i := range req.Documents {
 			req.Documents[i].ID = primitive.NewObjectID()
 			req.Documents[i].Verified = domain.VERIFICATION_PENDING
 		}
 	}
 
-	err = s.kycRepo.Upsert(ctx, req)
-	if err != nil {
+	if err := s.kycRepo.Upsert(ctx, req); err != nil {
 		return nil, err
 	}
 
-	err = s.providerRepo.UpdateKYCID(ctx, providerID, req.ID)
-	if err != nil {
+	if err := s.providerRepo.UpdateKYCID(ctx, providerID, req.ID); err != nil {
 		return nil, err
 	}
 
 	return req, nil
 }
+
 
 func (s *KYCService) GetKYC(ctx context.Context, providerID string) (*domain.ProviderKYC, error) {
 	return s.kycRepo.FindByProvider(ctx, providerID)

@@ -273,7 +273,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	// 🔥 build payload
 	payload := map[string]any{
-		"serviceId":    svc.ID.Hex(),
+		"serviceId":    svc.ServiceNumber,
 		"oldStatus":    prevStatus,
 		"newStatus":    newStatus,
 		"user": map[string]any{

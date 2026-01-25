@@ -13,7 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"math"
-	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -201,30 +200,33 @@ func (s *ServiceTrackingService) UpdateStatus(
 	ctx context.Context,
 	serviceID string,
 	newStatus domain.ServiceStatus,
-	lat float64,long float64,
-) error {
+	lat float64,
+	long float64,
+) (map[string]any, error) {
 
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": objID}).
 		Decode(&svc); err != nil {
-		return errors.New("service not found")
+		return nil, errors.New("service not found")
 	}
+
+	prevStatus := svc.Status // 👈 capture BEFORE update
+
 	log.Printf(
 		"STATE CHANGE REQUEST service=%s from=%s to=%s\n",
 		serviceID,
-		svc.Status,
+		prevStatus,
 		newStatus,
 	)
 
-	// Validate flow
-	if !domain.CanTransition(svc.Status, newStatus) {
-		return errors.New("invalid service state transition")
+	if !domain.CanTransition(prevStatus, newStatus) {
+		return nil, errors.New("invalid service state transition")
 	}
 
 	now := time.Now()
@@ -233,6 +235,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		"status":    newStatus,
 		"updatedAt": now,
 	}
+
 	if lat != 0 && long != 0 {
 		update["providerLocation"] = bson.M{
 			"lat":       lat,
@@ -246,16 +249,12 @@ func (s *ServiceTrackingService) UpdateStatus(
 	switch newStatus {
 	case domain.StatusStarted:
 		ts["jobStartedAt"] = now
-
 	case domain.StatusReachedLocation:
 		ts["reachedAt"] = now
-
 	case domain.StatusOTPVerified:
 		ts["otpVerifiedAt"] = now
-
 	case domain.StatusInProgress:
 		ts["startedAt"] = now
-
 	case domain.StatusCompleted:
 		ts["completedAt"] = now
 	}
@@ -266,23 +265,49 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	if _, err := s.acceptedRepo.Col().
 		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
-		return err
+		return nil, err
 	}
+
+	// 👇 Fetch user
+	user, _ := s.userRepo.GetByID(ctx, svc.User)
+
+	// 🔥 build payload
+	payload := map[string]any{
+		"serviceId":    svc.ID.Hex(),
+		"oldStatus":    prevStatus,
+		"newStatus":    newStatus,
+		"user": map[string]any{
+			"id":    svc.User.Hex(),
+			"name":  user.Name,
+			"phone": user.Phone,
+		},
+		"vehicle": map[string]any{
+			"fuelType":      svc.FuelType,
+			"vehicleType":   svc.VehicleType,
+			"vehicleNumber": svc.VehicleNumber,
+			"brand":         svc.Brand,
+			"modelYear":     svc.ModelYear,
+			"model":         svc.Model,
+		},
+		"timestamps": ts,
+	}
+
+	if lat != 0 && long != 0 {
+		payload["providerLocation"] = map[string]any{
+			"lat":  lat,
+			"long": long,
+		}
+	}
+	payloadSocket := map[string]any{ "serviceId": svc.ID.Hex(), "status": newStatus, "timestamps": ts, }
 
 	// SOCKET
 	userRoom := "user:" + svc.ID.Hex()
 	providerRoom := "provider:" + svc.Provider.Hex()
 
-	payload := map[string]any{
-		"serviceId": svc.ID.Hex(),
-		"status":    newStatus,
-		"timestamps": ts,
-	}
+	s.socket.EmitWithRetry(userRoom, "service:status_update", payloadSocket, 1)
+	s.socket.EmitWithRetry(providerRoom, "service:status_update", payloadSocket, 1)
 
-	s.socket.EmitWithRetry(userRoom, "service:status_update", payload, 1)
-	s.socket.EmitWithRetry(providerRoom, "service:status_update", payload, 1)
-
-	return nil
+	return payload, nil
 }
 
 
@@ -292,34 +317,32 @@ func (s *ServiceTrackingService) VerifyOTP(
 	inputOTP string,
 	lat float64,
 	long float64,
-) error {
+) (map[string]any, error) {
 
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": objID}).
 		Decode(&svc); err != nil {
-		return errors.New("service not found")
+		return nil, errors.New("service not found")
 	}
 
 	user, err := s.userRepo.GetByID(ctx, svc.User)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	fmt.Println(user.ServiceOTP)
-	fmt.Println(inputOTP)
 
 	if user.ServiceOTP != inputOTP {
-		return errors.New("invalid otp")
+		return nil, errors.New("invalid otp")
 	}
 
 	now := time.Now()
 
-	// ✅ Only update OTP fields here
+	// ✅ Update OTP fields only
 	if _, err := s.acceptedRepo.Col().UpdateByID(
 		ctx,
 		objID,
@@ -330,10 +353,10 @@ func (s *ServiceTrackingService) VerifyOTP(
 			},
 		},
 	); err != nil {
-		return err
+		return nil, err
 	}
 
-	// ✅ Status + location handled centrally
+	// ✅ Delegate to UpdateStatus (returns payload)
 	return s.UpdateStatus(
 		ctx,
 		serviceID,
@@ -342,4 +365,5 @@ func (s *ServiceTrackingService) VerifyOTP(
 		long,
 	)
 }
+
 

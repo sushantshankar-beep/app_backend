@@ -6,6 +6,7 @@ import (
 	"app_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"fmt"
 )
 
 type MetaHandler struct {
@@ -18,6 +19,7 @@ func NewMetaHandler(s *service.MetaService) *MetaHandler {
 
 func (h *MetaHandler) GetBrands(c *gin.Context) {
 	vehicle := strings.ToLower(c.Query("vehicle"))
+	fmt.Println(vehicle)
 	if vehicle == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "vehicle required"})
 		return
@@ -33,7 +35,7 @@ func (h *MetaHandler) GetBrands(c *gin.Context) {
 }
 
 func (h *MetaHandler) GetServices(c *gin.Context) {
-	vehicle := c.Query("vehicle")
+	vehicle := strings.ToLower(c.Query("vehicle"))
 	if vehicle == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "vehicle required"})
 		return

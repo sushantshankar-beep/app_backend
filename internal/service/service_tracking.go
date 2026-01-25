@@ -270,6 +270,10 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	// 👇 Fetch user
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
+	userLat := svc.UserLocation.Lat
+	userLong := svc.UserLocation.Long
+	distance := distanceKmHaversine(lat,long,userLat,userLong)
+	eta      := estimateETA(distance)
 
 	// 🔥 build payload
 	payload := map[string]any{
@@ -280,7 +284,11 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"id":    svc.User.Hex(),
 			"name":  user.Name,
 			"phone": user.Phone,
+			"lat" : userLat,
+			"lon" : userLong,
 		},
+		"finalAmount": svc.FinalPrice,
+		"issues" : svc.Issues,
 		"vehicle": map[string]any{
 			"fuelType":      svc.FuelType,
 			"vehicleType":   svc.VehicleType,
@@ -289,6 +297,8 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"modelYear":     svc.ModelYear,
 			"model":         svc.Model,
 		},
+		"distanceKm" : distance,
+		"eta"      : eta,
 		"timestamps": ts,
 	}
 

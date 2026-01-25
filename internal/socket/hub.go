@@ -29,6 +29,30 @@ func (h *Hub) Emit(room string, msg any){
 			}
 		}
 }
+func (h *Hub) CloseRoom(room string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	clients, ok := h.rooms[room]
+	if !ok {
+		return
+	}
+
+	for c := range clients {
+
+		// close client channel -> WritePump exits
+		close(c.send)
+		delete(clients, c)
+
+		// cleanup provider map
+		if h.providerConn[room] == c {
+			delete(h.providerConn, room)
+		}
+	}
+
+	delete(h.rooms, room)
+}
+
 /* ================= ROOM MANAGEMENT ================= */
 
 func (h *Hub) Join(room string, c *Client) {

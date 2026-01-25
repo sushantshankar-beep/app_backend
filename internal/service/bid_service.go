@@ -13,7 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"errors"
-	"sync"
+	// "sync"
 )
 
 type BiddingService struct {
@@ -128,30 +128,43 @@ func (s *BiddingService) findProviders(
 
 	ctx := context.Background()
 
+
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return
 	}
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
+		return
+	}
+	
 
 	lockKey := "service:locked:" + serviceID
+	user, err := s.userRepo.GetByID(ctx, svc.User)
+	if err != nil {
+		return
+	}
 
-	// radius plan
 	radiusSteps := []float64{5, 10, 20, 50}
 
 	const (
-		maxConcurrentEmits = 25
+		maxConcurrentEmits = 40
 		maxAttemptsPerProv = 3
 		cooldownSeconds    = 60
 	)
 
+	sem := make(chan struct{}, maxConcurrentEmits)
+
 	for _, radius := range radiusSteps {
 
-		// 🛑 stop if assigned
+		// stop if assigned
 		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
 			return
 		}
 
-		// 🔒 DB state
+		// DB state check
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -172,62 +185,43 @@ func (s *BiddingService) findProviders(
 				Radius:   radius,
 				Unit:     "km",
 				WithDist: true,
+				Count:    50, // cap per radius
 			},
 		).Result()
 
 		if err != nil || len(providers) == 0 {
-			time.Sleep(1 * time.Second)
 			continue
 		}
-
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, maxConcurrentEmits)
 
 		for _, p := range providers {
 
 			pid := p.Name
 			dist := p.Dist
 
-			// 🔐 cooldown check
+			// cooldown
 			cooldownKey := "service:cooldown:" + serviceID + ":" + pid
-
-			if s.rdb.Exists(ctx, cooldownKey).Val() == 1 {
-				continue
-			}
-
-			// 🔢 attempt counter
-			attemptKey := "service:attempts:" + serviceID + ":" + pid
-			attempts,_ := s.rdb.Get(ctx, attemptKey).Int64()
-
-			if attempts >= maxAttemptsPerProv {
-				continue
-			}
-
-			// reserve cooldown immediately (atomic)
 			ok, _ := s.rdb.SetNX(
 				ctx,
 				cooldownKey,
 				"1",
 				time.Duration(cooldownSeconds)*time.Second,
 			).Result()
-
 			if !ok {
 				continue
 			}
 
-			// increment attempts
-			s.rdb.Incr(ctx, attemptKey)
+			attemptKey := "service:attempts:" + serviceID + ":" + pid
+			attempts, _ := s.rdb.Incr(ctx, attemptKey).Result()
+			if attempts > maxAttemptsPerProv {
+				continue
+			}
 			s.rdb.Expire(ctx, attemptKey, 2*time.Hour)
 
-			wg.Add(1)
-
-			go func(providerID string, distance float64) {
-				defer wg.Done()
+			go func(providerID string, distance float64, radius float64) {
 
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				// stop mid-flight
 				if s.rdb.Exists(ctx, lockKey).Val() == 1 {
 					return
 				}
@@ -236,6 +230,9 @@ func (s *BiddingService) findProviders(
 					"provider:"+providerID,
 					"bid:request",
 					map[string]any{
+						"user": map[string]any{
+							"name": user.Name,
+						},
 						"serviceId": serviceID,
 						"vehicle": map[string]any{
 							"type":   vehicleType,
@@ -255,21 +252,22 @@ func (s *BiddingService) findProviders(
 					1,
 				)
 
-			}(pid, dist)
+			}(pid, dist, radius)
 		}
-
-		wg.Wait()
-
-		time.Sleep(2 * time.Second)
 	}
 
-	// ❌ nobody accepted
-	s.acceptedRepo.Col().UpdateByID(
-		ctx,
-		serviceOID,
-		bson.M{"$set": bson.M{"status": domain.StatusCancelled}},
-	)
+	// final fallback after full sweep
+	time.Sleep(90 * time.Second)
+
+	if s.rdb.Exists(ctx, lockKey).Val() == 0 {
+		s.acceptedRepo.Col().UpdateByID(
+			ctx,
+			serviceOID,
+			bson.M{"$set": bson.M{"status": domain.StatusCancelled}},
+		)
+	}
 }
+
 
 
 
@@ -491,7 +489,84 @@ func (s *BiddingService) RejectBid(
 
 	return nil
 }
+func (s *BiddingService) CancelService(
+	ctx context.Context,
+	serviceID string,
+	userID string,
+) error {
 
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	lockKey := "service:locked:" + serviceID
+
+	// 🔍 fetch service
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
+		return errors.New("service not found")
+	}
+
+	// 🔐 OWNERSHIP CHECK
+	if svc.User.Hex() != userID {
+		return errors.New("not allowed to cancel this service")
+	}
+
+	// 🔒 stop bidding goroutine
+	s.rdb.Set(ctx, lockKey, "1", 30*time.Minute)
+
+	// ❌ update DB
+	_, err = s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{
+			"$set": bson.M{
+				"status":      domain.StatusCancelled,
+				"cancelledAt": time.Now(),
+				"cancelledBy": "user",
+				"updatedAt":   time.Now(),
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// 🧹 redis cleanup
+	patterns := []string{
+		"service:cooldown:" + serviceID + ":*",
+		"service:attempts:" + serviceID + ":*",
+	}
+
+	for _, p := range patterns {
+		iter := s.rdb.Scan(ctx, 0, p, 200).Iterator()
+		for iter.Next(ctx) {
+			s.rdb.Del(ctx, iter.Val())
+		}
+	}
+
+	// 🔔 notify user
+	s.socket.EmitWithRetry(
+		"user:"+serviceID,
+		"service:cancelled",
+		map[string]any{
+			"serviceId": serviceID,
+		},
+		1,
+	)
+
+	// 🚪 FORCE close rooms
+	s.socket.CloseRoom("user:" + serviceID)
+
+	if svc.Provider != primitive.NilObjectID {
+		s.socket.CloseRoom("provider:" + svc.Provider.Hex())
+	}
+
+	return nil
+}
 
 
 

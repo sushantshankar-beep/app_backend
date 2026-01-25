@@ -1,3 +1,4 @@
+
 package handlers
 
 import (
@@ -172,4 +173,30 @@ func (h *BiddingHandler) RejectBid(c *gin.Context) {
 		"status": "bid_rejected",
 	})
 }
+func (h *BiddingHandler) CancelService(c *gin.Context) {
 
+	serviceID := c.Param("id")
+
+	userID := c.GetString("userId")
+	if userID == "" {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := h.svc.CancelService(
+		c.Request.Context(),
+		serviceID,
+		userID,
+	); err != nil {
+
+		c.JSON(403, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status":    "cancelled",
+		"serviceId": serviceID,
+	})
+}

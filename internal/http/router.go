@@ -40,6 +40,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
 		user.POST("/logout", userAuth, userHandler.Logout)
 		user.DELETE("/delete", userAuth, userHandler.DeleteUser)
+		user.GET("/booking/:userID", bookingHandler.GetUserBookings)
+		user.GET("/booking/:userID/:serviceID", bookingHandler.GetUserBookingDetail)
 
 	}
 	service := r.Group("/service")
@@ -61,7 +63,6 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	r.GET("/ws", socket.HandleWebSocket(hub))
 	booking := r.Group("/booking")
 	{
-		booking.GET("/user/:userID", bookingHandler.GetUserBookings)
 		booking.GET("/details/:serviceId",userAuth,bookingHandler.GetBookingDetails)
 	}
 	invoice := r.Group("/invoice", userAuth)
@@ -114,6 +115,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 		provider.POST("/logout", providerAuth, providerHandler.Logout)
 		provider.DELETE("/delete", providerAuth, providerHandler.DeleteAccount)
+		provider.GET("/booking/:providerID", bookingHandler.GetProviderBookings)
+		provider.GET("/booking/:providerID/:serviceID", bookingHandler.GetProviderBookingDetail)
 
 	}
 	meta := r.Group("/meta")

@@ -3,6 +3,7 @@ package handlers
 import (
 	"math"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
     "strings"
@@ -90,8 +91,8 @@ func (h *ProviderHandler) Profile(c *gin.Context) {
 	})
 }
 
-func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 
+func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
 	providerID := domain.ProviderID(providerObjID.Hex())
 
@@ -121,6 +122,12 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 				req[reqKey] = vals
 			}
 		}
+
+		if urls, exists := s3.GetUploadedURLs(c, "profileUrl"); exists && len(urls) > 0 {
+			req["profileUrl"] = urls[0]
+		} else {
+			log.Println("No profileUrl found in context")
+		}
 	} else {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -128,11 +135,7 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 		}
 	}
 
-	if urls, exists := s3.GetUploadedURLs(c, "profileImage"); exists && len(urls) > 0 {
-		req["profileUrl"] = urls[0]
-	}
-
-	updated, err := h.svc.CreateOrUpdateProfile(c.Request.Context(),providerID,req)
+	updated, err := h.svc.CreateOrUpdateProfile(c.Request.Context(), providerID, req)
 	
 	if err != nil {
 		if err == domain.ErrNotFound {
@@ -148,7 +151,6 @@ func (h *ProviderHandler) CreateOrUpdateProfile(c *gin.Context) {
 		"data":    updated,
 	})
 }
-
 /* ---------------- SERVICES ---------------- */
 
 func (h *ProviderHandler) GetMyAllServices(c *gin.Context) {
@@ -265,4 +267,23 @@ func (h *ProviderHandler) Logout(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+}
+
+func (h *ProviderHandler) DeleteAccount(c *gin.Context) {
+	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
+	providerID := domain.ProviderID(providerObjID.Hex())
+
+	err := h.svc.DeleteProviderAccount(c.Request.Context(), providerID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "provider not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Provider account deleted successfully",
+	})
 }

@@ -29,3 +29,21 @@ func (h *BookingHandler) GetBookingDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+
+func (h *BookingHandler) GetUserBookings(c *gin.Context) {
+	userID := c.Param("userID")
+	status := c.Query("status")
+
+	if userID == "" || status == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userID and status are required"})
+		return
+	}
+
+	bookings, err := h.svc.GetUserBookings(c.Request.Context(), userID, status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"bookings": bookings})
+}

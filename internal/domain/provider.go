@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+type ProviderStatus string
+
+const (
+	PROVIDER_ACTIVE  ProviderStatus = "active"
+	PROVIDER_SUSPENDED ProviderStatus = "suspended"
+	PROVIDER_BLACKLIST ProviderStatus = "blacklist"
+	PROVIDER_DELETED   ProviderStatus = "delete"
+)
+
 type ProviderID string
 
 type Provider struct {
@@ -31,7 +40,7 @@ type Provider struct {
 	AgreementSubmittedAt *time.Time          `bson:"agreementSubmittedAt,omitempty" json:"agreementSubmittedAt,omitempty"`
 	AgreementPDF         string             `bson:"agreementPdf,omitempty" json:"agreementPdf,omitempty"`
 	CommissionPercentage float64            `bson:"commissionPercentage,omitempty" json:"commissionPercentage,omitempty"`
-	IsActive             string             `bson:"isActive,omitempty" json:"isActive,omitempty"`
+	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`
 	Rating               string             `bson:"rating" json:"rating"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`

@@ -64,9 +64,11 @@ func (u *Uploader) compressImage(fileBytes []byte, contentType string) ([]byte, 
 }
 
 func (u *Uploader) Upload(fieldConfigs []FieldConfig) gin.HandlerFunc {
+
 	return func(c *gin.Context) {
 		form, err := c.MultipartForm()
 		if err != nil {
+			log.Printf("MultipartForm error: %v", err)
 			c.Next()
 			return
 		}
@@ -75,12 +77,14 @@ func (u *Uploader) Upload(fieldConfigs []FieldConfig) gin.HandlerFunc {
 
 		for _, config := range fieldConfigs {
 			files := form.File[config.FormFieldName]
+			
 			if len(files) == 0 {
 				continue
 			}
 
 			var urls []string
 			for _, fileHeader := range files {
+				
 				file, err := fileHeader.Open()
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{
@@ -115,8 +119,7 @@ func (u *Uploader) Upload(fieldConfigs []FieldConfig) gin.HandlerFunc {
 				}
 
 				safeName := strings.ReplaceAll(fileHeader.Filename, " ", "_")
-
-                key := fmt.Sprintf("%s/%d_%s",u.folder,time.Now().UnixMilli(),safeName)
+				key := fmt.Sprintf("%s/%d_%s", u.folder, time.Now().UnixMilli(), safeName)
 
 				uploadInput := &s3.PutObjectInput{
 					Bucket:      aws.String(u.bucketName),
@@ -137,8 +140,7 @@ func (u *Uploader) Upload(fieldConfigs []FieldConfig) gin.HandlerFunc {
 
 				url := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", u.bucketName, key)
 				urls = append(urls, url)
-
-				fmt.Printf("Uploaded file: %s, ETag: %s\n", url, *result.ETag)
+				log.Printf("Uploaded file: %s, ETag: %s", url, *result.ETag)
 			}
 
 			if len(urls) > 0 {
@@ -160,8 +162,11 @@ func GetUploadedURL(c *gin.Context, key string) (string, bool) {
 		return "", false
 	}
 
-	url, ok := value.(string)
-	return url, ok
+	urls, ok := value.([]string)
+	if !ok || len(urls) == 0 {
+		return "", false
+	}
+	return urls[0], true
 }
 
 func GetUploadedURLs(c *gin.Context, key string) ([]string, bool) {
@@ -169,7 +174,6 @@ func GetUploadedURLs(c *gin.Context, key string) ([]string, bool) {
 	if !exists {
 		return nil, false
 	}
-
 	urls, ok := value.([]string)
 	return urls, ok
 }

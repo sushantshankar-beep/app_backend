@@ -173,8 +173,8 @@ func main() {
 	metaHandler := handlers.NewMetaHandler(metaSvc)
     imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	//middleware
-	userAuth := middleware.AuthUser(tokenSvc)
-	providerAuth := middleware.AuthProvider(tokenSvc)
+	userAuth := middleware.AuthUser(tokenSvc,userRepo)
+	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
 	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 

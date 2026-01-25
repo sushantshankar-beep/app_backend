@@ -69,9 +69,8 @@ func (s *UserService) VerifyOTP(
 	if time.Now().After(otp.ExpiresAt) {
 		return nil, domain.ErrOTPExpired
 	}
-
 	_ = s.otp.Delete(ctx, phone)
-
+	fmt.Println(code)
 	u, err := s.users.FindByPhone(ctx, phone)
 	isNew := false
 
@@ -87,6 +86,7 @@ func (s *UserService) VerifyOTP(
 			IsProfileComplete: false,
 			CreatedAt:         time.Now(),
 			UpdatedAt:         time.Now(),
+			ServiceOTP: code,
 		}
 
 		if err := s.users.Create(ctx, u); err != nil {

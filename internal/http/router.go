@@ -39,6 +39,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
 		user.POST("/logout", userAuth, userHandler.Logout)
+		user.DELETE("/delete", userAuth, userHandler.DeleteUser)
+
 	}
 	service := r.Group("/service")
 	{
@@ -59,6 +61,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	r.GET("/ws", socket.HandleWebSocket(hub))
 	booking := r.Group("/booking")
 	{
+		booking.GET("/user/:userID", bookingHandler.GetUserBookings)
 		booking.GET("/details/:serviceId",userAuth,bookingHandler.GetBookingDetails)
 	}
 	invoice := r.Group("/invoice", userAuth)
@@ -85,8 +88,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/profile", providerAuth, providerHandler.Profile)
 		provider.PUT("/profile-update", providerAuth, s3Uploader.Upload([]s3.FieldConfig{
 		    {
-			  FormFieldName: "profileImage",
-			  ContextKey:    "profileImage",
+			  FormFieldName: "profileUrl",
+			  ContextKey:    "profileUrl",
 		    },
 	    }), providerHandler.CreateOrUpdateProfile )
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
@@ -110,6 +113,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 		provider.POST("/logout", providerAuth, providerHandler.Logout)
+		provider.DELETE("/delete", providerAuth, providerHandler.DeleteAccount)
+
 	}
 	meta := r.Group("/meta")
 	{

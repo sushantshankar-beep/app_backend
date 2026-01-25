@@ -1,5 +1,5 @@
-
 package service
+
 import (
 	"context"
 	"time"
@@ -8,12 +8,13 @@ import (
 	"app_backend/internal/ports"
 	"app_backend/internal/worker"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"app_backend/internal/repository"
 	"errors"
-	"strings"
 	"fmt"
+	"strings"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ProviderService struct {
@@ -46,22 +47,29 @@ func isProviderProfileCompleted(p *domain.Provider) bool {
 }
 
 
-func assignString(dst *string, v any) {
-	if s, ok := v.(string); ok && s != "" {
-		*dst = s
+func assignString(field *string, val any) {
+	if val == nil {
+		return
+	}
+	str, ok := val.(string)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(str) != "" {
+		*field = str
 	}
 }
-func toStringSlice(src []any) []string {
-	out := make([]string, 0, len(src))
-	for _, v := range src {
-		if s, ok := v.(string); ok {
-			out = append(out, s)
+
+
+func toStringSlice(slice []any) []string {
+	result := make([]string, 0, len(slice))
+	for _, v := range slice {
+		if str, ok := v.(string); ok {
+			result = append(result, str)
 		}
 	}
-	return out
+	return result
 }
-
-
 
 /* ---------------- OTP ---------------- */
 
@@ -152,13 +160,10 @@ func (s *ProviderService) CreateOrUpdateProfile(
 		return nil, err
 	}
 
-	// 🔍 CHECK IF PROFILE IS ALREADY COMPLETED
 	wasCompleted := isProviderProfileCompleted(provider)
 
-	// ================= REQUIRED ONLY FOR FIRST TIME =================
 	if !wasCompleted {
-		required := []string{"name", "city","shopAddress"}
-
+		required := []string{"name", "city", "shopAddress"}
 		for _, field := range required {
 			v, ok := req[field]
 			if !ok {
@@ -171,7 +176,6 @@ func (s *ProviderService) CreateOrUpdateProfile(
 		}
 	}
 
-	// ================= ASSIGN STRINGS (OPTIONAL) =================
 	assignString(&provider.Name, req["name"])
 	assignString(&provider.Email, req["email"])
 	assignString(&provider.CompanyName, req["companyName"])
@@ -183,42 +187,38 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	assignString(&provider.VehicleNumber, req["vehicleNumber"])
 	assignString(&provider.Description, req["description"])
 
-	// ================= ARRAYS =================
+	if v, ok := req["vehicleType"]; ok {
+		switch t := v.(type) {
+		case []any:
+			provider.VehicleType = toStringSlice(t)
+		case []string:
+			provider.VehicleType = t
+		}
+	}
 
-   if v, ok := req["vehicleType"]; ok {
-	   switch t := v.(type) {
-	    case []any:
-		   provider.VehicleType = toStringSlice(t)
-	    case []string:
-		  provider.VehicleType = t
-    	}
-    }
+	if v, ok := req["providerServices"]; ok {
+		switch t := v.(type) {
+		case []any:
+			provider.ProviderServices = toStringSlice(t)
+		case []string:
+			provider.ProviderServices = t
+		}
+	}
 
-    if v, ok := req["providerServices"]; ok {
-	   switch t := v.(type) {
-	   case []any:
-		provider.ProviderServices = toStringSlice(t)
-	    case []string:
-		 provider.ProviderServices = t
-	    }
-    }
+	if v, ok := req["providerBrands"]; ok {
+		switch t := v.(type) {
+		case []any:
+			provider.ProviderBrands = toStringSlice(t)
+		case []string:
+			provider.ProviderBrands = t
+		}
+	}
 
-    if v, ok := req["providerBrands"]; ok {
-	  switch t := v.(type) {
-	  case []any:
-	 	provider.ProviderBrands = toStringSlice(t)
-	  case []string:
-	 	provider.ProviderBrands = t
-	  }
-    }
-
-	// ================= FINAL STATE =================
 	provider.UpdatedAt = time.Now()
 
-	// ✅ MARK ACTIVE ONLY WHEN PROFILE IS NOW COMPLETE
 	if !wasCompleted && isProviderProfileCompleted(provider) {
 		provider.FormSubmitted = 1
-		provider.IsActive = "active"
+		provider.IsActive = domain.PROVIDER_ACTIVE
 	}
 
 	if err := s.repo.Update(ctx, provider); err != nil {
@@ -227,8 +227,6 @@ func (s *ProviderService) CreateOrUpdateProfile(
 
 	return provider, nil
 }
-
-
 
 
 /* ---------------- SERVICES ---------------- */
@@ -387,4 +385,16 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 
 func (s *ProviderService) Logout(ctx context.Context, providerID domain.ProviderID, token string) error {
 	return nil
+}
+
+func (s *ProviderService) DeleteProviderAccount(ctx context.Context, id domain.ProviderID) error {
+	provider, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	provider.IsActive = domain.PROVIDER_DELETED
+	provider.UpdatedAt = time.Now()
+
+	return s.repo.Update(ctx, provider)
 }

@@ -14,6 +14,7 @@ import (
 	"log"
 	"errors"
 	// "sync"
+	"app_backend/internal/ports"
 )
 
 type BiddingService struct {
@@ -24,6 +25,8 @@ type BiddingService struct {
 	bidRepo      *repository.BidRepo
 	providerRepo *repository.ProviderRepo
 	counterRepo  *repository.CounterRepo
+	notify       ports.NotificationService
+	
 }
 
 func NewBiddingService(
@@ -34,6 +37,7 @@ func NewBiddingService(
 	bidRepo *repository.BidRepo,
 	providerRepo *repository.ProviderRepo,
 	counterRepo *repository.CounterRepo,
+	notify ports.NotificationService,
 ) *BiddingService {
 	return &BiddingService{
 		rdb:          rdb,
@@ -43,6 +47,7 @@ func NewBiddingService(
 		bidRepo: bidRepo,
 		providerRepo: providerRepo,
 		counterRepo: counterRepo,
+		notify:       notify,
 	}
 }
 var ErrServiceAlreadyAssigned = errors.New("service already assigned")
@@ -225,7 +230,15 @@ func (s *BiddingService) findProviders(
 				if s.rdb.Exists(ctx, lockKey).Val() == 1 {
 					return
 				}
-
+				go s.notify.SendToProvider(
+					context.Background(),
+					providerID,
+					"New Service Request",
+					"Nearby user needs help. Open app to bid.",
+					map[string]string{
+						"serviceId": serviceID,
+					},
+				)
 				s.socket.EmitWithRetry(
 					"provider:"+providerID,
 					"bid:request",
@@ -334,6 +347,18 @@ func (s *BiddingService) PlaceBid(
 			},
 		},
 	)
+	svc, _ := s.acceptedRepo.FindByID(ctx, serviceID)
+
+	go s.notify.SendToUser(
+		ctx,
+		svc.User.Hex(),
+		"New Bid Received",
+		"A provider placed a bid.",
+		map[string]string{
+			"serviceId": serviceID,
+		},
+	)
+
 
 	return bidOID.Hex(), nil
 }
@@ -450,6 +475,16 @@ func (s *BiddingService) AcceptBid(
 			"price":      price,
 		},
 	)
+	go s.notify.SendToProvider(
+		ctx,
+		providerID,
+		"Bid Accepted 🎉",
+		"User accepted your bid.",
+		map[string]string{
+			"serviceId": serviceID,
+		},
+	)
+
 
 	return nil
 }
@@ -486,6 +521,16 @@ func (s *BiddingService) RejectBid(
 			"providerId": providerID,
 		},
 	)
+	go s.notify.SendToProvider(
+		ctx,
+		providerID,
+		"Bid Rejected",
+		"User rejected your bid.",
+		map[string]string{
+			"serviceId": serviceID,
+		},
+	)
+
 
 	return nil
 }

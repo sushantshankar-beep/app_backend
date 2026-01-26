@@ -63,6 +63,8 @@ type ProviderLocation struct {
 type ServiceTimestamps struct {
     StartedAt   *time.Time `bson:"startedAt,omitempty"`
     CompletedAt *time.Time `bson:"completedAt,omitempty"`
+	CancelledAt *time.Time 	`bson:"cancelledAt,omitempty"`
+	ReachedAt   *time.Time  `bson:"reachedAt,omitempty"`
 }
 
 type OTPInfo struct {

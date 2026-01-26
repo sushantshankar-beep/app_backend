@@ -23,22 +23,63 @@ func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo,
 	}
 }
 
-func (s *ComplaintService) RaiseComplaint(ctx context.Context, req map[string]any, raisedBy string, userID string) (*domain.Complaint, error) {
+func (s *ComplaintService) RaiseComplaint(
+	ctx context.Context,
+	req map[string]any,
+	raisedBy string,
+	authenticatedID string,
+) (*domain.Complaint, error) {
 
-	providerID, _ := primitive.ObjectIDFromHex(req["providerId"].(string))
-	acceptedService, _ := primitive.ObjectIDFromHex(req["acceptedService"].(string))
+	acceptedServiceID, _ := primitive.ObjectIDFromHex(req["acceptedService"].(string))
 
-	uid, _ := primitive.ObjectIDFromHex(userID)
+	photos := []string{}
+	if raw, ok := req["photos"].([]any); ok {
+		for _, p := range raw {
+			if s, ok := p.(string); ok {
+				photos = append(photos, s)
+			}
+		}
+	}
+
+	problem := req["problem"].(string)
+
+	var uid, providerID primitive.ObjectID
+
+	if raisedBy == "user" {
+		uid, _ = primitive.ObjectIDFromHex(authenticatedID)
+		providerID, _ = primitive.ObjectIDFromHex(req["providerId"].(string))
+	} else {
+		providerID, _ = primitive.ObjectIDFromHex(authenticatedID)
+		uid, _ = primitive.ObjectIDFromHex(req["userId"].(string))
+	}
+
+	existing, _ := s.repo.FindByAcceptedServiceId(ctx, acceptedServiceID)
+
+	if existing != nil {
+		if raisedBy == "user" {
+			existing.UserComplaint = &domain.ComplaintSide{
+				Problem:  problem,
+				Photos:   photos,
+				RaisedAt: time.Now(),
+			}
+		} else {
+			existing.ProviderComplaint = &domain.ComplaintSide{
+				Problem:  problem,
+				Photos:   photos,
+				RaisedAt: time.Now(),
+			}
+		}
+
+		existing.UpdatedAt = time.Now()
+		_ = s.repo.Update(ctx, existing)
+		return existing, nil
+	}
 
 	complaint := &domain.Complaint{
 		ID:                primitive.NewObjectID(),
-		AcceptedService:   acceptedService,
-		AcceptedServiceId: req["acceptedServiceId"].(int64),
+		AcceptedService:   acceptedServiceID,
 		ProviderID:        providerID,
 		UserID:            uid,
-		RaisedBy:          raisedBy,
-		Problem:           req["problem"].(string),
-		Photos:            req["photos"].([]string),
 		Status:            "initiated",
 		Timeline: map[string]time.Time{
 			"initiated": time.Now(),
@@ -46,11 +87,24 @@ func (s *ComplaintService) RaiseComplaint(ctx context.Context, req map[string]an
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+
+	if raisedBy == "user" {
+		complaint.UserComplaint = &domain.ComplaintSide{
+			Problem:  problem,
+			Photos:   photos,
+			RaisedAt: time.Now(),
+		}
+	} else {
+		complaint.ProviderComplaint = &domain.ComplaintSide{
+			Problem:  problem,
+			Photos:   photos,
+			RaisedAt: time.Now(),
+		}
+	}
+
 	if err := s.repo.Create(ctx, complaint); err != nil {
 		return nil, err
 	}
-	_ = s.userRepo.AddComplaint(ctx, uid, complaint.ID)
-	_ = s.providerRepo.AddComplaint(ctx, providerID, complaint.ID)
 
 	return complaint, nil
 }

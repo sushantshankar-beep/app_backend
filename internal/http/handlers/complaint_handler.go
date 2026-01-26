@@ -16,21 +16,44 @@ func NewComplaintHandler(s *service.ComplaintService) *ComplaintHandler {
 }
 
 func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
-	userID := c.GetString(middleware.ContextKeyUserID)
+
 	var req map[string]any
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	raisedBy := req["raisedBy"].(string)
 
-	complaint, err := h.svc.RaiseComplaint(c, req, raisedBy, userID)
+	raisedBy, ok := req["raisedBy"].(string)
+	if !ok || (raisedBy != "user" && raisedBy != "provider") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "raisedBy must be user or provider"})
+		return
+	}
+
+	var authenticatedID string
+	if raisedBy == "user" {
+		authenticatedID = c.GetString(middleware.ContextKeyUserID)
+	} else {
+		authenticatedID = c.GetString(middleware.ContextKeyProviderID)
+	}
+
+	if authenticatedID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	complaint, err := h.svc.RaiseComplaint(
+		c.Request.Context(),
+		req,
+		raisedBy,
+		authenticatedID,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Complaint raised successfully",
+		"message": "Complaint saved successfully",
 		"data":    complaint,
 	})
 }

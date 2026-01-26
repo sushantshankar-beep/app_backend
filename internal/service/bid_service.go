@@ -348,7 +348,7 @@ func (s *BiddingService) PlaceBid(
 		},
 	)
 	svc, _ := s.acceptedRepo.FindByID(ctx, serviceID)
-
+	log.Println("this is user id before sending notify",svc.User.Hex())
 	go s.notify.SendToUser(
 		ctx,
 		svc.User.Hex(),
@@ -475,6 +475,7 @@ func (s *BiddingService) AcceptBid(
 			"price":      price,
 		},
 	)
+	log.Println("this is provider id before placing bid",providerID)
 	go s.notify.SendToProvider(
 		ctx,
 		providerID,

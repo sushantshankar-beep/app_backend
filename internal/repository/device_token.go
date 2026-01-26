@@ -66,24 +66,27 @@ func (r *DeviceTokenRepo) GetTokens(
 	ownerID string,
 ) ([]string, error) {
 
-	cur, err := r.col.Find(ctx, bson.M{"ownerId": ownerID})
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	cur, err := r.col.Find(ctx2, bson.M{"ownerId": ownerID})
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx2)
 
 	var tokens []string
 
-	for cur.Next(ctx) {
+	for cur.Next(ctx2) {
 		var dt DeviceToken
 		if err := cur.Decode(&dt); err == nil {
 			tokens = append(tokens, dt.Token)
 		}
 	}
 
-	return tokens, nil
-}
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
 
-func ptr[T any](v T) *T {
-	return &v
+	return tokens, nil
 }

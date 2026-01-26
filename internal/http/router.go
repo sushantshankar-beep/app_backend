@@ -66,6 +66,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		bid.POST("/reject", biddingHandler.RejectBid)
 		bid.POST("/cancel/:id",biddingHandler.CancelService)
 	}
+
 	// === Websocket handling ===
 
 	r.GET("/ws", socket.HandleWebSocket(hub))
@@ -87,6 +88,11 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 			{FormFieldName: "pan", ContextKey: "pan"},
 		}), kycHandler.CreateOrUpdateKYC)
 		kyc.GET("", kycHandler.GetKYC)
+	}
+	providerBid := r.Group("/provider/bid", providerAuth)
+	{
+		// provider cancels after accepting
+		providerBid.POST("/cancel/:id", biddingHandler.ProviderCancelService)
 	}
 	providerDevice := r.Group("/provider/devices", providerAuth)
 	{

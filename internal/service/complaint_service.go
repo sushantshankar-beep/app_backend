@@ -13,13 +13,15 @@ type ComplaintService struct {
 	repo         *repository.ComplaintRepo
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
+	acceptedSvcRepo *repository.AcceptedServiceRepo
 }
 
-func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo) *ComplaintService {
+func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo,acceptedSvcRepo *repository.AcceptedServiceRepo) *ComplaintService {
 	return &ComplaintService{
 		repo:         repo,
 		userRepo:     u,
 		providerRepo: p,
+		acceptedSvcRepo: acceptedSvcRepo,
 	}
 }
 
@@ -62,12 +64,24 @@ func (s *ComplaintService) RaiseComplaint(
 				Photos:   photos,
 				RaisedAt: time.Now(),
 			}
+
+			_ = s.acceptedSvcRepo.UpdateComplaintByUser(
+				ctx,
+				acceptedServiceID,
+				existing.ID,
+			)
 		} else {
 			existing.ProviderComplaint = &domain.ComplaintSide{
 				Problem:  problem,
 				Photos:   photos,
 				RaisedAt: time.Now(),
 			}
+
+			_ = s.acceptedSvcRepo.UpdateComplaintByProvider(
+				ctx,
+				acceptedServiceID,
+				existing.ID,
+			)
 		}
 
 		existing.UpdatedAt = time.Now()
@@ -104,6 +118,20 @@ func (s *ComplaintService) RaiseComplaint(
 
 	if err := s.repo.Create(ctx, complaint); err != nil {
 		return nil, err
+	}
+
+	if raisedBy == "user" {
+		_ = s.acceptedSvcRepo.UpdateComplaintByUser(
+			ctx,
+			acceptedServiceID,
+			complaint.ID,
+		)
+	} else {
+		_ = s.acceptedSvcRepo.UpdateComplaintByProvider(
+			ctx,
+			acceptedServiceID,
+			complaint.ID,
+		)
 	}
 
 	return complaint, nil

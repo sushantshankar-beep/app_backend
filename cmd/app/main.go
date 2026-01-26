@@ -153,7 +153,7 @@ func main() {
 	)
 	invoiceSvc := service.NewInvoiceService(invoiceRepo)
 	locationSvc := service.NewLocationService(locationRepo)
-	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo)
+	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)

@@ -612,6 +612,183 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
+func (s *BiddingService) ProviderCancelService(
+	ctx context.Context,
+	serviceID string,
+	providerID string,
+	reason string,
+) error {
+
+	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+
+	// fetch service
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
+		return errors.New("service not found")
+	}
+
+	// only assigned provider can cancel
+	if svc.Provider.Hex() != providerID {
+		return errors.New("not assigned provider")
+	}
+
+	fixedPrice := svc.FinalPrice
+
+	// 🔓 unlock service
+	lockKey := "service:locked:" + serviceID
+	s.rdb.Del(ctx, lockKey)
+
+	// 🧹 clear busy provider
+	s.rdb.Del(ctx, "provider:busy:"+providerID)
+
+	// 🗑️ put provider back to geo (optional)
+	pos, _ := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
+	if len(pos) == 0 || pos[0] == nil {
+		if svc.ProviderLocation != nil {
+			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+				Name:      providerID,
+				Longitude: svc.ProviderLocation.Long,
+				Latitude:  svc.ProviderLocation.Lat,
+			})
+		}
+	}
+
+	// 🔄 reset service state
+	_, err := s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{
+			"$set": bson.M{
+				"status":        domain.StatusSearching,
+				"provider":      primitive.NilObjectID,
+				"acceptedBid":   primitive.NilObjectID,
+				"fixedPrice":    fixedPrice,
+				"updatedAt":     time.Now(),
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// 🔔 USER
+	s.socket.Emit(
+		"user:"+serviceID,
+		"provider:cancelled",
+		map[string]any{
+			"serviceId": serviceID,
+			"price":     fixedPrice,
+		},
+	)
+
+	go s.notify.SendToUser(
+		ctx,
+		svc.User.Hex(),
+		"Provider cancelled",
+		"Searching new provider at same price.",
+		map[string]string{
+			"serviceId": serviceID,
+		},
+	)
+
+	// 🚀 restart bidding with fixed price
+	go s.findProvidersFixedPrice(
+		serviceID,
+		svc.UserLocation.Lat,
+		svc.UserLocation.Long,
+		svc.Issues,
+		svc.VehicleType,
+		svc.VehicleNumber,
+		svc.Brand,
+		svc.ModelYear,
+		svc.FuelType,
+		svc.ServiceType,
+		svc.Model,
+		fixedPrice,
+	)
+
+	return nil
+}
+func (s *BiddingService) findProvidersFixedPrice(
+	serviceID string,
+	lat, lng float64,
+	issues []string,
+	vehicleType string,
+	vehicleNumber string,
+	brand string,
+	modelYear int,
+	fuelType string,
+	serviceType string,
+	model string,
+	fixedPrice float64,
+) {
+
+	ctx := context.Background()
+
+	lockKey := "service:locked:" + serviceID
+
+	radiusSteps := []float64{5, 10, 20, 50}
+
+	for _, radius := range radiusSteps {
+
+		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			return
+		}
+
+		providers, err := s.rdb.GeoRadius(
+		    ctx,
+		    "providers:geo",
+		    lng,
+		    lat,
+		    &redis.GeoRadiusQuery{
+		        Radius: radius,
+		        Unit:   "km",
+		        Count:  50,
+		    },
+		).Result()
+
+		if err != nil || len(providers) == 0 {
+		    continue
+		}
+
+
+		for _, p := range providers {
+
+			pid := p.Name
+
+			s.socket.Emit(
+				"provider:"+pid,
+				"bid:request:fixed",
+				map[string]any{
+					"serviceId": serviceID,
+					"fixedPrice": fixedPrice,
+					"vehicle": map[string]any{
+						"type":   vehicleType,
+						"number": vehicleNumber,
+						"brand":  brand,
+						"year":   modelYear,
+						"fuel":   fuelType,
+						"model":  model,
+					},
+					"issues": issues,
+				},
+			)
+
+			go s.notify.SendToProvider(
+				ctx,
+				pid,
+				"Service available",
+				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
+				map[string]string{
+					"serviceId": serviceID,
+				},
+			)
+		}
+	}
+}
+
 
 
 

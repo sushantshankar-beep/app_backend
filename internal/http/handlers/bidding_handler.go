@@ -200,3 +200,37 @@ func (h *BiddingHandler) CancelService(c *gin.Context) {
 		"serviceId": serviceID,
 	})
 }
+type ProviderCancelReq struct {
+	Reason string `json:"reason"`
+}
+
+func (h *BiddingHandler) ProviderCancelService(c *gin.Context) {
+
+	serviceID := c.Param("id")
+
+	providerID := c.GetString("providerId")
+	if providerID == "" {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req ProviderCancelReq
+	_ = c.BindJSON(&req) // optional body
+
+	if err := h.svc.ProviderCancelService(
+		c.Request.Context(),
+		serviceID,
+		providerID,
+		req.Reason,
+	); err != nil {
+
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status":  "cancelled",
+		"message": "service reopened with fixed price",
+	})
+}
+

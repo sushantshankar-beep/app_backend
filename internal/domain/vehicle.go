@@ -12,7 +12,7 @@ type Vehicle struct {
 	VehicleType   string             `bson:"vehicleType" json:"vehicleType"`
 	Brand         string             `bson:"brand" json:"brand"`
 	Model         string             `bson:"model" json:"model"`
-	Source        string             `bson:"source" json:"source"` // manual | api
+	ModelYear    string          	 `bson:"modelYear" json:"modelYear"`
 	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
@@ -25,6 +25,7 @@ type UserVehicle struct {
 	VehicleType   string             `bson:"vehicleType" json:"vehicleType"`
 	Brand         string             `bson:"brand" json:"brand"`
 	Model         string             `bson:"model" json:"model"`
+	ModelYear    string          	 `bson:"modelYear" json:"modelYear"`
 
 	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`

@@ -10,4 +10,12 @@ type NotificationService interface {
 		body string,
 		data map[string]string,
 	) error
+
+	SendToUser(
+		ctx context.Context,
+		userID string,
+		title string,
+		body string,
+		data map[string]string,
+	) error
 }

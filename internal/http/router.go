@@ -10,8 +10,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler) *gin.Engine {
-
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler) *gin.Engine {
 	r := gin.Default()
 
 	// === Payment Routes ===
@@ -44,6 +43,12 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/booking/:userID/:serviceID", bookingHandler.GetUserBookingDetail)
 
 	}
+	device := r.Group("/devices", userAuth)
+	{
+		device.POST("/register", deviceHandler.Register)
+	}
+
+
 	service := r.Group("/service")
 	{
 		service.POST("/validate-problems",userAuth,amcValidationHandler.ValidateProblems)
@@ -80,6 +85,11 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		}), kycHandler.CreateOrUpdateKYC)
 		kyc.GET("", kycHandler.GetKYC)
 	}
+	providerDevice := r.Group("/provider/devices", providerAuth)
+	{
+		providerDevice.POST("/register", deviceHandler.Register)
+	}
+
 
 	// === Provider Routes ===
 	provider := r.Group("/provider")

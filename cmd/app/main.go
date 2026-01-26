@@ -68,6 +68,11 @@ func main() {
 	//socket
 	hub := socket.NewHub()
 	emitter := socket.NewEmitter(hub)
+	firebaseClient, err := service.InitFirebaseClient()
+	if err != nil {
+		log.Fatal("firebase init:", err)
+	}
+
 
 	//repository
 	paymentRepo := repository.NewPaymentRepository(db)
@@ -90,9 +95,15 @@ func main() {
 	serviceMasterRepo := repository.NewServiceMasterRepo(db)
 	carBrandModelRepo := repository.NewCarBrandModelRepo(db)
 	bikeBrandModelRepo := repository.NewBikeBrandModelRepo(db)
+	deviceTokenRepo := repository.NewDeviceTokenRepo(db)
+
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
-	notificationSvc := service.NewFirebaseNotificationService()
+	notificationSvc := service.NewFirebaseNotificationService(
+		firebaseClient,
+		deviceTokenRepo,
+	)
+
 	kycService := service.NewKYCService(kycRepo,providerRepo)
 	userVehicleService := service.NewUserVehicleService(
 		carBrandModelRepo,
@@ -150,8 +161,8 @@ func main() {
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 
 	// Bidding service
-	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo)
-	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter)
+	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo,notificationSvc)
+	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc)
 	imageUploadS3 := service.NewImageUploadS3Service()
 	//HANDLERS
 	userHandler := handlers.NewUserHandler(userSvc)
@@ -172,10 +183,12 @@ func main() {
 	providerStatusHandler := handlers.NewProviderStatusHandler(rdb)
 	metaHandler := handlers.NewMetaHandler(metaSvc)
     imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
+	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)
+
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

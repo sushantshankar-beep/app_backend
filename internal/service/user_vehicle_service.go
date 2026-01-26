@@ -65,7 +65,7 @@ func (s *UserVehicleService) SaveVehicleForUser(ctx context.Context, userID prim
 			VehicleType:   req["vehicleType"],
 			Brand:         req["brand"],
 			Model:         req["model"],
-			Source:        "manual",
+			ModelYear:        req["modelYear"],
 			CreatedAt:     time.Now(),
 		}
 

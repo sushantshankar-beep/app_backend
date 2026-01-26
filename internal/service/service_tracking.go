@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"math"
+	"app_backend/internal/ports"
 )
 
 type ServiceTrackingService struct {
@@ -20,6 +21,7 @@ type ServiceTrackingService struct {
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
 	socket       *socket.Emitter
+	notify        ports.NotificationService
 }
 
 func NewServiceTrackingService(
@@ -27,12 +29,14 @@ func NewServiceTrackingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	socket *socket.Emitter,
+	notify ports.NotificationService,  
 ) *ServiceTrackingService {
 	return &ServiceTrackingService{
 		acceptedRepo: acceptedRepo,
 		userRepo:     userRepo,
 		providerRepo: providerRepo,
 		socket:       socket,
+		notify:    notify,
 	}
 }
 
@@ -267,7 +271,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
 		return nil, err
 	}
-
+	gst := "18%"
 	// 👇 Fetch user
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	userLat := svc.UserLocation.Lat
@@ -280,6 +284,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		"serviceId":    svc.ServiceNumber,
 		"oldStatus":    prevStatus,
 		"newStatus":    newStatus,
+		"date": svc.CreatedAt.Format("2006-01-02"),
 		"user": map[string]any{
 			"id":    svc.User.Hex(),
 			"name":  user.Name,
@@ -288,6 +293,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"lon" : userLong,
 		},
 		"finalAmount": svc.FinalPrice,
+		"gst"    : gst,
 		"issues" : svc.Issues,
 		"vehicle": map[string]any{
 			"fuelType":      svc.FuelType,
@@ -316,7 +322,40 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	s.socket.EmitWithRetry(userRoom, "service:status_update", payloadSocket, 1)
 	s.socket.EmitWithRetry(providerRoom, "service:status_update", payloadSocket, 1)
+	switch newStatus {
 
+	case domain.StatusStarted:
+		go s.notify.SendToUser(ctx,
+			svc.User.Hex(),
+			"Provider Started",
+			"Provider is on the way 🚗",
+			map[string]string{"serviceId": svc.ID.Hex()},
+		)
+
+	case domain.StatusReachedLocation:
+		go s.notify.SendToUser(ctx,
+			svc.User.Hex(),
+			"Provider Arrived",
+			"Provider reached your location",
+			map[string]string{"serviceId": svc.ID.Hex()},
+		)
+
+	case domain.StatusCompleted:
+
+		go s.notify.SendToUser(ctx,
+			svc.User.Hex(),
+			"Service Completed",
+			"Your booking is complete.",
+			map[string]string{"serviceId": svc.ID.Hex()},
+		)
+
+		go s.notify.SendToProvider(ctx,
+			svc.Provider.Hex(),
+			"Job Completed",
+			"Booking closed successfully",
+			map[string]string{"serviceId": svc.ID.Hex()},
+		)
+	}
 	return payload, nil
 }
 

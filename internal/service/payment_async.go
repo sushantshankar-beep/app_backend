@@ -88,6 +88,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"brand":  svc.Brand,
 			"fuel":   svc.FuelType,
 			"year":   svc.ModelYear,
+			"model": svc.Model,
 		},
 
 		"issues": svc.Issues,

@@ -19,7 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"app_backend/internal/events"
-	// "go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"math"
 // 	"go.mongodb.org/mongo-driver/bson/primitive"
  )
@@ -190,6 +190,16 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	if err != nil {
 		return errors.New("transaction not found")
 	}
+	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
+	if err != nil {
+		return err
+	}
+
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
+	if err != nil {
+		return err
+	}
+
 	if txn.Status == "paid" && data["status"] == "success" {
 		return nil
 	}
@@ -219,6 +229,28 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	if data["status"] == "success" {
 		status = "paid"
 		go s.afterPaymentSuccess(txn.TxnID)
+		go s.notify.SendToUser(
+			context.Background(),
+			svc.User.Hex(),
+			"Payment Successful",
+			"Your payment was successful. Tracking started.",
+			map[string]string{
+				"serviceId": svc.ID.Hex(),
+			},
+		)
+
+		if svc.Provider != primitive.NilObjectID {
+			go s.notify.SendToProvider(
+				context.Background(),
+				svc.Provider.Hex(),
+				"Payment Completed",
+				"User completed payment. Start the job.",
+				map[string]string{
+					"serviceId": svc.ID.Hex(),
+				},
+			)
+		}
+
 	} else {
 		reason := classifyPayUFailure(data)
 		_ = s.repo.UpdateTxn(ctx, txn.TxnID, bson.M{
@@ -226,6 +258,28 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		"failReason": reason,
 	})
 		go s.afterPaymentFailed(txn.TxnID)
+		go s.notify.SendToUser(
+			context.Background(),
+			svc.User.Hex(),
+			"Payment Failed",
+			"Payment failed. Please retry.",
+			map[string]string{
+				"serviceId": svc.ID.Hex(),
+			},
+		)
+
+		if svc.Provider != primitive.NilObjectID {
+			go s.notify.SendToProvider(
+				context.Background(),
+				svc.Provider.Hex(),
+				"Payment Failed",
+				"User payment failed.",
+				map[string]string{
+					"serviceId": svc.ID.Hex(),
+				},
+			)
+		}
+
 	}
 	s.redis.Del(ctx, "payment:reserve:"+txn.ServiceID)
 

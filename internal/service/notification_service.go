@@ -66,6 +66,10 @@ func (f *FirebaseNotificationService) SendToProvider(
 ) error {
 
 	tokens, err := f.tokenRepo.GetTokens(ctx, providerID)
+	if err != nil {
+	log.Printf("❌ FCM send error user=%s err=%v", userID, err)
+	return err
+}
 	if err != nil || len(tokens) == 0 {
 		return nil
 	}
@@ -102,6 +106,7 @@ func (f *FirebaseNotificationService) SendToUser(
 ) error {
 
 	tokens, err := f.tokenRepo.GetTokens(ctx, userID)
+	log.Printf("FCM user=%s tokens=%v err=%v", userID, tokens, err)
 	if err != nil || len(tokens) == 0 {
 		return nil
 	}
@@ -115,6 +120,16 @@ func (f *FirebaseNotificationService) SendToUser(
 		Data: data,
 	}
 
-	_, err = f.fcm.SendMulticast(ctx, msg)
+	resp, err := f.fcm.SendMulticast(ctx, msg)
+	if err != nil {
+		log.Printf("❌ FCM send error user=%s err=%v", userID, err)
+		return err
+	}
+	log.Printf("📲 FCM user=%s success=%d fail=%d",
+		userID,
+		resp.SuccessCount,
+		resp.FailureCount,
+	)
+	
 	return err
 }

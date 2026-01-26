@@ -292,3 +292,41 @@ func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context
 
 	return bookings, nil
 }
+
+func (r *AcceptedServiceRepo) UpdateComplaintByUser(
+	ctx context.Context,
+	acceptedServiceId primitive.ObjectID,
+	complaintId primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": acceptedServiceId},
+		bson.M{
+			"$set": bson.M{
+				"complaintUser": complaintId,
+				"updatedAt":     time.Now(),
+			},
+		},
+	)
+	return err
+}
+
+func (r *AcceptedServiceRepo) UpdateComplaintByProvider(
+	ctx context.Context,
+	acceptedServiceId primitive.ObjectID,
+	complaintId primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": acceptedServiceId},
+		bson.M{
+			"$set": bson.M{
+				"complaintProvider": complaintId,
+				"updatedAt":         time.Now(),
+			},
+		},
+	)
+	return err
+}

@@ -62,6 +62,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		bid.POST("/find", biddingHandler.FindMechanics)
 		bid.POST("/accept", biddingHandler.AcceptBid)
 		bid.POST("/reject", biddingHandler.RejectBid)
+		bid.POST("/cancel/:id",biddingHandler.CancelService)
 	}
 	// === Websocket handling ===
 

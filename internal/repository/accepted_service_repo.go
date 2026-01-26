@@ -330,3 +330,28 @@ func (r *AcceptedServiceRepo) UpdateComplaintByProvider(
 	)
 	return err
 }
+
+func (r *AcceptedServiceRepo) GetCompletedServicesByUser(ctx context.Context, userID string) ([]domain.AcceptedService, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := bson.M{
+		"user":   userObjID,
+		"status": domain.StatusCompleted,
+	}
+
+	cursor, err := r.col.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var services []domain.AcceptedService
+	if err := cursor.All(ctx, &services); err != nil {
+		return nil, err
+	}
+
+	return services, nil
+}

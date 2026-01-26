@@ -70,3 +70,19 @@ func (r *PaymentRepository) SaveWebhook(ctx context.Context, txnid string, paylo
 		"createdAt": time.Now(),
 	})
 }
+
+func (r *PaymentRepository) GetTransactionByServiceID(ctx context.Context, serviceID string) (*domain.PaymentTransaction, error) {
+	var transaction domain.PaymentTransaction
+	
+	filter := bson.M{"serviceId": serviceID}
+	
+	err := r.txnCol.FindOne(ctx, filter).Decode(&transaction)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("transaction not found for serviceID: %s", serviceID)
+		}
+		return nil, err
+	}
+	
+	return &transaction, nil
+}

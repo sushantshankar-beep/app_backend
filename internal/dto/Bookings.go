@@ -17,6 +17,7 @@ type UserBookingDTO struct {
 	VehicleType   string             `json:"vehicleType"`
 	Ratings       string             `json:ratings`
 	CreatedAt     time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time            `json:"updatedAt"`
 }
 
 type UserBookingDetailDTO struct {
@@ -36,6 +37,7 @@ type UserBookingDetailDTO struct {
 	UserName         string             `json:"userName"`
 	ProviderName     string             `json:"providerName"`
 	CreatedAt        time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time            `json:"updatedAt"`
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
@@ -68,6 +70,7 @@ type ProviderBookingDTO struct {
 	UserName      string             `json:"userName"`
 	Ratings       string             `json:ratings`
 	CreatedAt     time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time            `json:"updatedAt"`
 }
 
 type ProviderBookingDetailDTO struct {
@@ -87,6 +90,7 @@ type ProviderBookingDetailDTO struct {
 	ProviderName     string             `json:"providerName"`
 	UserName         string             `json:"userName"`
 	CreatedAt        time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time            `json:"updatedAt"`
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`

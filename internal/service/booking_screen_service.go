@@ -172,6 +172,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
 			Issues:        r.Issues,
+			UpdatedAt: r.UpdatedAt,
 		})
 	}
 
@@ -269,6 +270,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			Long: r.ProviderLocation.Long,
 		},
 		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}, nil
 
 }
@@ -324,6 +326,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			Issues:        r.Issues,
 			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
 		})
 	}
 
@@ -411,6 +414,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 			Long: r.ProviderLocation.Long,
 		},
 		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}, nil
 
 }

@@ -22,6 +22,7 @@ type BookingService struct {
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
 	catalogRepo  *repository.ServiceCatalogRepo
+	transactionRepo *repository.PaymentRepository
 }
 
 func NewBookingService(
@@ -29,12 +30,14 @@ func NewBookingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	catalogRepo *repository.ServiceCatalogRepo,
+	transactionRepo *repository.PaymentRepository,
 ) *BookingService {
 	return &BookingService{
 		acceptedRepo: acceptedRepo,
 		userRepo:     userRepo,
 		providerRepo: providerRepo,
 		catalogRepo:  catalogRepo,
+		transactionRepo: transactionRepo,
 	}
 }
 
@@ -417,4 +420,58 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		UpdatedAt: r.UpdatedAt,
 	}, nil
 
+}
+
+func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]dto.UserExpenseDTO, float64, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	_, err = s.userRepo.GetByID(ctx, userObjID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	services, err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]dto.UserExpenseDTO, 0, len(services))
+	var totalExpense float64
+
+	for _, service := range services {
+		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, service.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+		if transaction.Status != string(domain.PaymentPaid) {
+			continue
+		}
+
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(service.Provider.Hex()))
+		if err != nil {
+			return nil, 0, err
+		}
+
+		expense := dto.UserExpenseDTO{
+			ServiceID:     service.ID.Hex(),
+			ServiceNumber: service.ServiceNumber,
+			ServiceType:   service.ServiceType,
+			ProviderName:  provider.Name,
+			Amount:        transaction.Amount,
+			PaymentMethod: transaction.Method,
+			CreatedAt:     service.CreatedAt,
+			VehicleType:   service.VehicleType,
+			VehicleNumber: service.VehicleNumber,
+			Issues: service.Issues,
+		}
+
+		result = append(result, expense)
+		totalExpense += transaction.Amount
+	}
+
+	return result, totalExpense, nil
 }

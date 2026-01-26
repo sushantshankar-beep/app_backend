@@ -10,7 +10,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler) *gin.Engine {
 	r := gin.Default()
 
 	// === Payment Routes ===
@@ -41,6 +41,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.DELETE("/delete", userAuth, userHandler.DeleteUser)
 		user.GET("/booking/:userID", bookingHandler.GetUserBookings)
 		user.GET("/booking/:userID/:serviceID", bookingHandler.GetUserBookingDetail)
+		user.POST("/rating/:userID", ratingHandler.CreateProviderRating)
+		user.GET("/ratings/:userID", ratingHandler.GetUserRatings)
 
 	}
 	device := r.Group("/devices", userAuth)
@@ -128,6 +130,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.DELETE("/delete", providerAuth, providerHandler.DeleteAccount)
 		provider.GET("/booking/:providerID", bookingHandler.GetProviderBookings)
 		provider.GET("/booking/:providerID/:serviceID", bookingHandler.GetProviderBookingDetail)
+		provider.POST("/rating/:providerID", ratingHandler.CreateUserRating)
+		provider.GET("/ratings/:providerID", ratingHandler.GetProviderRatings)
 
 	}
 	meta := r.Group("/meta")

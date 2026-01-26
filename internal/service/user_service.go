@@ -190,6 +190,8 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 
 	update := bson.M{
 		"isActive":  domain.USER_DELETED,
+		"isNew": true,
+		"isProfileComplete": false,
 		"updatedAt": time.Now(),
 	}
 

@@ -154,11 +154,13 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 	for _, r := range raw {
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
+			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
 			Name:          user.Name,
 			VehicleType:   r.VehicleType,
+			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
 			Issues: r.Issues,
 		})
@@ -219,6 +221,8 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 	totalPayable := serviceCharge + gstAmount
 
 	return &dto.UserBookingDetailDTO{
+		ID: r.ID,
+		UserID: string(user.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
@@ -274,6 +278,7 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 	for _, r := range raw {
 		result = append(result, dto.ProviderBookingDTO{
 			ID:            r.ID,
+			ProviderID:     string(provider.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
@@ -284,6 +289,7 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
+			Ratings: "",
 			CreatedAt:     r.CreatedAt,
 		})
 	}
@@ -333,6 +339,8 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 	providerPayout := serviceCharge - commissionAmount - gstOnCommission
 
 	return &dto.ProviderBookingDetailDTO{
+		ID:r.ID,
+		ProviderID: string(provider.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,

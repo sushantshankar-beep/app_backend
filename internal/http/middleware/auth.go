@@ -76,7 +76,7 @@ func AuthUser(tokenSvc ports.TokenService,userRepo ports.UserRepository) gin.Han
 		if user.IsActive == domain.USER_DELETED {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"message": "Account is inactive",
+				"message": "Account is deleted",
 			})
 			return
 		}

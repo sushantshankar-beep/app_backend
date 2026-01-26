@@ -160,6 +160,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			Name:          user.Name,
 			VehicleType:   r.VehicleType,
 			CreatedAt:     r.CreatedAt,
+			Issues: r.Issues,
 		})
 	}
 

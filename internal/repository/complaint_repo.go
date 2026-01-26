@@ -22,6 +22,20 @@ func (r *ComplaintRepo) Create(ctx context.Context, c *domain.Complaint) error {
 	return err
 }
 
+func (r *ComplaintRepo) Update(ctx context.Context, c *domain.Complaint) error {
+	_, err := r.col.ReplaceOne(ctx, bson.M{"_id": c.ID}, c)
+	return err
+}
+
+func (r *ComplaintRepo) FindByAcceptedServiceId(ctx context.Context, acceptedServiceId primitive.ObjectID) (*domain.Complaint, error) {
+	var complaint domain.Complaint
+	err := r.col.FindOne(ctx, bson.M{"acceptedService": acceptedServiceId}).Decode(&complaint)
+	if err != nil {
+		return nil, err
+	}
+	return &complaint, nil
+}
+
 func (r *ComplaintRepo) FindByUser(ctx context.Context, userID primitive.ObjectID) ([]domain.Complaint, error) {
 	cur, err := r.col.Find(ctx, bson.M{"userId": userID})
 	if err != nil {
@@ -47,3 +61,4 @@ func (r *ComplaintRepo) FindByProvider(ctx context.Context, providerID primitive
 	}
 	return list, nil
 }
+

@@ -96,6 +96,7 @@ func main() {
 	carBrandModelRepo := repository.NewCarBrandModelRepo(db)
 	bikeBrandModelRepo := repository.NewBikeBrandModelRepo(db)
 	deviceTokenRepo := repository.NewDeviceTokenRepo(db)
+	ratingRepo := repository.NewRatingRepository(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -160,10 +161,12 @@ func main() {
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 
+
 	// Bidding service
 	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo,notificationSvc)
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc)
 	imageUploadS3 := service.NewImageUploadS3Service()
+	ratingService := service.NewRatingService(ratingRepo,userRepo,providerRepo,acceptedServiceRepo)
 	//HANDLERS
 	userHandler := handlers.NewUserHandler(userSvc)
 	userVehicleHandler := handlers.NewUserVehicleHandler(userVehicleService)
@@ -184,11 +187,12 @@ func main() {
 	metaHandler := handlers.NewMetaHandler(metaSvc)
     imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)
+	ratingHandler := handlers.NewRatingHandler(ratingService)
 
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

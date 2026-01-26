@@ -22,6 +22,7 @@ type BookingService struct {
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
 	catalogRepo  *repository.ServiceCatalogRepo
+	transactionRepo *repository.PaymentRepository
 }
 
 func NewBookingService(
@@ -29,12 +30,14 @@ func NewBookingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	catalogRepo *repository.ServiceCatalogRepo,
+	transactionRepo *repository.PaymentRepository,
 ) *BookingService {
 	return &BookingService{
 		acceptedRepo: acceptedRepo,
 		userRepo:     userRepo,
 		providerRepo: providerRepo,
 		catalogRepo:  catalogRepo,
+		transactionRepo: transactionRepo,
 	}
 }
 
@@ -149,20 +152,30 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		return nil, err
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
 	result := make([]dto.UserBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
-			Name:          user.Name,
+			UserName:      user.Name,
+			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,
 			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
-			Issues: r.Issues,
+			Issues:        r.Issues,
+			UpdatedAt: r.UpdatedAt,
 		})
 	}
 
@@ -214,6 +227,14 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
+	provider, err := s.providerRepo.FindByID(
+		ctx,
+		domain.ProviderID(r.Provider.Hex()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
@@ -221,8 +242,8 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 	totalPayable := serviceCharge + gstAmount
 
 	return &dto.UserBookingDetailDTO{
-		ID: r.ID,
-		UserID: string(user.ID),
+		ID:            r.ID,
+		UserID:        string(user.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
@@ -235,6 +256,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		Issues:        r.Issues,
 		Timestamps:    r.Timestamps,
 		UserName:      user.Name,
+		ProviderName:  provider.Name,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -242,12 +264,21 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
+		UserLocation: dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		},
+		ProviderLocation: dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
+		},
 		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}, nil
 
 }
 
-func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, status string ) (*dto.ProviderBookingResponse, error) {
+func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
 
 	sStatus, err := mapStatus(status)
 	if err != nil {
@@ -276,21 +307,29 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
+
+		user, err := s.userRepo.GetByID(ctx, r.User)
+		if err != nil {
+			return nil, err
+		}
+
 		result = append(result, dto.ProviderBookingDTO{
 			ID:            r.ID,
-			ProviderID:     string(provider.ID),
+			ProviderID:    string(provider.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
-			Name:          provider.Name,
+			ProviderName:  provider.Name,
+			UserName:      user.Name,
 			VehicleNumber: r.VehicleNumber,
 			Brand:         r.Brand,
 			Model:         r.Model,
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
-			Ratings: "",
+			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
 		})
 	}
 
@@ -298,7 +337,7 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 		Bookings: result,
 	}
 
-	if sStatus == domain. StatusCompleted||
+	if sStatus == domain.StatusCompleted ||
 		sStatus == domain.StatusCancelled {
 		response.Count = len(raw)
 	}
@@ -328,6 +367,11 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		return nil, err
 	}
 
+	user, err := s.userRepo.GetByID(ctx, r.User)
+	if err != nil {
+		return nil, err
+	}
+
 	const (
 		gstPercent        = 18.0
 		commissionPercent = 20.0
@@ -339,8 +383,8 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 	providerPayout := serviceCharge - commissionAmount - gstOnCommission
 
 	return &dto.ProviderBookingDetailDTO{
-		ID:r.ID,
-		ProviderID: string(provider.ID),
+		ID:            r.ID,
+		ProviderID:    string(provider.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
@@ -352,18 +396,82 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
 		Timestamps:    r.Timestamps,
-		ProviderName:   provider.Name,
+		ProviderName:  provider.Name,
+		UserName:      user.Name,
 		Billing: dto.BillingDetailsDTO{
-			ServiceCharge: utils.RoundTo2(serviceCharge),
+			ServiceCharge:     utils.RoundTo2(serviceCharge),
 			CommissionPercent: commissionPercent,
 			CommissionAmount:  utils.RoundTo2(commissionAmount),
-			GSTPercent:   gstPercent,
-			GSTAmount:    utils.RoundTo2(gstOnCommission),
-			TotalPayable: serviceCharge,
-			ProviderPayout: utils.RoundTo2(providerPayout),
-			PaymentStatus:  string(r.PaymentStatus),
+			GSTPercent:        gstPercent,
+			GSTAmount:         utils.RoundTo2(gstOnCommission),
+			TotalPayable:      serviceCharge,
+			ProviderPayout:    utils.RoundTo2(providerPayout),
+			PaymentStatus:     string(r.PaymentStatus),
+		},
+		UserLocation: dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		},
+		ProviderLocation: dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
 		},
 		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}, nil
 
+}
+
+func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]dto.UserExpenseDTO, float64, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	_, err = s.userRepo.GetByID(ctx, userObjID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	services, err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]dto.UserExpenseDTO, 0, len(services))
+	var totalExpense float64
+
+	for _, service := range services {
+		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, service.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+		if transaction.Status != string(domain.PaymentPaid) {
+			continue
+		}
+
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(service.Provider.Hex()))
+		if err != nil {
+			return nil, 0, err
+		}
+
+		expense := dto.UserExpenseDTO{
+			ServiceID:     service.ID.Hex(),
+			ServiceNumber: service.ServiceNumber,
+			ServiceType:   service.ServiceType,
+			ProviderName:  provider.Name,
+			Amount:        transaction.Amount,
+			PaymentMethod: transaction.Method,
+			CreatedAt:     service.CreatedAt,
+			VehicleType:   service.VehicleType,
+			VehicleNumber: service.VehicleNumber,
+			Issues: service.Issues,
+		}
+
+		result = append(result, expense)
+		totalExpense += transaction.Amount
+	}
+
+	return result, totalExpense, nil
 }

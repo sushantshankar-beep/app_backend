@@ -43,6 +43,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/booking/:userID/:serviceID", bookingHandler.GetUserBookingDetail)
 		user.POST("/rating/:userID", ratingHandler.CreateProviderRating)
 		user.GET("/ratings/:userID", ratingHandler.GetUserRatings)
+		user.GET("/expenses/:userID", bookingHandler.GetUserExpenses)
 
 	}
 	device := r.Group("/devices", userAuth)

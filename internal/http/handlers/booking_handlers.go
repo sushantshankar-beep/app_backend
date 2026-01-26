@@ -92,3 +92,24 @@ func (h *BookingHandler) GetProviderBookingDetail(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
+
+func (h *BookingHandler) GetUserExpenses(c *gin.Context) {
+	userID := c.Param("userID")
+
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userID is required"})
+		return
+	}
+
+	expenses, totalExpense, err := h.svc.GetUserExpenses(c.Request.Context(), userID)
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"totalExpense": totalExpense,
+		"expenses":     expenses,
+	})
+}

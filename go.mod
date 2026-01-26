@@ -1,8 +1,6 @@
 module app_backend
 
-go 1.24.0
-
-toolchain go1.24.11
+go 1.24.12
 
 require (
 	firebase.google.com/go v3.13.0+incompatible
@@ -16,8 +14,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/nats-io/nats.go v1.48.0
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
-	github.com/redis/go-redis/v9 v9.17.2
-	go.mongodb.org/mongo-driver v1.17.6
+	github.com/redis/go-redis/v9 v9.17.3
+	go.mongodb.org/mongo-driver v1.17.7
 	google.golang.org/api v0.262.0
 )
 

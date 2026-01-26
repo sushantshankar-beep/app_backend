@@ -13,32 +13,87 @@ type ComplaintService struct {
 	repo         *repository.ComplaintRepo
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
+	acceptedSvcRepo *repository.AcceptedServiceRepo
 }
 
-func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo) *ComplaintService {
+func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo,acceptedSvcRepo *repository.AcceptedServiceRepo) *ComplaintService {
 	return &ComplaintService{
 		repo:         repo,
 		userRepo:     u,
 		providerRepo: p,
+		acceptedSvcRepo: acceptedSvcRepo,
 	}
 }
 
-func (s *ComplaintService) RaiseComplaint(ctx context.Context, req map[string]any, raisedBy string, userID string) (*domain.Complaint, error) {
+func (s *ComplaintService) RaiseComplaint(
+	ctx context.Context,
+	req map[string]any,
+	raisedBy string,
+	authenticatedID string,
+) (*domain.Complaint, error) {
 
-	providerID, _ := primitive.ObjectIDFromHex(req["providerId"].(string))
-	acceptedService, _ := primitive.ObjectIDFromHex(req["acceptedService"].(string))
+	acceptedServiceID, _ := primitive.ObjectIDFromHex(req["acceptedService"].(string))
 
-	uid, _ := primitive.ObjectIDFromHex(userID)
+	photos := []string{}
+	if raw, ok := req["photos"].([]any); ok {
+		for _, p := range raw {
+			if s, ok := p.(string); ok {
+				photos = append(photos, s)
+			}
+		}
+	}
+
+	problem := req["problem"].(string)
+
+	var uid, providerID primitive.ObjectID
+
+	if raisedBy == "user" {
+		uid, _ = primitive.ObjectIDFromHex(authenticatedID)
+		providerID, _ = primitive.ObjectIDFromHex(req["providerId"].(string))
+	} else {
+		providerID, _ = primitive.ObjectIDFromHex(authenticatedID)
+		uid, _ = primitive.ObjectIDFromHex(req["userId"].(string))
+	}
+
+	existing, _ := s.repo.FindByAcceptedServiceId(ctx, acceptedServiceID)
+
+	if existing != nil {
+		if raisedBy == "user" {
+			existing.UserComplaint = &domain.ComplaintSide{
+				Problem:  problem,
+				Photos:   photos,
+				RaisedAt: time.Now(),
+			}
+
+			_ = s.acceptedSvcRepo.UpdateComplaintByUser(
+				ctx,
+				acceptedServiceID,
+				existing.ID,
+			)
+		} else {
+			existing.ProviderComplaint = &domain.ComplaintSide{
+				Problem:  problem,
+				Photos:   photos,
+				RaisedAt: time.Now(),
+			}
+
+			_ = s.acceptedSvcRepo.UpdateComplaintByProvider(
+				ctx,
+				acceptedServiceID,
+				existing.ID,
+			)
+		}
+
+		existing.UpdatedAt = time.Now()
+		_ = s.repo.Update(ctx, existing)
+		return existing, nil
+	}
 
 	complaint := &domain.Complaint{
 		ID:                primitive.NewObjectID(),
-		AcceptedService:   acceptedService,
-		AcceptedServiceId: req["acceptedServiceId"].(int64),
+		AcceptedService:   acceptedServiceID,
 		ProviderID:        providerID,
 		UserID:            uid,
-		RaisedBy:          raisedBy,
-		Problem:           req["problem"].(string),
-		Photos:            req["photos"].([]string),
 		Status:            "initiated",
 		Timeline: map[string]time.Time{
 			"initiated": time.Now(),
@@ -46,11 +101,38 @@ func (s *ComplaintService) RaiseComplaint(ctx context.Context, req map[string]an
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+
+	if raisedBy == "user" {
+		complaint.UserComplaint = &domain.ComplaintSide{
+			Problem:  problem,
+			Photos:   photos,
+			RaisedAt: time.Now(),
+		}
+	} else {
+		complaint.ProviderComplaint = &domain.ComplaintSide{
+			Problem:  problem,
+			Photos:   photos,
+			RaisedAt: time.Now(),
+		}
+	}
+
 	if err := s.repo.Create(ctx, complaint); err != nil {
 		return nil, err
 	}
-	_ = s.userRepo.AddComplaint(ctx, uid, complaint.ID)
-	_ = s.providerRepo.AddComplaint(ctx, providerID, complaint.ID)
+
+	if raisedBy == "user" {
+		_ = s.acceptedSvcRepo.UpdateComplaintByUser(
+			ctx,
+			acceptedServiceID,
+			complaint.ID,
+		)
+	} else {
+		_ = s.acceptedSvcRepo.UpdateComplaintByProvider(
+			ctx,
+			acceptedServiceID,
+			complaint.ID,
+		)
+	}
 
 	return complaint, nil
 }

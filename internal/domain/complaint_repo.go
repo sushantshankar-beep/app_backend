@@ -15,7 +15,6 @@ type ComplaintSide struct {
 type Complaint struct {
 	ID                primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AcceptedService   primitive.ObjectID `bson:"acceptedService" json:"acceptedService"`
-	AcceptedServiceId int64              `bson:"acceptedServiceId" json:"acceptedServiceId"`
 
 	ProviderID primitive.ObjectID `bson:"providerId" json:"providerId"`
 	UserID     primitive.ObjectID `bson:"userId" json:"userId"`

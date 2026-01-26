@@ -149,20 +149,29 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		return nil, err
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
 	result := make([]dto.UserBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
-			Name:          user.Name,
+			UserName:      user.Name,
+			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,
 			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
-			Issues: r.Issues,
+			Issues:        r.Issues,
 		})
 	}
 
@@ -214,6 +223,14 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
+	provider, err := s.providerRepo.FindByID(
+		ctx,
+		domain.ProviderID(r.Provider.Hex()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
@@ -221,8 +238,8 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 	totalPayable := serviceCharge + gstAmount
 
 	return &dto.UserBookingDetailDTO{
-		ID: r.ID,
-		UserID: string(user.ID),
+		ID:            r.ID,
+		UserID:        string(user.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
@@ -235,6 +252,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		Issues:        r.Issues,
 		Timestamps:    r.Timestamps,
 		UserName:      user.Name,
+		ProviderName:  provider.Name,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -242,12 +260,20 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
+		UserLocation: dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		},
+		ProviderLocation: dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
+		},
 		CreatedAt: r.CreatedAt,
 	}, nil
 
 }
 
-func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, status string ) (*dto.ProviderBookingResponse, error) {
+func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
 
 	sStatus, err := mapStatus(status)
 	if err != nil {
@@ -276,20 +302,27 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
+
+		user, err := s.userRepo.GetByID(ctx, r.User)
+		if err != nil {
+			return nil, err
+		}
+
 		result = append(result, dto.ProviderBookingDTO{
 			ID:            r.ID,
-			ProviderID:     string(provider.ID),
+			ProviderID:    string(provider.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
-			Name:          provider.Name,
+			ProviderName:  provider.Name,
+			UserName:      user.Name,
 			VehicleNumber: r.VehicleNumber,
 			Brand:         r.Brand,
 			Model:         r.Model,
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
-			Ratings: "",
+			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
 		})
 	}
@@ -298,7 +331,7 @@ func (s *BookingService) GetProviderBookings( ctx context.Context, providerID, s
 		Bookings: result,
 	}
 
-	if sStatus == domain. StatusCompleted||
+	if sStatus == domain.StatusCompleted ||
 		sStatus == domain.StatusCancelled {
 		response.Count = len(raw)
 	}
@@ -328,6 +361,11 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		return nil, err
 	}
 
+	user, err := s.userRepo.GetByID(ctx, r.User)
+	if err != nil {
+		return nil, err
+	}
+
 	const (
 		gstPercent        = 18.0
 		commissionPercent = 20.0
@@ -339,8 +377,8 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 	providerPayout := serviceCharge - commissionAmount - gstOnCommission
 
 	return &dto.ProviderBookingDetailDTO{
-		ID:r.ID,
-		ProviderID: string(provider.ID),
+		ID:            r.ID,
+		ProviderID:    string(provider.ID),
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
@@ -352,16 +390,25 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
 		Timestamps:    r.Timestamps,
-		ProviderName:   provider.Name,
+		ProviderName:  provider.Name,
+		UserName:      user.Name,
 		Billing: dto.BillingDetailsDTO{
-			ServiceCharge: utils.RoundTo2(serviceCharge),
+			ServiceCharge:     utils.RoundTo2(serviceCharge),
 			CommissionPercent: commissionPercent,
 			CommissionAmount:  utils.RoundTo2(commissionAmount),
-			GSTPercent:   gstPercent,
-			GSTAmount:    utils.RoundTo2(gstOnCommission),
-			TotalPayable: serviceCharge,
-			ProviderPayout: utils.RoundTo2(providerPayout),
-			PaymentStatus:  string(r.PaymentStatus),
+			GSTPercent:        gstPercent,
+			GSTAmount:         utils.RoundTo2(gstOnCommission),
+			TotalPayable:      serviceCharge,
+			ProviderPayout:    utils.RoundTo2(providerPayout),
+			PaymentStatus:     string(r.PaymentStatus),
+		},
+		UserLocation: dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		},
+		ProviderLocation: dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
 		},
 		CreatedAt: r.CreatedAt,
 	}, nil

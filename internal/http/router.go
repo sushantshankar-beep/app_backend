@@ -25,6 +25,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	{
 		user.POST("/send-otp", userHandler.SendOTP)
 		user.POST("/verify-otp", userHandler.VerifyOTP)
+		user.GET("/vehicles", userAuth,userVehicleHandler.GetMyVehicles)
 		user.GET("/vehicleNumber/:vehicleNumber",userAuth, userVehicleHandler.GetVehicleByNumber)
 		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
 		user.GET("/vehicleData", userAuth, userVehicleHandler.GetVehicleData)

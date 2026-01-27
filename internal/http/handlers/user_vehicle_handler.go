@@ -91,3 +91,26 @@ func (h *UserVehicleHandler) GetVehicleData(c *gin.Context) {
 		"count": len(data),
 	})
 }
+func (h *UserVehicleHandler) GetMyVehicles(c *gin.Context) {
+
+	userOID, ok := c.MustGet(
+		middleware.ContextKeyUserObjectID,
+	).(primitive.ObjectID)
+
+	if !ok || userOID.IsZero() {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	data, err := h.svc.GetMyVehicles(
+		c.Request.Context(),
+		userOID,
+	)
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, data)
+}

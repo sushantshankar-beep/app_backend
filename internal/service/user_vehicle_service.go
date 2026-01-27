@@ -126,3 +126,49 @@ func (s *UserVehicleService) getBikeData(ctx context.Context, make string, model
 	}
 	return s.bikeBrandModelRepo.GetAll(ctx, filter)
 }
+type UserVehiclesResponse struct {
+	Primary   *domain.Vehicle   `json:"primaryVehicle"`
+	Fallbacks []domain.Vehicle `json:"fallbackVehicles"`
+}
+
+func (s *UserVehicleService) GetMyVehicles(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) (*UserVehiclesResponse, error) {
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &UserVehiclesResponse{}
+
+	if user.PrimaryVehicleID != nil {
+
+		v, err := s.vehicleRepo.FindByIDs(
+			ctx,
+			[]primitive.ObjectID{*user.PrimaryVehicleID},
+		)
+
+		if err == nil && len(v) > 0 {
+			resp.Primary = &v[0]
+		}
+	}
+
+	if len(user.FallbackVehicleIDs) > 0 {
+
+		vehicles, err := s.vehicleRepo.FindByIDs(
+			ctx,
+			user.FallbackVehicleIDs,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		resp.Fallbacks = vehicles
+	}
+
+	return resp, nil
+}
+

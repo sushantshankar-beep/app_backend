@@ -184,10 +184,24 @@ func (h *BiddingHandler) CancelService(c *gin.Context) {
 		return
 	}
 
+	// 📥 read reason from body
+	var req struct {
+		Reason string `json:"reason"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		req.Reason = "user_cancelled"
+	}
+
+	if req.Reason == "" {
+		req.Reason = "user_cancelled"
+	}
+
 	if err := h.svc.CancelService(
 		c.Request.Context(),
 		serviceID,
 		userID,
+		req.Reason,
 	); err != nil {
 
 		c.JSON(403, gin.H{
@@ -199,6 +213,7 @@ func (h *BiddingHandler) CancelService(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"status":    "cancelled",
 		"serviceId": serviceID,
+		"reason":    req.Reason,
 	})
 }
 type ProviderCancelReq struct {

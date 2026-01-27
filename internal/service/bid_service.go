@@ -1,5 +1,4 @@
 package service
-
 import (
 	"context"
 	"fmt"
@@ -823,6 +822,7 @@ func (s *BiddingService) CancelService(
 	ctx context.Context,
 	serviceID string,
 	userID string,
+	reason string,
 ) error {
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
@@ -837,6 +837,112 @@ func (s *BiddingService) CancelService(
 		FindOne(ctx, bson.M{"_id": serviceOID}).
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
+	}
+
+	if svc.User.Hex() != userID {
+		return errors.New("not allowed")
+	}
+
+	// 🔒 STOP search goroutines
+	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
+
+	// ❌ DB UPDATE
+	_, err = s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		serviceOID,
+		bson.M{
+			"$set": bson.M{
+				"status":      domain.StatusCancelled,
+				"cancelledBy": "user",
+				"cancelledAt": time.Now(),
+				"updatedAt":   time.Now(),
+				"reason" : reason,
+
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// ===========================
+	// 📡 INFORM PROVIDERS
+	// ===========================
+
+	notifiedKey := "service:notified:" + serviceID
+
+	providers, _ := s.rdb.SMembers(ctx, notifiedKey).Result()
+
+	for _, pid := range providers {
+
+		s.socket.Emit(
+			"provider:"+pid,
+			"service:cancelled",
+			map[string]any{
+				"serviceId": serviceID,
+			},
+		)
+
+		s.socket.CloseRoom("provider:" + pid)
+	}
+
+	s.rdb.Del(ctx, notifiedKey)
+
+	// ===========================
+	// 🧹 REDIS CLEANUP
+	// ===========================
+
+	patterns := []string{
+		"service:cooldown:" + serviceID + ":*",
+		"service:attempts:" + serviceID + ":*",
+		"service:userReject:" + serviceID + ":*",
+	}
+
+	for _, p := range patterns {
+		iter := s.rdb.Scan(ctx, 0, p, 200).Iterator()
+		for iter.Next(ctx) {
+			s.rdb.Del(ctx, iter.Val())
+		}
+	}
+
+	// ===========================
+	// 👤 USER ROOM
+	// ===========================
+
+	s.socket.Emit(
+		"user:"+serviceID,
+		"service:cancelled",
+		map[string]any{
+			"serviceId": serviceID,
+		},
+	)
+
+	s.socket.CloseRoom("user:" + serviceID)
+
+	return nil
+}
+func (s *BiddingService) CancelSearchingServiceBeforeBid(
+	ctx context.Context,
+	serviceID string,
+	userID string,
+) error {
+
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	lockKey := "service:locked:" + serviceID
+
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
+		return errors.New("service not found")
+	}
+
+	if svc.Status != domain.StatusSearching {
+		return errors.New("service already assigned")
 	}
 
 	if svc.User.Hex() != userID {
@@ -919,13 +1025,14 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
+
 func (s *BiddingService) CancelSearchingService(
 	ctx context.Context,
 	serviceID string,
 	userID string,
 ) error {
 
-	return s.CancelService(ctx, serviceID, userID)
+	return s.CancelSearchingServiceBeforeBid(ctx, serviceID, userID)
 }
 
 

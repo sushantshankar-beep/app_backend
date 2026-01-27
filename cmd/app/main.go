@@ -154,7 +154,7 @@ func main() {
 		otpQueue,
 		acceptedServiceRepo,
 	)
-	invoiceSvc := service.NewInvoiceService(invoiceRepo)
+	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo)
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)

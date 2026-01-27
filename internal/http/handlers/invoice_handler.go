@@ -2,7 +2,6 @@ package handlers
 
 import (
  "net/http"
-"go.mongodb.org/mongo-driver/bson/primitive"
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -16,44 +15,32 @@ func NewInvoiceHandler(s *service.InvoiceService) *InvoiceHandler {
 }
 
 func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
-	serviceID := c.Param("serviceId")
+	invoiceID := c.Param("invoiceId")
 
-	inv, err := h.svc.GetInvoice(c, serviceID)
+	invoice, err := h.svc.GetInvoice(c.Request.Context(), invoiceID)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "invoice not found"})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "invoice not found",
+		})
 		return
 	}
 
-	c.JSON(200, gin.H{"data": inv})
+	c.JSON(http.StatusOK, gin.H{
+		"invoice": invoice,
+	})
 }
-
 func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
-	serviceID := c.Param("serviceId")
+	invoiceID := c.Param("invoiceId")
 
-	inv, err := h.svc.GetInvoice(c, serviceID)
+	pdfPath, filename, err := h.svc.GetInvoicePDF(c.Request.Context(), invoiceID)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "invoice not found"})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": err.Error(),
+		})
 		return
 	}
 
-	c.Redirect(302, inv.PDFUrl)
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Type", "application/pdf")
+	c.File(pdfPath)
 }
-
-func (h *InvoiceHandler) GetInvoiceByService(c *gin.Context) {
-	serviceID := c.Param("serviceID")
-	
-	objID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid serviceID"})
-		return
-	}
-
-	invoice, err := h.svc.GetInvoiceByService(c.Request.Context(), objID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, invoice)
-}
-

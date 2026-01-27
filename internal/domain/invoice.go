@@ -1,43 +1,66 @@
 package domain
 
 import (
-	"time"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"time"
 )
 
 type Invoice struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	InvoiceNumber string             `bson:"invoiceNumber" json:"invoiceNumber"`
-	UserID        primitive.ObjectID `bson:"userId" json:"userId"`
-	ServiceID     primitive.ObjectID `bson:"serviceId" json:"serviceId"`
-	ProviderID    primitive.ObjectID `bson:"providerId" json:"providerId"`
-	BillToName    string             `bson:"billToName" json:"billToName"`
-	BillToAddress string             `bson:"billToAddress" json:"billToAddress"`
-	BillToPhone   string             `bson:"billToPhone" json:"billToPhone"`
-	ProviderName  string             `bson:"providerName" json:"providerName"`
-	ProviderAddress string           `bson:"providerAddress" json:"providerAddress"`
-	ProviderPhone string             `bson:"providerPhone" json:"providerPhone"`
-	ProviderGST   string             `bson:"providerGst" json:"providerGst"`
-	VehicleBrand  string             `bson:"vehicleBrand" json:"vehicleBrand"`
-	VehicleModel  string             `bson:"vehicleModel" json:"vehicleModel"`
-	VehicleNumber string             `bson:"vehicleNumber" json:"vehicleNumber"`
-	VehicleYear   int                `bson:"vehicleYear" json:"vehicleYear"`
-	VehicleType   string             `bson:"vehicleType" json:"vehicleType"`
-	FuelType      string             `bson:"fuelType" json:"fuelType"`
-	ServiceType   string             `bson:"serviceType" json:"serviceType"`
-	ServiceDate   *time.Time         `bson:"serviceDate" json:"serviceDate"`
-	Items         []InvoiceItem      `bson:"items" json:"items"`
-	SubTotal      float64            `bson:"subTotal" json:"subTotal"`
-	TaxAmount     float64            `bson:"taxAmount" json:"taxAmount"`
-	TotalAmount   float64            `bson:"totalAmount" json:"totalAmount"`
-	PDFUrl        string             `bson:"pdfUrl" json:"pdfUrl"`
-	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
+	InvoiceDate   time.Time          `bson:"invoiceDate" json:"invoiceDate"`
+	ServiceDate   *time.Time         `bson:"serviceDate,omitempty" json:"serviceDate,omitempty"`
+
+	UserID     primitive.ObjectID `bson:"userId" json:"userId"`
+	ServiceID  primitive.ObjectID `bson:"serviceId" json:"serviceId"`
+	ProviderID string             `bson:"providerId" json:"providerId"`
+
+	ProviderInfo   ProviderInfo `bson:"provider" json:"provider"`
+	CustomerInfo   CustomerInfo `bson:"customer" json:"customer"`
+	VehicleDetails VehicleInfo  `bson:"vehicle" json:"vehicle"`
+	ServiceInfo    ServiceInfo  `bson:"service" json:"service"`
+
+	PricingDeatils PricingInfo `bson:"pricing" json:"pricing"`
+
+	PDFUrl    string    `bson:"pdfUrl" json:"pdfUrl"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 }
 
-type InvoiceItem struct {
-	Name        string  `bson:"name" json:"name"`
-	Qty         int     `bson:"qty" json:"qty"`
-	Price       float64 `bson:"price" json:"price"`
-	GSTPercent  float64 `bson:"gstPercent" json:"gstPercent"`
-	GrossAmount float64 `bson:"grossAmount" json:"grossAmount"`
+type ProviderInfo struct {
+	Name    string `bson:"name" json:"name"`
+	Address string `bson:"address" json:"address"`
+	GST     string `bson:"gstNumber" json:"gstNumber"`
+	Phone   string `bson:"phone" json:"phone"`
+	Email   string `bson:"email" json:"email"`
+}
+
+type CustomerInfo struct {
+	Name    string `bson:"name" json:"name"`
+	Phone   string `bson:"phone" json:"phone"`
+	Address string `bson:"address" json:"address"`
+	Email   string `bson:"email" json:"email"`
+}
+
+type VehicleInfo struct {
+	Brand         string `bson:"brand" json:"brand"`
+	Model         string `bson:"model" json:"model"`
+	Year          int    `bson:"year" json:"year"`
+	VehicleType   string `bson:"vehicleType" json:"vehicleType"`
+	VehicleNumber string `bson:"vehicleNumber" json:"vehicleNumber"`
+	FuelType      string `bson:"fuelType" json:"fuelType"`
+}
+
+type ServiceInfo struct {
+	Type          string        `bson:"type" json:"type"`
+	Status        ServiceStatus `bson:"status" json:"status"`
+	PaymentStatus PaymentStatus `bson:"paymentStatus" json:"paymentStatus"`
+}
+
+type PricingInfo struct {
+	ServiceCharge float64 `bson:"serviceCharge" json:"serviceCharge"`
+	Discount      float64 `bson:"discount" json:"discount"`
+	SubTotal      float64 `bson:"subtotal" json:"subtotal"`
+	GST           float64 `bson:"gst" json:"gst"`
+	Total         float64 `bson:"total" json:"total"`
 }

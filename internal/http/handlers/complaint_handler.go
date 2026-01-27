@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"app_backend/internal/http/middleware"
+	"app_backend/internal/s3"
+	"app_backend/internal/service"
+	"fmt"
 	"net/http"
 	"strings"
-	"fmt"
+
 	"github.com/gin-gonic/gin"
-	"app_backend/internal/http/middleware"
-	"app_backend/internal/service"
-	"app_backend/internal/s3"
 )
 
 type ComplaintHandler struct {
@@ -93,8 +94,7 @@ func (h *ComplaintHandler) GetMyComplaints(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) GetProviderComplaints(c *gin.Context) {
-	providerID := c.GetString(middleware.ContextKeyUserID)
-
+	providerID := c.GetString(middleware.ContextKeyProviderID)
 	list, err := h.svc.GetProviderComplaints(c, providerID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

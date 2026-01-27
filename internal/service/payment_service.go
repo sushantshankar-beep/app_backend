@@ -59,7 +59,7 @@ func NewPaymentService(
 
 	return &PaymentService{
 		repo:                repo,
-		invoiceSvc:          NewInvoiceService(invoiceRepo),
+		invoiceSvc:          NewInvoiceService(invoiceRepo, acceptedRepo.(*repository.AcceptedServiceRepo), userRepo, providerRepo.(*repository.ProviderRepo)),
 		socket:              socket,
 		acceptedServiceRepo: acceptedRepo,
 		userRepo:			 userRepo,

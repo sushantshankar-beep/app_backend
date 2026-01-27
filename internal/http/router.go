@@ -78,9 +78,9 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	}
 	invoice := r.Group("/invoice", userAuth)
 	{
-		invoice.GET("/:serviceId", invoiceHandler.GetInvoice)
-		invoice.GET("/:serviceId/download", invoiceHandler.DownloadInvoice)
-		invoice.GET("/service/:serviceID", invoiceHandler.GetInvoiceByService)
+		invoice.GET("/:invoiceId", invoiceHandler.GetInvoice)
+		invoice.GET("/:invoiceId/download", invoiceHandler.DownloadInvoice)
+
 	}
 	// ===Provider kyc =====
 	kyc := r.Group("/provider/kyc", providerAuth)

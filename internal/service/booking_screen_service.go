@@ -160,7 +160,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		if err != nil {
 			continue
 		}
-		
+
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
@@ -184,7 +184,6 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 
 	case "ongoing":
 		return []domain.ServiceStatus{
-			domain.StatusConfirmed,
 			domain.StatusStarted,
 			domain.StatusReachedLocation,
 			domain.StatusOTPVerified,

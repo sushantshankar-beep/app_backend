@@ -839,10 +839,6 @@ func (s *BiddingService) CancelService(
 		return errors.New("service not found")
 	}
 
-	if svc.Status != domain.StatusSearching {
-		return errors.New("service already assigned")
-	}
-
 	if svc.User.Hex() != userID {
 		return errors.New("not allowed")
 	}

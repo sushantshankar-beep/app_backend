@@ -35,7 +35,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		userHandler.CreateOrUpdateUserProfile)
 		user.POST("/location", userAuth, locationHandler.SaveUserLocation)
 		user.GET("/location", userAuth, locationHandler.GetUserLocation)
-		user.POST("/raise-complaint", userAuth, complaintHandler.RaiseComplaint)
+		user.POST("/raise-complaint", userAuth, s3Uploader.Upload([]s3.FieldConfig{
+			{FormFieldName: "photos", ContextKey: "complaint_photos"},}), complaintHandler.RaiseComplaint)
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
 		user.POST("/logout", userAuth, userHandler.Logout)
 		user.DELETE("/delete", userAuth, userHandler.DeleteUser)
@@ -130,7 +131,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/offline", providerAuth, providerStatus.GoOffline)
 		provider.GET("/my-services", providerAuth, providerHandler.GetMyAllServices)
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
-		provider.POST("/raise-complaint", providerAuth, complaintHandler.RaiseComplaint)
+		provider.POST("/raise-complaint", providerAuth, s3Uploader.Upload([]s3.FieldConfig{
+		  {FormFieldName: "photos", ContextKey: "complaint_photos"},}), complaintHandler.RaiseComplaint)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 		provider.POST("/logout", providerAuth, providerHandler.Logout)
@@ -139,6 +141,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/booking/:providerID/:serviceID", bookingHandler.GetProviderBookingDetail)
 		provider.POST("/rating/:providerID", ratingHandler.CreateUserRating)
 		provider.GET("/ratings/:providerID", ratingHandler.GetProviderRatings)
+		provider.GET("/dashboard/:providerID", bookingHandler.GetProviderDashboard)
+		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
 
 	}
 	meta := r.Group("/meta")

@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"github.com/gin-gonic/gin"
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
+	"app_backend/internal/s3"
 )
 
 type ComplaintHandler struct {
@@ -16,16 +18,11 @@ func NewComplaintHandler(s *service.ComplaintService) *ComplaintHandler {
 }
 
 func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
-
-	var req map[string]any
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
-		return
-	}
-
-	raisedBy, ok := req["raisedBy"].(string)
-	if !ok || (raisedBy != "user" && raisedBy != "provider") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "raisedBy must be user or provider"})
+	raisedBy := c.PostForm("raisedBy")
+	if raisedBy != "user" && raisedBy != "provider" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "raisedBy is required and must be 'user' or 'provider'",
+		})
 		return
 	}
 
@@ -41,14 +38,20 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		return
 	}
 
+	photoURLs, _ := s3.GetUploadedURLs(c, "complaint_photos")
+
 	complaint, err := h.svc.RaiseComplaint(
 		c.Request.Context(),
-		req,
+		c.PostForm("acceptedService"),
+		c.PostForm("problem"),
+		c.PostForm("providerId"),
+		c.PostForm("userId"),
+		photoURLs,
 		raisedBy,
 		authenticatedID,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -57,6 +60,17 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		"data":    complaint,
 	})
 }
+
+func getString(req map[string]any, key string) (string, bool) {
+	v, ok := req[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return strings.TrimSpace(s), ok && s != ""
+}
+
+
 
 func (h *ComplaintHandler) GetMyComplaints(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)

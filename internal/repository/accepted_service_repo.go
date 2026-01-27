@@ -242,47 +242,40 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 	return err
 }
 
-func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, userID string, status domain.ServiceStatus) ([]domain.AcceptedService, error) {
-	objID, err := primitive.ObjectIDFromHex(userID)
-if err != nil {
-    return nil, fmt.Errorf("invalid userID: %w", err)
-}
-
-filter := bson.M{
-    "user": objID,
-    "status": status,
-}
-    
+func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, userID primitive.ObjectID, status []domain.ServiceStatus) ([]domain.AcceptedService, error) {
 	var bookings []domain.AcceptedService
-	cursor, err := r.col.Find(ctx, filter, &options.FindOptions{
-		Sort: bson.M{"createdAt": -1},
+	
+	cursor, err := r.col.Find(ctx, bson.M{
+		"user": userID,
+		"status": bson.M{"$in": status},
 	})
 	if err != nil {
 		return nil, err
 	}
+	defer cursor.Close(ctx)
+
 	if err := cursor.All(ctx, &bookings); err != nil {
 		return nil, err
 	}
-
+	
+	if bookings == nil {
+		return []domain.AcceptedService{}, nil
+	}
+	
 	return bookings, nil
 }
 
-
-func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, userID string, status domain.ServiceStatus) ([]domain.AcceptedService, error) {
-	objID, err := primitive.ObjectIDFromHex(userID)
-    if err != nil {
-       return nil, fmt.Errorf("invalid userID: %w", err)
-    }
+func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID  primitive.ObjectID, status []domain.ServiceStatus) ([]domain.AcceptedService, error) {
 
    filter := bson.M{
-     "provider": objID,
-     "status": status,
+     "provider": providerID,
+	 "status":   bson.M{"$in": status},
     }
     
 	var bookings []domain.AcceptedService
-	cursor, err := r.col.Find(ctx, filter, &options.FindOptions{
-		Sort: bson.M{"createdAt": -1},
-	})
+	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+    cursor, err := r.col.Find(ctx, filter, opts)
+
 	if err != nil {
 		return nil, err
 	}

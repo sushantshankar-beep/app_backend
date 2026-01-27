@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-
 	"time"
 
 	"app_backend/internal/domain"
@@ -12,7 +11,7 @@ import (
 
 	"app_backend/internal/dto"
 	"fmt"
-
+  
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -130,7 +129,6 @@ func (s *BookingService) BuildBookingScreen(
 }
 
 func (s *BookingService) GetUserBookings(ctx context.Context, userID, status string) ([]dto.UserBookingDTO, error) {
-
 	sStatus, err := mapStatus(status)
 	if err != nil {
 		return nil, err
@@ -143,15 +141,13 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	user, err := s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
+		if err.Error() == "not found" {
+			return []dto.UserBookingDTO{}, nil
+		}
 		return nil, err
 	}
 
-	raw, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userID, sStatus)
-
-	if err != nil {
-		return nil, err
-	}
-
+	raw, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userObjID, sStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +156,11 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	for _, r := range raw {
 		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		
 		if err != nil {
-			return nil, err
+			continue
 		}
+		
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
@@ -175,35 +173,39 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
 			Issues:        r.Issues,
-			UpdatedAt: r.UpdatedAt,
+			UpdatedAt:     r.UpdatedAt,
 		})
 	}
 
 	return result, nil
 }
-
-func mapStatus(status string) (domain.ServiceStatus, error) {
+func mapStatus(status string) ([]domain.ServiceStatus, error) {
 	switch status {
-	case
-		"created",
-		"assigned",
-		"started",
-		"reached_location",
-		"otp_verified",
-		"in_progress",
-		"ongoing":
-		return domain.StatusStarted, nil
+
+	case "ongoing":
+		return []domain.ServiceStatus{
+			domain.StatusConfirmed,
+			domain.StatusStarted,
+			domain.StatusReachedLocation,
+			domain.StatusOTPVerified,
+			domain.StatusInProgress,
+		}, nil
 
 	case "completed":
-		return domain.StatusCompleted, nil
+		return []domain.ServiceStatus{
+			domain.StatusCompleted,
+		}, nil
 
 	case "cancelled":
-		return domain.StatusCancelled, nil
+		return []domain.ServiceStatus{
+			domain.StatusCancelled,
+		}, nil
 
 	default:
-		return "", errors.New("invalid status")
+		return nil, errors.New("invalid status")
 	}
 }
+
 
 func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serviceID string) (*dto.UserBookingDetailDTO, error) {
 
@@ -279,7 +281,6 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 }
 
 func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
-
 	sStatus, err := mapStatus(status)
 	if err != nil {
 		return nil, err
@@ -290,16 +291,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		return nil, err
 	}
 
-	provider, err := s.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(providerObjID.Hex()),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	raw, err := s.acceptedRepo.
-		GetBookingsByProviderAndStatus(ctx, providerID, sStatus)
+	raw, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -307,15 +299,24 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
-
-		user, err := s.userRepo.GetByID(ctx, r.User)
+		userObjID, err := primitive.ObjectIDFromHex(r.User.Hex())
 		if err != nil {
-			return nil, err
+			continue
+		}
+
+		user, err := s.userRepo.GetByID(ctx, userObjID)
+		if err != nil {
+			continue
+		}
+
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		if err != nil {
+			continue
 		}
 
 		result = append(result, dto.ProviderBookingDTO{
 			ID:            r.ID,
-			ProviderID:    string(provider.ID),
+			ProviderID:    providerID,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    r.FinalPrice,
@@ -327,9 +328,8 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
-			Ratings:       "",
 			CreatedAt:     r.CreatedAt,
-			UpdatedAt: r.UpdatedAt,
+			UpdatedAt:     r.UpdatedAt,
 		})
 	}
 
@@ -337,12 +337,20 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		Bookings: result,
 	}
 
-	if sStatus == domain.StatusCompleted ||
-		sStatus == domain.StatusCancelled {
-		response.Count = len(raw)
+	if containsStatus(sStatus, domain.StatusCompleted) || containsStatus(sStatus, domain.StatusCancelled) {
+		response.Count = len(result)
 	}
 
 	return response, nil
+}
+
+func containsStatus(statuses []domain.ServiceStatus, target domain.ServiceStatus) bool {
+	for _, s := range statuses {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *BookingService) GetProviderBookingDetails(ctx context.Context, providerID, serviceID string) (*dto.ProviderBookingDetailDTO, error) {
@@ -474,4 +482,83 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 	}
 
 	return result, totalExpense, nil
+}
+
+func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID string) (*dto.DashboardStats, error) {
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
+	if err != nil {
+		return nil, err
+	}
+
+	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},)
+	if err != nil {
+		return nil, err
+	}
+
+	cancelledBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID,[]domain.ServiceStatus{domain.StatusCancelled},)
+	if err != nil {
+		return nil, err
+	}
+
+	allTimeEarning := 0.0
+	todayEarning := 0.0
+	today := time.Now().Truncate(24 * time.Hour)
+
+	for _, booking := range completedBookings {
+		allTimeEarning += booking.FinalPrice
+		if booking.CreatedAt.Truncate(24 * time.Hour).Equal(today) {
+			todayEarning += booking.FinalPrice
+		}
+	}
+
+	stats := &dto.DashboardStats{
+		AllTimeEarning:    allTimeEarning,
+		TodayEarning:      todayEarning,
+		ServicesCompleted: len(completedBookings),
+		PaymentSettlement:  0,
+		CancelledServices: len(cancelledBookings),
+	}
+
+	return stats, nil
+}
+
+func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID string) (*dto.EarningsResponse, error) {
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
+	if err != nil {
+		return nil, err
+	}
+
+	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},)
+	if err != nil {
+		return nil, err
+	}
+
+	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
+
+	for _, booking := range completedBookings {
+		serviceName := ""
+		if len(booking.Issues) > 0 {
+			serviceName = booking.Issues[0]
+		}
+
+		earnings = append(earnings, dto.EarningDetail{
+			ID:          booking.ID.Hex(),
+			ProviderId:  booking.Provider,
+			ServiceName: serviceName,
+			Amount:      booking.FinalPrice,
+			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return &dto.EarningsResponse{Earnings: earnings}, nil
 }

@@ -1,8 +1,8 @@
 package dto
 
 import (
-	"time"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"time"
 )
 
 type UserBookingDTO struct {
@@ -17,7 +17,7 @@ type UserBookingDTO struct {
 	VehicleType   string             `json:"vehicleType"`
 	Ratings       string             `json:ratings`
 	CreatedAt     time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
 type UserBookingDetailDTO struct {
@@ -37,7 +37,7 @@ type UserBookingDetailDTO struct {
 	UserName         string             `json:"userName"`
 	ProviderName     string             `json:"providerName"`
 	CreatedAt        time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	UpdatedAt        time.Time          `json:"updatedAt"`
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
@@ -70,7 +70,7 @@ type ProviderBookingDTO struct {
 	UserName      string             `json:"userName"`
 	Ratings       string             `json:ratings`
 	CreatedAt     time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
 type ProviderBookingDetailDTO struct {
@@ -90,7 +90,7 @@ type ProviderBookingDetailDTO struct {
 	ProviderName     string             `json:"providerName"`
 	UserName         string             `json:"userName"`
 	CreatedAt        time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
+	UpdatedAt        time.Time          `json:"updatedAt"`
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
@@ -117,4 +117,24 @@ type UserLocation struct {
 type ProviderLocation struct {
 	Lat  float64 `bson:"lat"`
 	Long float64 `bson:"long"`
+}
+
+type DashboardStats struct {
+	AllTimeEarning    float64 `json:"allTimeEarning"`
+	TodayEarning      float64 `json:"todayEarning"`
+	ServicesCompleted int     `json:"servicesCompleted"`
+	PaymentSettlement float64 `json:"paymentSettlement"`
+	CancelledServices int     `json:"cancelledServices"`
+}
+
+type EarningDetail struct {
+	ID          string             `json:"id"`
+	ProviderId  primitive.ObjectID `json:"provider"`
+	ServiceName string             `json:"serviceName"`
+	Amount      float64            `json:"amount"`
+	CreatedAt   string             `json:"createdAt"`
+}
+
+type EarningsResponse struct {
+	Earnings []EarningDetail `json:"earnings"`
 }

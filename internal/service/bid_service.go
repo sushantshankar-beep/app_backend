@@ -137,14 +137,15 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
+	lockKey := "service:locked:" + serviceID
+
+	// fetch once initially
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).
 		Decode(&svc); err != nil {
 		return
 	}
-
-	lockKey := "service:locked:" + serviceID
 
 	user, err := s.userRepo.GetByID(ctx, svc.User)
 	if err != nil {
@@ -154,14 +155,55 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{50, 100}
 
 	const (
-		maxRounds   = 3
-		cooldownSec = 60
+		cooldownSec     = 60
+		globalTimeout   = 20 * time.Minute
+		maxSendPerProv  = 1000 // practically unlimited, safety only
 	)
 
-	for round := 1; round <= maxRounds; round++ {
+	startedAt := time.Now()
+	round := 1
+
+	for {
+
+		// ===============================
+		// 🛑 GLOBAL SAFETY TIMEOUT
+		// ===============================
+		if time.Since(startedAt) > globalTimeout {
+			log.Printf("⏱️ bidding timeout service=%s", serviceID)
+			return
+		}
 
 		log.Printf("🔁 bidding round %d service=%s", round, serviceID)
 
+		// ===============================
+		// 🔒 STOP IF LOCKED
+		// ===============================
+		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			log.Printf("🔒 service locked stop search=%s", serviceID)
+			return
+		}
+
+		// ===============================
+		// 🔍 DB STATUS CHECK
+		// ===============================
+		var current domain.AcceptedService
+		if err := s.acceptedRepo.Col().
+			FindOne(ctx, bson.M{"_id": serviceOID}).
+			Decode(&current); err != nil {
+			return
+		}
+
+		if current.Status != domain.StatusSearching {
+			log.Printf("🛑 status changed stop search=%s status=%s",
+				serviceID,
+				current.Status,
+			)
+			return
+		}
+
+		// ===============================
+		// 🔎 GEO SEARCH
+		// ===============================
 		for _, radius := range radiusSteps {
 
 			if s.rdb.Exists(ctx, lockKey).Val() == 1 {
@@ -191,7 +233,7 @@ func (s *BiddingService) findProviders(
 				dist := p.Dist
 
 				// ===============================
-				// ⏳ COOLDOWN FIRST (60s)
+				// ⏳ COOLDOWN PER PROVIDER
 				// ===============================
 				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
 
@@ -207,23 +249,19 @@ func (s *BiddingService) findProviders(
 				}
 
 				// ===============================
-				// 🔢 SEND COUNT (MAX 3)
+				// 🔢 SEND COUNT (safety only)
 				// ===============================
 				sendKey := "service:sendCount:" + serviceID + ":" + pid
 
-				cnt, err := s.rdb.Incr(ctx, sendKey).Result()
-				if err != nil {
-					continue
-				}
+				cnt, _ := s.rdb.Incr(ctx, sendKey).Result()
+				s.rdb.Expire(ctx, sendKey, 12*time.Hour)
 
-				s.rdb.Expire(ctx, sendKey, 4*time.Hour)
-
-				if cnt > maxRounds {
+				if cnt > maxSendPerProv {
 					continue
 				}
 
 				// ===============================
-				// 🚀 SEND TO PROVIDER
+				// 🚀 SEND ASYNC
 				// ===============================
 				go func(providerID string, distance float64, radius float64) {
 
@@ -270,12 +308,13 @@ func (s *BiddingService) findProviders(
 			}
 		}
 
-		if round < maxRounds {
-			time.Sleep(cooldownSec * time.Second)
-		}
-	}
+		round++
 
-	log.Printf("🛑 provider attempts finished service=%s", serviceID)
+		// ===============================
+		// 💤 WAIT BEFORE NEXT ROUND
+		// ===============================
+		time.Sleep(cooldownSec * time.Second)
+	}
 }
 
 

@@ -56,7 +56,7 @@ func (s *InvoiceService) GenerateInvoice(
 		CreatedAt:     time.Now(),
 	}
 
-    log.Panicln("heuywdbah",inv)
+    log.Println("heuywdbah",inv)
 	go generateInvoicePDF(inv)
 
 	if err := s.repo.Create(ctx, inv); err != nil {

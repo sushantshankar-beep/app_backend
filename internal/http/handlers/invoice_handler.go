@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	// "net/http"
-
+ "net/http"
+"go.mongodb.org/mongo-driver/bson/primitive"
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -38,3 +38,22 @@ func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
 
 	c.Redirect(302, inv.PDFUrl)
 }
+
+func (h *InvoiceHandler) GetInvoiceByService(c *gin.Context) {
+	serviceID := c.Param("serviceID")
+	
+	objID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid serviceID"})
+		return
+	}
+
+	invoice, err := h.svc.GetInvoiceByService(c.Request.Context(), objID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, invoice)
+}
+

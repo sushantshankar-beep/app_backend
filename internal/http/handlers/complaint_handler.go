@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strings"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
@@ -40,6 +41,13 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 
 	photoURLs, _ := s3.GetUploadedURLs(c, "complaint_photos")
 
+	seq, err := h.svc.GetNextComplaintSequence(c.Request.Context())
+	if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate complaint number"})
+        return
+    }
+    complaintNumber := fmt.Sprintf("CMP%05d", seq)
+
 	complaint, err := h.svc.RaiseComplaint(
 		c.Request.Context(),
 		c.PostForm("acceptedService"),
@@ -49,6 +57,7 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		photoURLs,
 		raisedBy,
 		authenticatedID,
+		complaintNumber, 
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

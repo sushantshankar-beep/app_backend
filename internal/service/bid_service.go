@@ -151,7 +151,7 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{5, 10, 20, 50}
+	radiusSteps := []float64{50, 100}
 
 	const (
 		maxRounds   = 3
@@ -191,6 +191,22 @@ func (s *BiddingService) findProviders(
 				dist := p.Dist
 
 				// ===============================
+				// ⏳ COOLDOWN FIRST (60s)
+				// ===============================
+				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
+
+				ok, _ := s.rdb.SetNX(
+					ctx,
+					cooldownKey,
+					"1",
+					cooldownSec*time.Second,
+				).Result()
+
+				if !ok {
+					continue
+				}
+
+				// ===============================
 				// 🔢 SEND COUNT (MAX 3)
 				// ===============================
 				sendKey := "service:sendCount:" + serviceID + ":" + pid
@@ -203,22 +219,6 @@ func (s *BiddingService) findProviders(
 				s.rdb.Expire(ctx, sendKey, 4*time.Hour)
 
 				if cnt > maxRounds {
-					continue
-				}
-
-				// ===============================
-				// ⏳ 60s COOLDOWN
-				// ===============================
-				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
-
-				ok, _ := s.rdb.SetNX(
-					ctx,
-					cooldownKey,
-					"1",
-					cooldownSec*time.Second,
-				).Result()
-
-				if !ok {
 					continue
 				}
 

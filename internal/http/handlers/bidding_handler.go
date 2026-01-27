@@ -1,4 +1,5 @@
 
+
 package handlers
 
 import (
@@ -233,4 +234,22 @@ func (h *BiddingHandler) ProviderCancelService(c *gin.Context) {
 		"message": "service reopened with fixed price",
 	})
 }
+func (h *BiddingHandler) CancelSearch(c *gin.Context) {
+
+	userID := c.MustGet("userID").(string)
+	serviceID := c.Param("id")
+
+	if err := h.svc.CancelSearchingService(
+		c.Request.Context(),
+		serviceID,
+		userID,
+	); err != nil {
+
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"status": "cancelled"})
+}
+
 

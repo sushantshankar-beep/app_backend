@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	 "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type ComplaintRepo struct {
@@ -62,3 +63,23 @@ func (r *ComplaintRepo) FindByProvider(ctx context.Context, providerID primitive
 	return list, nil
 }
 
+func (r *ComplaintRepo) GetNextSequence(ctx context.Context, sequenceName string) (int64, error) {
+    collection := r.col.Database().Collection("counters")
+    
+    filter := bson.M{"_id": sequenceName}
+    update := bson.M{"$inc": bson.M{"seq": 1}}
+    options := options.FindOneAndUpdate().
+        SetUpsert(true).
+        SetReturnDocument(options.After)
+    
+    var result struct {
+        Seq int64 `bson:"seq"`
+    }
+    
+    err := collection.FindOneAndUpdate(ctx, filter, update, options).Decode(&result)
+    if err != nil {
+        return 0, err
+    }
+    
+    return result.Seq, nil
+}

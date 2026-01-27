@@ -1,8 +1,10 @@
 package handlers
 
 import (
-	"net/http"
 	"app_backend/internal/service"
+	
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -66,7 +68,7 @@ func (h *BookingHandler) GetProviderBookings(c *gin.Context) {
 	status := c.Query("status")
 
 	if providerID == "" || status == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "userID and status are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "providerID and status are required"})
 		return
 	}
 
@@ -77,7 +79,7 @@ func (h *BookingHandler) GetProviderBookings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"bookings": bookings})
+	c.JSON(http.StatusOK, bookings)
 }
 
 func (h *BookingHandler) GetProviderBookingDetail(c *gin.Context) {
@@ -112,4 +114,39 @@ func (h *BookingHandler) GetUserExpenses(c *gin.Context) {
 		"totalExpense": totalExpense,
 		"expenses":     expenses,
 	})
+}
+
+func (h *BookingHandler) GetProviderDashboard(c *gin.Context) {
+	providerID := c.Param("providerID")
+
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "providerID is required"})
+		return
+	}
+
+	dashboard, err := h.svc.GetProviderDashboard(c.Request.Context(), providerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, dashboard)
+}
+
+
+func (h *BookingHandler) GetProviderEarnings(c *gin.Context) {
+	providerID := c.Param("providerID")
+
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "providerID is required"})
+		return
+	}
+
+	earnings, err := h.svc.GetProviderEarnings(c.Request.Context(), providerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, earnings)
 }

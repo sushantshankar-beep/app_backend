@@ -1,3 +1,4 @@
+
 package domain
 
 
@@ -48,6 +49,7 @@ type AcceptedService struct {
 	Model      string      `bson:"model" json:"model"`
 	Timestamps ServiceTimestamps `bson:"timestamps"`
 	UserLocation *UserLocation `bson:"userLocation" json:"userLocation"`
+	CancelledByProvider bool  	`bson:"cancelledByProvider" json:"cancelledByProvider"`
 
 }
 type UserLocation struct {

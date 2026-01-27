@@ -117,6 +117,8 @@ func (s *BookingService) BuildBookingScreen(
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
+			"model":         svc.Model,
+			"time" : time.Now().Format("03:04:05 PM"),
 		},
 
 		"billing": map[string]any{

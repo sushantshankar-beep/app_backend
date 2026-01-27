@@ -150,7 +150,7 @@ func TestFCMSend(client *messaging.Client) {
 
 	ctx := context.Background()
 
-	token := "dnrtkYieTQa4UrlQ7yFnb6:APA91bE_mCKMiTIp7qvKiuPOVpFAMSgC5QmnLdqi2i5wVr1QnTwi0GL883qIT8p9MWOAv8JBawJJFWLZkvfqVMSQyVUi8mdjxc7dMgGQ4wIlHqTIhUWQrWc"
+	token := "eiVvN1XiSWy4HB1dlLsp32:APA91bGdZPNncTcGYF4sT7r0N7KDQfyX8vbuI5o2t847z0Aaf756sA7VNjerh23LQM4jHWIBwuxDZ4akjc2l5FLTmPVxM9CQyQPGGo4N1LxCI4DXN5XwnUY"
 
 	msg := &messaging.Message{
 		Token: token,

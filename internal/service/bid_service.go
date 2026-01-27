@@ -154,221 +154,130 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{5, 10, 20, 50}
 
 	const (
-		maxConcurrentEmits  = 40
-		maxAttemptsPerProv = 3
-		cooldownSeconds    = 60
-		maxRejectsByUser   = 3
+		maxRounds   = 3
+		cooldownSec = 60
 	)
 
-	sem := make(chan struct{}, maxConcurrentEmits)
+	for round := 1; round <= maxRounds; round++ {
 
-	for _, radius := range radiusSteps {
+		log.Printf("🔁 bidding round %d service=%s", round, serviceID)
 
-		// 🔒 stop if service locked
-		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
-			return
-		}
+		for _, radius := range radiusSteps {
 
-		// DB state check
-		var current domain.AcceptedService
-		if err := s.acceptedRepo.Col().
-			FindOne(ctx, bson.M{"_id": serviceOID}).
-			Decode(&current); err != nil {
-			return
-		}
-
-		if current.Status != domain.StatusSearching {
-			return
-		}
-
-		providers, err := s.rdb.GeoRadius(
-			ctx,
-			"providers:geo",
-			lng,
-			lat,
-			&redis.GeoRadiusQuery{
-				Radius:   radius,
-				Unit:     "km",
-				WithDist: true,
-				Count:    50,
-			},
-		).Result()
-
-		if err != nil || len(providers) == 0 {
-			continue
-		}
-
-		for _, p := range providers {
-
-			pid := p.Name
-			dist := p.Dist
-
-			// ===========================
-			// 🚫 USER REJECT LIMIT CHECK
-			// ===========================
-			rejectKey := "service:userReject:" + serviceID + ":" + pid
-
-			rejectCnt, err := s.rdb.Get(ctx, rejectKey).Int()
-			if err != nil && err != redis.Nil {
-				log.Println("redis reject get err:", err)
+			if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+				return
 			}
 
-			if rejectCnt >= maxRejectsByUser {
-				log.Printf("🚫 provider blocked after %d rejects provider=%s service=%s",
-					maxRejectsByUser, pid, serviceID)
-				continue
-			}
-
-			// ===========================
-			// ⏳ COOLDOWN
-			// ===========================
-			cooldownKey := "service:cooldown:" + serviceID + ":" + pid
-
-			ok, _ := s.rdb.SetNX(
+			providers, err := s.rdb.GeoRadius(
 				ctx,
-				cooldownKey,
-				"1",
-				time.Duration(cooldownSeconds)*time.Second,
+				"providers:geo",
+				lng,
+				lat,
+				&redis.GeoRadiusQuery{
+					Radius:   radius,
+					Unit:     "km",
+					WithDist: true,
+					Count:    50,
+				},
 			).Result()
 
-			if !ok {
+			if err != nil || len(providers) == 0 {
 				continue
 			}
 
-			// ===========================
-			// 🔢 ATTEMPT COUNT
-			// ===========================
-			attemptKey := "service:attempts:" + serviceID + ":" + pid
+			for _, p := range providers {
 
-			attempts, _ := s.rdb.Incr(ctx, attemptKey).Result()
-			s.rdb.Expire(ctx, attemptKey, 2*time.Hour)
+				pid := p.Name
+				dist := p.Dist
 
-			if attempts > maxAttemptsPerProv {
-				continue
-			}
+				// ===============================
+				// 🔢 SEND COUNT (MAX 3)
+				// ===============================
+				sendKey := "service:sendCount:" + serviceID + ":" + pid
 
-			// ===========================
-			// 🚀 SEND REQUEST
-			// ===========================
-			go func(providerID string, distance float64, radius float64) {
-
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				// re-check lock
-				if s.rdb.Exists(ctx, lockKey).Val() == 1 {
-					return
+				cnt, err := s.rdb.Incr(ctx, sendKey).Result()
+				if err != nil {
+					continue
 				}
 
-				// re-check reject count (race safety)
-				rk := "service:userReject:" + serviceID + ":" + providerID
-				c, _ := s.rdb.Get(ctx, rk).Int()
-				if c >= maxRejectsByUser {
-					return
+				s.rdb.Expire(ctx, sendKey, 4*time.Hour)
+
+				if cnt > maxRounds {
+					continue
 				}
 
-				// 🔔 Push notification
-				go s.notify.SendToProvider(
-					context.Background(),
-					providerID,
-					"New Service Request",
-					"Nearby user needs help. Open app to bid.",
-					map[string]string{
-						"serviceId": serviceID,
-					},
-				)
+				// ===============================
+				// ⏳ 60s COOLDOWN
+				// ===============================
+				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
 
-				// 📡 Socket event
-				s.socket.EmitWithRetry(
-					"provider:"+providerID,
-					"bid:request",
-					map[string]any{
-						"user": map[string]any{
-							"name": user.Name,
+				ok, _ := s.rdb.SetNX(
+					ctx,
+					cooldownKey,
+					"1",
+					cooldownSec*time.Second,
+				).Result()
+
+				if !ok {
+					continue
+				}
+
+				// ===============================
+				// 🚀 SEND TO PROVIDER
+				// ===============================
+				go func(providerID string, distance float64, radius float64) {
+
+					if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+						return
+					}
+
+					go s.notify.SendToProvider(
+						context.Background(),
+						providerID,
+						"New Service Request",
+						"Nearby user needs help. Open app to bid.",
+						map[string]string{
+							"serviceId": serviceID,
 						},
-						"serviceId": serviceID,
-						"vehicle": map[string]any{
-							"type":   vehicleType,
-							"number": vehicleNumber,
-							"brand":  brand,
-							"year":   modelYear,
-							"fuel":   fuelType,
-							"model":  model,
+					)
+
+					s.socket.Emit(
+						"provider:"+providerID,
+						"bid:request",
+						map[string]any{
+							"user": map[string]any{
+								"name": user.Name,
+							},
+							"serviceId": serviceID,
+							"vehicle": map[string]any{
+								"type":   vehicleType,
+								"number": vehicleNumber,
+								"brand":  brand,
+								"year":   modelYear,
+								"fuel":   fuelType,
+								"model":  model,
+							},
+							"serviceType": serviceType,
+							"issues":      issues,
+							"distanceKm":  distance,
+							"etaMin":      estimateETA(distance),
+							"radiusKm":    radius,
+							"expiresIn":   cooldownSec,
 						},
-						"serviceType": serviceType,
-						"issues":      issues,
-						"distanceKm":  distance,
-						"etaMin":      estimateETA(distance),
-						"radiusKm":    radius,
-						"expiresIn":   60,
-					},
-					1,
-				)
+					)
 
-			}(pid, dist, radius)
-		}
-	}
-	// ===========================
-	// 🧨 FINAL TIMEOUT
-	// ===========================
-	time.Sleep(600 * time.Second)
-
-	if s.rdb.Exists(ctx, lockKey).Val() == 0 {
-
-		log.Printf("service timed out service=%s", serviceID)
-		s.acceptedRepo.Col().UpdateByID(
-			ctx,
-			serviceOID,
-			bson.M{
-				"$set": bson.M{
-					"status":      domain.StatusCancelled,
-					"cancelledBy": "system",
-					"cancelledAt": time.Now(),
-				},
-			},
-		)
-		s.socket.Emit(
-			"user:"+serviceID,
-			"service:cancelled",
-			map[string]any{
-				"serviceId": serviceID,
-				"reason":    "timeout",
-			},
-		)
-		go s.notify.SendToUser(
-			context.Background(),
-			svc.User.Hex(),
-			"Service Cancelled",
-			"No provider accepted your request. Please try again.",
-			map[string]string{
-				"serviceId": serviceID,
-			},
-		)
-
-		// 🧹 redis cleanup
-		patterns := []string{
-			"service:cooldown:" + serviceID + ":*",
-			"service:attempts:" + serviceID + ":*",
-			"service:userReject:" + serviceID + ":*",
-		}
-
-		for _, p := range patterns {
-			iter := s.rdb.Scan(ctx, 0, p, 200).Iterator()
-			for iter.Next(ctx) {
-				s.rdb.Del(ctx, iter.Val())
+				}(pid, dist, radius)
 			}
 		}
 
-		// 🚪 close socket rooms
-		s.socket.CloseRoom("user:" + serviceID)
-
-		if svc.Provider != primitive.NilObjectID {
-			s.socket.CloseRoom("provider:" + svc.Provider.Hex())
+		if round < maxRounds {
+			time.Sleep(cooldownSec * time.Second)
 		}
-
 	}
 
+	log.Printf("🛑 provider attempts finished service=%s", serviceID)
 }
+
 
 
 
@@ -590,42 +499,31 @@ func (s *BiddingService) RejectBid(
 	providerID string,
 ) error {
 
-	rejectKey := "service:userReject:" + serviceID + ":" + providerID
-
-	// increment reject count
-	count, err := s.rdb.Incr(ctx, rejectKey).Result()
-	if err != nil {
-		return err
-	}
-
-	// keep key for service lifetime
-	s.rdb.Expire(ctx, rejectKey, 3*time.Hour)
-
 	log.Printf(
-		"👎 user rejected provider=%s service=%s count=%d",
+		"👎 user rejected provider=%s service=%s",
 		providerID,
 		serviceID,
-		count,
 	)
 
 	// 🔔 PROVIDER
-	s.socket.Emit(
+	s.socket.EmitWithRetry(
 		"provider:"+providerID,
 		"bid:rejected",
 		map[string]any{
 			"serviceId": serviceID,
-			"count":     count,
 		},
+		1,
 	)
 
 	// 🔔 USER
-	s.socket.Emit(
+	s.socket.EmitWithRetry(
 		"user:"+serviceID,
 		"bid:rejected",
 		map[string]any{
 			"serviceId":  serviceID,
 			"providerId": providerID,
 		},
+		1,
 	)
 
 	go s.notify.SendToProvider(

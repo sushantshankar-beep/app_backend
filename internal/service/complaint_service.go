@@ -37,6 +37,7 @@ func (s *ComplaintService) RaiseComplaint(
 	photoURLs []string,
 	raisedBy string,
 	authenticatedID string,
+	complaintNumber string,
 ) (*domain.Complaint, error) {
 
 	acceptedServiceID, err := primitive.ObjectIDFromHex(acceptedServiceStr)
@@ -97,6 +98,7 @@ func (s *ComplaintService) RaiseComplaint(
 
 	complaint := &domain.Complaint{
 		ID:              primitive.NewObjectID(),
+		ComplaintNumber: complaintNumber,
 		AcceptedService: acceptedServiceID,
 		ProviderID:      providerID,
 		UserID:          userID,
@@ -194,4 +196,8 @@ func validateImages(raw any) ([]string, error) {
 	}
 
 	return photos, nil
+}
+
+func (s *ComplaintService) GetNextComplaintSequence(ctx context.Context) (int64, error) {
+    return s.repo.GetNextSequence(ctx, "complaint")
 }

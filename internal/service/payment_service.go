@@ -7,22 +7,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 
 	"app_backend/internal/domain"
+	"app_backend/internal/events"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
+	"math"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
-	"app_backend/internal/events"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"math"
-// 	"go.mongodb.org/mongo-driver/bson/primitive"
- )
+	// 	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 type PaymentService struct {
 	repo        *repository.PaymentRepository
@@ -89,10 +91,26 @@ func (s *PaymentService) InitiatePayment(
 	phone string,
 	price float64,
 ) (map[string]string, error) {
+	log.Println("kjdsbnjksbjkv",userID)
 	email := fmt.Sprintf("app%s@vahanwire.com",serviceID)
 	fmt.Println("this is email",email)
 
 	// 🔒 Lock service
+
+	if userID == "" {
+		serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
+		if err != nil {
+			return nil, errors.New("invalid serviceId")
+		}
+
+		svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceObjID)
+		if err != nil {
+			return nil, errors.New("service not found")
+		}
+
+		userID = svc.User.Hex()
+	}
+	
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
@@ -128,8 +146,8 @@ func (s *PaymentService) InitiatePayment(
 	)
 
 	hash := sha512Hash(hashStr)
+    log.Println("kjcbkjsadbckas",userID)
 
-	// 💾 Save transaction
 	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
 		TxnID:         txnid,
 		Amount:        finalAmount,

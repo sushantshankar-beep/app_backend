@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"app_backend/internal/ports"
-
-	firebase "firebase.google.com/go"
-	"firebase.google.com/go/messaging"
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
 	"google.golang.org/api/option"
 )
 
@@ -18,6 +17,8 @@ type FirebaseNotificationService struct {
 	fcm       *messaging.Client
 	tokenRepo DeviceTokenRepository
 }
+
+
 
 var ErrMissingFirebaseCred = errors.New(
 	"FIREBASE_CREDENTIALS_JSON environment variable not set",
@@ -46,13 +47,9 @@ func InitFirebaseClient() (*messaging.Client, error) {
 		return nil, ErrMissingFirebaseCred
 	}
 
-	app, err := firebase.NewApp(
-		ctx,
-		&firebase.Config{
-			ProjectID: "vahanwire-d8ece",
-		},
-		option.WithCredentialsFile(credFile),
-	)
+	opt := option.WithCredentialsFile(credFile)
+
+	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -62,10 +59,11 @@ func InitFirebaseClient() (*messaging.Client, error) {
 		return nil, err
 	}
 
-	log.Println("🔥 Firebase FCM initialized")
+	log.Println("🔥 Firebase FCM initialized (GO)")
 
 	return client, nil
 }
+
 
 /* ================= PROVIDER ================= */
 
@@ -148,3 +146,26 @@ func (f *FirebaseNotificationService) send(
 
 	return nil
 }
+func TestFCMSend(client *messaging.Client) {
+
+	ctx := context.Background()
+
+	token := "dnrtkYieTQa4UrlQ7yFnb6:APA91bE_mCKMiTIp7qvKiuPOVpFAMSgC5QmnLdqi2i5wVr1QnTwi0GL883qIT8p9MWOAv8JBawJJFWLZkvfqVMSQyVUi8mdjxc7dMgGQ4wIlHqTIhUWQrWc"
+
+	msg := &messaging.Message{
+		Token: token,
+		Notification: &messaging.Notification{
+			Title: "🔥 Test from Go backend",
+			Body:  "If you see this, FCM works!",
+		},
+		Data: map[string]string{
+			"type": "test",
+		},
+	}
+
+	resp, err := client.Send(ctx, msg)
+
+	log.Println("FCM TEST RESPONSE =", resp)
+	log.Println("FCM TEST ERROR =", err)
+}
+

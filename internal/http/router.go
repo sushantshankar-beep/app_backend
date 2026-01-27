@@ -1,4 +1,3 @@
-
 package http
 
 import (
@@ -66,6 +65,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		bid.POST("/accept", biddingHandler.AcceptBid)
 		bid.POST("/reject", biddingHandler.RejectBid)
 		bid.POST("/cancel/:id",biddingHandler.CancelService)
+		bid.POST("/cancelSearch/:id", biddingHandler.CancelSearch) 
 	}
 
 	// === Websocket handling ===

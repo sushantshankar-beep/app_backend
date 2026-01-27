@@ -14,6 +14,7 @@ import (
 	"log"
 	"math"
 	"app_backend/internal/ports"
+	"github.com/redis/go-redis/v9"
 )
 
 type ServiceTrackingService struct {
@@ -22,6 +23,7 @@ type ServiceTrackingService struct {
 	providerRepo *repository.ProviderRepo
 	socket       *socket.Emitter
 	notify        ports.NotificationService
+	rdb          *redis.Client
 }
 
 func NewServiceTrackingService(
@@ -29,7 +31,8 @@ func NewServiceTrackingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	socket *socket.Emitter,
-	notify ports.NotificationService,  
+	notify ports.NotificationService, 
+	rdb          *redis.Client, 
 ) *ServiceTrackingService {
 	return &ServiceTrackingService{
 		acceptedRepo: acceptedRepo,
@@ -37,6 +40,7 @@ func NewServiceTrackingService(
 		providerRepo: providerRepo,
 		socket:       socket,
 		notify:    notify,
+		rdb   : rdb,
 	}
 }
 
@@ -125,6 +129,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"rating":     provider.Rating,
 			"etaMinutes": etaMinutes,
 			"distanceKm": distanceKm,
+			"phoneNo" : provider.Phone,
 		},
 		"booking": map[string]any{
 			"bookingId": svc.ServiceNumber,
@@ -342,19 +347,78 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	case domain.StatusCompleted:
 
-		go s.notify.SendToUser(ctx,
-			svc.User.Hex(),
-			"Service Completed",
-			"Your booking is complete.",
-			map[string]string{"serviceId": svc.ID.Hex()},
-		)
+	// ===============================
+	// 🔓 UNLOCK SERVICE
+	// ===============================
+	lockKey := "service:locked:" + svc.ID.Hex()
+	s.rdb.Del(ctx, lockKey)
 
-		go s.notify.SendToProvider(ctx,
-			svc.Provider.Hex(),
-			"Job Completed",
-			"Booking closed successfully",
-			map[string]string{"serviceId": svc.ID.Hex()},
-		)
+	// ===============================
+	// 🧹 CLEAR PROVIDER BUSY FLAG
+	// ===============================
+	s.rdb.Del(ctx, "provider:busy:"+svc.Provider.Hex())
+
+	// ===============================
+	// 🌍 RE-ADD PROVIDER TO GEO
+	// ===============================
+	if svc.ProviderLocation != nil {
+
+		s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+			Name:      svc.Provider.Hex(),
+			Longitude: svc.ProviderLocation.Long,
+			Latitude:  svc.ProviderLocation.Lat,
+		})
+	}
+
+	// ===============================
+	// 📦 ARCHIVE BOOKING
+	// ===============================
+	_, _ = s.acceptedRepo.Col().UpdateByID(
+		ctx,
+		objID,
+		bson.M{
+			"$set": bson.M{
+				"archived":  true,
+				"closedAt": time.Now(),
+			},
+		},
+	)
+
+	// ===============================
+	// 🔔 NOTIFICATIONS
+	// ===============================
+	go s.notify.SendToUser(ctx,
+		svc.User.Hex(),
+		"Service Completed",
+		"Your booking is complete.",
+		map[string]string{"serviceId": svc.ID.Hex()},
+	)
+
+	go s.notify.SendToProvider(ctx,
+		svc.Provider.Hex(),
+		"Job Completed",
+		"Booking closed successfully",
+		map[string]string{"serviceId": svc.ID.Hex()},
+	)
+
+	// ===============================
+	// 📡 FINAL SOCKET EVENTS
+	// ===============================
+	userRoom := "user:" + svc.ID.Hex()
+	providerRoom := "provider:" + svc.Provider.Hex()
+
+	s.socket.Emit(userRoom, "service:closed", nil)
+	s.socket.Emit(providerRoom, "service:closed", nil)
+
+	// ===============================
+	// 🚪 CLOSE ROOMS AFTER FLUSH
+	// ===============================
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+
+		s.socket.CloseRoom(userRoom)
+		s.socket.CloseRoom(providerRoom)
+	}()
 	}
 	return payload, nil
 }

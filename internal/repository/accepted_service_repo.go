@@ -36,6 +36,30 @@ func NewAcceptedServiceRepo(db *mongo.Database) *AcceptedServiceRepo {
 func (r *AcceptedServiceRepo) Col() *mongo.Collection {
 	return r.col
 }
+func (r *AcceptedServiceRepo) FindStaleSearching(
+	ctx context.Context,
+	before time.Time,
+) ([]domain.AcceptedService, error) {
+
+	cur, err := r.col.Find(ctx, bson.M{
+		"status": domain.StatusSearching,
+		"createdAt": bson.M{
+			"$lt": before,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var res []domain.AcceptedService
+
+	if err := cur.All(ctx, &res); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
 
 /*
 CREATE SERVICE

@@ -5,6 +5,7 @@ import (
     "context"
 	"go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/bson"
+    "time"
 )
 
 type UserRepository interface {
@@ -47,6 +48,7 @@ type AcceptedServiceRepository interface {
 
 	UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) error
 	UpdatePaymentStatus(ctx context.Context, id primitive.ObjectID, status domain.PaymentStatus) error
+	FindStaleSearching(ctx context.Context, before time.Time) ([]domain.AcceptedService, error)
 }
 
 type HomepageRepository interface {

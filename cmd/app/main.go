@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -72,6 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatal("firebase init:", err)
 	}
+	service.TestFCMSend(firebaseClient)
 
 
 	//repository
@@ -164,7 +166,14 @@ func main() {
 
 	// Bidding service
 	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo,notificationSvc)
-	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc)
+	watchdog := worker.NewSearchWatchdog(
+		ports.AcceptedServiceRepository(acceptedServiceRepo),
+		biddingSvc,
+	)
+
+	watchdog.Start()
+	
+	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb)
 	imageUploadS3 := service.NewImageUploadS3Service()
 	ratingService := service.NewRatingService(ratingRepo,userRepo,providerRepo,acceptedServiceRepo)
 	//HANDLERS

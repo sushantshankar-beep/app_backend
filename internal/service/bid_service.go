@@ -921,7 +921,7 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
-func (s *BiddingService) CancelSearchingServiceBeforeBid(
+func (s *BiddingService)CancelSearchingServiceBeforeBid(
 	ctx context.Context,
 	serviceID string,
 	userID string,
@@ -939,10 +939,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 		FindOne(ctx, bson.M{"_id": serviceOID}).
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
-	}
-
-	if svc.Status != domain.StatusSearching {
-		return errors.New("service already assigned")
 	}
 
 	if svc.User.Hex() != userID {
@@ -972,25 +968,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	// ===========================
 	// 📡 INFORM PROVIDERS
 	// ===========================
-
-	notifiedKey := "service:notified:" + serviceID
-
-	providers, _ := s.rdb.SMembers(ctx, notifiedKey).Result()
-
-	for _, pid := range providers {
-
-		s.socket.Emit(
-			"provider:"+pid,
-			"service:cancelled",
-			map[string]any{
-				"serviceId": serviceID,
-			},
-		)
-
-		s.socket.CloseRoom("provider:" + pid)
-	}
-
-	s.rdb.Del(ctx, notifiedKey)
 
 	// ===========================
 	// 🧹 REDIS CLEANUP
@@ -1031,6 +1008,7 @@ func (s *BiddingService) CancelSearchingService(
 	serviceID string,
 	userID string,
 ) error {
+	fmt.Println(serviceID,userID)
 
 	return s.CancelSearchingServiceBeforeBid(ctx, serviceID, userID)
 }

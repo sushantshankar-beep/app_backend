@@ -251,7 +251,12 @@ func (h *BiddingHandler) ProviderCancelService(c *gin.Context) {
 }
 func (h *BiddingHandler) CancelSearch(c *gin.Context) {
 
-	userID := c.MustGet("userID").(string)
+	userID := c.GetString("userId")
+	if userID == "" {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	serviceID := c.Param("id")
 
 	if err := h.svc.CancelSearchingService(
@@ -264,7 +269,11 @@ func (h *BiddingHandler) CancelSearch(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{"status": "cancelled"})
+	c.JSON(200, gin.H{
+		"status":    "cancelled",
+		"serviceId": serviceID,
+	})
 }
+
 
 

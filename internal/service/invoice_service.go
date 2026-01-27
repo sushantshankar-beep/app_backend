@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"app_backend/internal/domain"
@@ -25,7 +26,9 @@ func (s *InvoiceService) GenerateInvoice(
 	serviceID string,
 	items []domain.InvoiceItem,
 ) (*domain.Invoice, error) {
-
+    log.Println("go to getinvoice")
+	log.Println("dsnvjsn",userID)
+	log.Println("dkjnvjksnv",serviceID)
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, err
@@ -41,18 +44,19 @@ func (s *InvoiceService) GenerateInvoice(
 		subTotal += i.Price
 		tax += (i.Price * i.GSTPercent) / 100
 	}
-
+   
 	inv := &domain.Invoice{
 		InvoiceNumber: fmt.Sprintf("INV-%d", time.Now().Unix()),
 		UserID:        userOID,
 		ServiceID:     serviceOID,
-		Items:         items,
-		SubTotal:      subTotal,
-		TaxAmount:     tax,
-		TotalAmount:   subTotal + tax,
+		// Items:         items,
+		// SubTotal:      subTotal,
+		// TaxAmount:     tax,
+		// TotalAmount:   subTotal + tax,
 		CreatedAt:     time.Now(),
 	}
 
+    log.Panicln("heuywdbah",inv)
 	go generateInvoicePDF(inv)
 
 	if err := s.repo.Create(ctx, inv); err != nil {
@@ -64,4 +68,8 @@ func (s *InvoiceService) GenerateInvoice(
 
 func (s *InvoiceService) GetInvoice(ctx context.Context, serviceID string) (*domain.Invoice, error) {
 	return s.repo.FindByServiceID(ctx, serviceID)
+}
+
+func (s *InvoiceService) GetInvoiceByService(ctx context.Context, serviceID primitive.ObjectID) (*domain.Invoice, error) {
+	return s.repo.GetOrCreateInvoice(ctx, serviceID)
 }

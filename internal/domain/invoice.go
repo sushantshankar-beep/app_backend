@@ -2,46 +2,38 @@ package domain
 
 import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"time"
 )
 
 type Invoice struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	InvoiceNumber string             `bson:"invoiceNumber" json:"invoiceNumber"`
-	InvoiceDate   time.Time          `bson:"invoiceDate" json:"invoiceDate"`
-	ServiceDate   *time.Time         `bson:"serviceDate,omitempty" json:"serviceDate,omitempty"`
-
-	UserID     primitive.ObjectID `bson:"userId" json:"userId"`
-	ServiceID  primitive.ObjectID `bson:"serviceId" json:"serviceId"`
-	ProviderID string             `bson:"providerId" json:"providerId"`
-
-	ProviderInfo   ProviderInfo `bson:"provider" json:"provider"`
-	CustomerInfo   CustomerInfo `bson:"customer" json:"customer"`
-	VehicleDetails VehicleInfo  `bson:"vehicle" json:"vehicle"`
-	ServiceInfo    ServiceInfo  `bson:"service" json:"service"`
-
-	PricingDeatils PricingInfo `bson:"pricing" json:"pricing"`
-
-	PDFUrl    string    `bson:"pdfUrl" json:"pdfUrl"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
-}
-
-type ProviderInfo struct {
-	Name    string `bson:"name" json:"name"`
-	Address string `bson:"address" json:"address"`
-	GST     string `bson:"gstNumber" json:"gstNumber"`
-	Phone   string `bson:"phone" json:"phone"`
-	Email   string `bson:"email" json:"email"`
+	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	InvoiceNumber  string             `bson:"invoiceNumber" json:"invoiceNumber"`
+	InvoiceDate    time.Time          `bson:"invoiceDate" json:"invoiceDate"`
+	ServiceDate    *time.Time         `bson:"serviceDate,omitempty" json:"serviceDate,omitempty"`
+	UserID         primitive.ObjectID `bson:"userId" json:"userId"`
+	ServiceID      string             `bson:"serviceId" json:"serviceId"`
+	CompanyInfo    CompanyInfo        `bson:"companyInfo" json:"companyInfo"`
+	CustomerInfo   CustomerInfo       `bson:"customer" json:"customer"`
+	VehicleDetails VehicleInfo        `bson:"vehicle" json:"vehicle"`
+	ServiceInfo    ServiceInfo        `bson:"service" json:"service"`
+	PricingDeatils PricingInfo        `bson:"pricing" json:"pricing"`
+	PDFUrl         string             `bson:"pdfUrl" json:"pdfUrl"`
+	CreatedAt      time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
 type CustomerInfo struct {
-	Name    string `bson:"name" json:"name"`
-	Phone   string `bson:"phone" json:"phone"`
-	Address string `bson:"address" json:"address"`
-	Email   string `bson:"email" json:"email"`
+	Name  string `bson:"name" json:"name"`
+	Phone string `bson:"phone" json:"phone"`
+	Email string `bson:"email" json:"email"`
 }
 
+type CompanyInfo struct {
+	Name    string
+	Address string
+	GST     string
+	Phone   string
+	Email   string
+}
 type VehicleInfo struct {
 	Brand         string `bson:"brand" json:"brand"`
 	Model         string `bson:"model" json:"model"`

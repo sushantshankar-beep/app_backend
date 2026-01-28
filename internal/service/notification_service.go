@@ -8,25 +8,40 @@ import (
 	"time"
 
 	"app_backend/internal/ports"
+
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
 	"google.golang.org/api/option"
 )
+
+/* ============================================================
+   SERVICE
+============================================================ */
 
 type FirebaseNotificationService struct {
 	fcm       *messaging.Client
 	tokenRepo DeviceTokenRepository
 }
 
-
+/* ============================================================
+   ERRORS
+============================================================ */
 
 var ErrMissingFirebaseCred = errors.New(
 	"FIREBASE_CREDENTIALS_JSON environment variable not set",
 )
 
+/* ============================================================
+   DEVICE TOKEN REPO PORT
+============================================================ */
+
 type DeviceTokenRepository interface {
 	GetTokens(ctx context.Context, ownerID string) ([]string, error)
 }
+
+/* ============================================================
+   CONSTRUCTOR
+============================================================ */
 
 func NewFirebaseNotificationService(
 	fcm *messaging.Client,
@@ -39,7 +54,12 @@ func NewFirebaseNotificationService(
 	}
 }
 
+/* ============================================================
+   INIT FIREBASE CLIENT
+============================================================ */
+
 func InitFirebaseClient() (*messaging.Client, error) {
+
 	ctx := context.Background()
 
 	credFile := os.Getenv("FIREBASE_CREDENTIALS_JSON")
@@ -64,8 +84,9 @@ func InitFirebaseClient() (*messaging.Client, error) {
 	return client, nil
 }
 
-
-/* ================= PROVIDER ================= */
+/* ============================================================
+   PROVIDER
+============================================================ */
 
 func (f *FirebaseNotificationService) SendToProvider(
 	ctx context.Context,
@@ -78,7 +99,9 @@ func (f *FirebaseNotificationService) SendToProvider(
 	return f.send(ctx, providerID, title, body, data)
 }
 
-/* ================= USER ================= */
+/* ============================================================
+   USER
+============================================================ */
 
 func (f *FirebaseNotificationService) SendToUser(
 	ctx context.Context,
@@ -91,7 +114,9 @@ func (f *FirebaseNotificationService) SendToUser(
 	return f.send(ctx, userID, title, body, data)
 }
 
-/* ================= CORE SEND ================= */
+/* ============================================================
+   CORE SEND (FIXED)
+============================================================ */
 
 func (f *FirebaseNotificationService) send(
 	ctx context.Context,
@@ -101,7 +126,7 @@ func (f *FirebaseNotificationService) send(
 	data map[string]string,
 ) error {
 
-	// never allow cancelled ctx
+	// never use cancelled ctx
 	ctx2 := ctx
 	if ctx == nil || ctx.Err() != nil {
 		ctx2 = context.Background()
@@ -111,18 +136,49 @@ func (f *FirebaseNotificationService) send(
 	ctx2, cancel := context.WithTimeout(ctx2, 6*time.Second)
 	defer cancel()
 
+	// ------------------------------
+	// 🔎 FETCH TOKENS
+	// ------------------------------
 	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID)
 	if err != nil {
-		log.Printf("❌ FCM token lookup failed owner=%s err=%v", ownerID, err)
+		log.Printf("❌ FCM token lookup failed owner=%s err=%v",
+			ownerID, err)
 		return err
 	}
+
+	log.Println("📲 FCM TOKENS =", tokens)
 
 	if len(tokens) == 0 {
 		log.Printf("⚠️ No FCM tokens owner=%s", ownerID)
 		return nil
 	}
 
-	msg := &messaging.MulticastMessage{
+	// ------------------------------
+	// ✅ SINGLE TOKEN → Send()
+	// ------------------------------
+	if len(tokens) == 1 {
+
+		msg := &messaging.Message{
+			Token: tokens[0],
+			Notification: &messaging.Notification{
+				Title: title,
+				Body:  body,
+			},
+			Data: data,
+		}
+
+		resp, err := f.fcm.Send(ctx2, msg)
+
+		log.Println("🔥 FCM SEND SINGLE RESPONSE =", resp)
+		log.Println("🔥 FCM SEND SINGLE ERROR =", err)
+
+		return err
+	}
+
+	// ------------------------------
+	// ✅ MULTI TOKEN → SendMulticast()
+	// ------------------------------
+	mmsg := &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -131,26 +187,41 @@ func (f *FirebaseNotificationService) send(
 		Data: data,
 	}
 
-	resp, err := f.fcm.SendMulticast(ctx2, msg)
+	resp, err := f.fcm.SendMulticast(ctx2, mmsg)
+
 	if err != nil {
-		log.Printf("❌ FCM send failed owner=%s err=%v", ownerID, err)
+		log.Println("❌ FCM MULTICAST ERROR:", err)
 		return err
 	}
 
 	log.Printf(
-		"📲 FCM owner=%s success=%d fail=%d",
+		"📲 FCM MULTI owner=%s success=%d fail=%d",
 		ownerID,
 		resp.SuccessCount,
 		resp.FailureCount,
 	)
 
+	for i, r := range resp.Responses {
+		if !r.Success {
+			log.Printf("❌ token=%s err=%v",
+				tokens[i],
+				r.Error,
+			)
+		}
+	}
+
 	return nil
 }
+
+/* ============================================================
+   TEST FUNCTION (OPTIONAL)
+============================================================ */
+
 func TestFCMSend(client *messaging.Client) {
 
 	ctx := context.Background()
 
-	token := "eiVvN1XiSWy4HB1dlLsp32:APA91bGdZPNncTcGYF4sT7r0N7KDQfyX8vbuI5o2t847z0Aaf756sA7VNjerh23LQM4jHWIBwuxDZ4akjc2l5FLTmPVxM9CQyQPGGo4N1LxCI4DXN5XwnUY"
+	token := "PASTE_REAL_TOKEN"
 
 	msg := &messaging.Message{
 		Token: token,
@@ -168,4 +239,3 @@ func TestFCMSend(client *messaging.Client) {
 	log.Println("FCM TEST RESPONSE =", resp)
 	log.Println("FCM TEST ERROR =", err)
 }
-

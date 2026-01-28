@@ -11,6 +11,7 @@ import (
 
 func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler) *gin.Engine {
 	r := gin.Default()
+	r.Static("/invoices", "./internal/storage/invoices")
 
 	// === Payment Routes ===
 	payment := r.Group("/payment")
@@ -79,8 +80,9 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	}
 	invoice := r.Group("/invoice", userAuth)
 	{
-		invoice.GET("/:invoiceId", invoiceHandler.GetInvoice)
-		invoice.GET("/:invoiceId/download", invoiceHandler.DownloadInvoice)
+		invoice.POST("/generate", invoiceHandler.GenerateInvoice)
+		invoice.GET("/", invoiceHandler.GetInvoice)
+		invoice.GET("/download", invoiceHandler.DownloadInvoice)
 
 	}
 	// ===Provider kyc =====

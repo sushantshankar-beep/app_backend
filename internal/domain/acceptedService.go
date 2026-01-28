@@ -47,7 +47,8 @@ type AcceptedService struct {
 	Brand       string    	`bson:"brand" json:"brand"`
 	ModelYear   int        	`bson:"modelYear" json:"modelYear"`
 	Model      string      `bson:"model" json:"model"`
-	Timestamps ServiceTimestamps `bson:"timestamps"`
+	Timestamps *ServiceTimestamps `bson:"timestamps,omitempty"`
+	Cancelled  *CancelInfo        `bson:"cancelled,omitempty"`
 	UserLocation *UserLocation `bson:"userLocation" json:"userLocation"`
 	CancelledByProvider bool  	`bson:"cancelledByProvider" json:"cancelledByProvider"`
 
@@ -63,11 +64,19 @@ type ProviderLocation struct {
 }
 
 type ServiceTimestamps struct {
-    StartedAt   *time.Time `bson:"startedAt,omitempty"`
-    CompletedAt *time.Time `bson:"completedAt,omitempty"`
-	CancelledAt *time.Time 	`bson:"cancelledAt,omitempty"`
-	ReachedAt   *time.Time  `bson:"reachedAt,omitempty"`
+	CreatedAt     *time.Time `bson:"createdAt,omitempty"`
+	StartedAt     *time.Time `bson:"startedAt,omitempty"`
+	ReachedAt     *time.Time `bson:"reachedAt,omitempty"`
+	InProgressAt  *time.Time `bson:"inProgressAt,omitempty"`
+	CompletedAt   *time.Time `bson:"completedAt,omitempty"`
+	CancelledAt   *time.Time `bson:"cancelledAt,omitempty"`
 }
+
+type CancelInfo struct {
+	By     string `bson:"by"` // "user" | "provider"
+	Reason string `bson:"reason"`
+}
+
 
 type OTPInfo struct {
 	Code             string     `bson:"code,omitempty" json:"code,omitempty"`

@@ -15,7 +15,7 @@ func NewInvoiceHandler(s *service.InvoiceService) *InvoiceHandler {
 }
 
 func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
-	invoiceID := c.Param("invoiceId")
+	invoiceID := c.Query("invoiceId")
 
 	invoice, err := h.svc.GetInvoice(c.Request.Context(), invoiceID)
 	if err != nil {
@@ -30,7 +30,7 @@ func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
 	})
 }
 func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
-	invoiceID := c.Param("invoiceId")
+	invoiceID := c.Query("invoiceId")
 
 	pdfPath, filename, err := h.svc.GetInvoicePDF(c.Request.Context(), invoiceID)
 	if err != nil {
@@ -43,4 +43,27 @@ func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename="+filename)
 	c.Header("Content-Type", "application/pdf")
 	c.File(pdfPath)
+}
+
+func (h *InvoiceHandler) GenerateInvoice(c *gin.Context) {
+	var req struct {
+		UserID    string `json:"userId" binding:"required"`
+		ServiceID string `json:"serviceId" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	invoice, err := h.svc.GenerateInvoice(c.Request.Context(), req.UserID, req.ServiceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Invoice generated successfully",
+		"invoice": invoice,
+	})
 }

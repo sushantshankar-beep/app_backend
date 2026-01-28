@@ -18,7 +18,6 @@ type InvoiceService struct {
 	serviceRepo  *repository.AcceptedServiceRepo
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
-	pdfService   *PDFService
 }
 
 func NewInvoiceService(
@@ -27,26 +26,15 @@ func NewInvoiceService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 ) *InvoiceService {
-
-	pdfDir := "./invoices"
-	os.MkdirAll(pdfDir, os.ModePerm)
-
-	pdfService := NewPDFService(pdfDir)
-
 	return &InvoiceService{
 		repo:         repo,
 		serviceRepo:  serviceRepo,
 		userRepo:     userRepo,
 		providerRepo: providerRepo,
-		pdfService:   pdfService,
 	}
 }
 
-func (s *InvoiceService) GenerateInvoice(
-	ctx context.Context,
-	userID string,
-	serviceID string,
-) (*domain.Invoice, error) {
+func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
 
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -68,11 +56,6 @@ func (s *InvoiceService) GenerateInvoice(
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
 
-	provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(service.Provider.Hex()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch provider: %w", err)
-	}
-
 	finalPrice := service.FinalPrice
 	gst := finalPrice * 0.18
 	subTotal := finalPrice - gst
@@ -82,13 +65,13 @@ func (s *InvoiceService) GenerateInvoice(
 		InvoiceDate:   time.Now(),
 		ServiceDate:   service.CompletedAt,
 		UserID:        userOID,
-		ServiceID:     serviceOID,
-		ProviderID:    string(provider.ID),
-		ProviderInfo: domain.ProviderInfo{
-			Name:    provider.CompanyName,
-			Address: provider.Address,
-			Phone:   provider.Phone,
-			Email: provider.Email,
+		ServiceID:     service.ServiceNumber,
+		CompanyInfo: domain.CompanyInfo{
+			Name:    "Vahanwire",
+			Address: "B819 Noida One Tower B Noida Sector 62 Uttar Pradesh, 201301",
+			GST:     "09AAGCI0467A1ZV",
+			Phone:   "0120 3221368",
+			Email:   "Info@vahanwire.com",
 		},
 		CustomerInfo: domain.CustomerInfo{
 			Name:  user.Name,
@@ -113,7 +96,7 @@ func (s *InvoiceService) GenerateInvoice(
 			Discount:      0,
 			SubTotal:      subTotal,
 			GST:           gst,
-			Total:         finalPrice,
+			Total:         finalPrice + gst,
 		},
 		CreatedAt: time.Now(),
 	}
@@ -122,17 +105,25 @@ func (s *InvoiceService) GenerateInvoice(
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}
 
-	pdfPath, err := s.pdfService.GenerateInvoicePDF(inv)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate PDF: %w", err)
-	}
+    htmlPath, err := RenderInvoiceHTML(inv)
+    if err != nil {
+	  return nil, err
+    }
 
-	inv.PDFUrl = pdfPath
-	if err := s.repo.UpdatePDFUrl(ctx, inv.ID, pdfPath); err != nil {
-		return nil, fmt.Errorf("failed to update PDF URL: %w", err)
-	}
+    fileName, err := ConvertHTMLToPDF(htmlPath)
+    if err != nil {
+	   return nil, err
+    }
 
-	return inv, nil
+    defer os.Remove(htmlPath)
+
+    baseURL := os.Getenv("INVOICE_BASE_URL")
+
+    publicURL := fmt.Sprintf("%s/invoices/%s", baseURL, fileName)
+
+    inv.PDFUrl = publicURL 
+    _ = s.repo.UpdatePDFUrl(ctx, inv.ID, publicURL)
+    return  inv, nil
 }
 
 func (s *InvoiceService) generateInvoiceNumber(serviceID primitive.ObjectID) string {
@@ -162,9 +153,12 @@ func (s *InvoiceService) GetInvoicePDF(ctx context.Context, invoiceID string) (s
 	}
 
 	filename := filepath.Base(invoice.PDFUrl)
-	if filename == "" {
-		filename = fmt.Sprintf("%s.pdf", invoice.InvoiceNumber)
+
+	pdfPath := filepath.Join("internal/storage/invoices", filename)
+
+	if _, err := os.Stat(pdfPath); err != nil {
+		return "", "", fmt.Errorf("PDF file not found on server")
 	}
 
-	return invoice.PDFUrl, filename, nil
+	return pdfPath, filename, nil
 }

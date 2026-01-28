@@ -14,6 +14,7 @@ import (
 	"errors"
 	// "sync"
 	"app_backend/internal/ports"
+	"strconv"
 )
 
 type BiddingService struct {
@@ -118,6 +119,67 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 }
 
 /* ================= FIND PROVIDERS ================= */
+const luaFindProviders = `
+	-- KEYS[1] = providers:geo
+
+	-- ARGV:
+	-- 1 = lng
+	-- 2 = lat
+	-- 3 = radiusKm
+	-- 4 = serviceID
+	-- 5 = cooldownSec
+	-- 6 = maxSend
+	-- 7 = ttlSec
+
+	local results = redis.call(
+	  "GEORADIUS",
+	  KEYS[1],
+	  ARGV[1],
+	  ARGV[2],
+	  ARGV[3],
+	  "km",
+	  "WITHDIST",
+	  "COUNT",
+	  300
+	)
+
+	local out = {}
+
+	for i=1,#results do
+	  local pid = results[i][1]
+	  local dist = results[i][2]
+
+	  if redis.call("EXISTS", "provider:busy:"..pid) == 0 then
+
+	    local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
+
+	    if redis.call("SETNX", cdKey, "1") == 1 then
+	      redis.call("EXPIRE", cdKey, ARGV[5])
+
+	      local scKey = "service:sendcount:"..ARGV[4]..":"..pid
+	      local cnt = redis.call("INCR", scKey)
+	      redis.call("EXPIRE", scKey, ARGV[7])
+
+	      if cnt <= tonumber(ARGV[6]) then
+
+	        redis.call(
+	          "SET",
+	          "service:dist:"..ARGV[4]..":"..pid,
+	          dist,
+	          "EX",
+	          1800
+	        )
+
+	        table.insert(out, pid)
+	        table.insert(out, dist)
+	      end
+	    end
+	  end
+	end
+
+	return out
+`
+
 func (s *BiddingService) findProviders(
 	serviceID string,
 	lat, lng float64,
@@ -130,19 +192,17 @@ func (s *BiddingService) findProviders(
 	serviceType string,
 	model string,
 ) {
-
 	ctx := context.Background()
+
+	stopKey := "service:stop:" + serviceID
+	lockKey := "service:locked:" + serviceID
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return
 	}
 
-	stopKey := "service:stop:" + serviceID
-
-	// ---------------------------------
-	// fetch service once
-	// ---------------------------------
+	// fetch once
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -155,37 +215,40 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{50, 100}
+	radiusSteps := []float64{5, 10, 25, 50, 100}
 
 	const (
-		cooldownSec   = 60
-		globalTimeout = 25 * time.Minute
-		maxSendPerProv = 10
+		cooldownSec    = 45
+		maxSendPerProv = 8
+		ttlSec         = 7200
+		roundDelay     = 6 * time.Second // 👈 FAST REAL-TIME LOOP
+		globalTimeout  = 30 * time.Minute
 	)
 
 	startedAt := time.Now()
 
 	for {
 
-		// -------------------------------
+		// ------------------------------------
 		// 🛑 GLOBAL TIMEOUT
-		// -------------------------------
+		// ------------------------------------
 		if time.Since(startedAt) > globalTimeout {
-			log.Printf("⏱️ bidding timeout service=%s", serviceID)
+			log.Println("⏱️ bidding timeout", serviceID)
 			return
 		}
 
-		// -------------------------------
-		// 🛑 HARD STOP FLAG
-		// -------------------------------
-		if s.rdb.Exists(ctx, stopKey).Val() == 1 {
-			log.Printf("🛑 stop flag search ended service=%s", serviceID)
+		// ------------------------------------
+		// 🛑 STOP / LOCK
+		// ------------------------------------
+		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
+			s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			log.Println("🛑 dispatch stopped", serviceID)
 			return
 		}
 
-		// -------------------------------
-		// 🔍 DB STATUS CHECK
-		// -------------------------------
+		// ------------------------------------
+		// 🔍 DB STATUS
+		// ------------------------------------
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -194,97 +257,58 @@ func (s *BiddingService) findProviders(
 		}
 
 		if current.Status != domain.StatusSearching {
-			log.Printf("🛑 status changed stop search=%s status=%s",
-				serviceID,
-				current.Status,
-			)
 			return
 		}
 
-		// -------------------------------
-		// 🔎 GEO SEARCH
-		// -------------------------------
+		// ------------------------------------
+		// 🔎 RADIUS WAVES
+		// ------------------------------------
 		for _, radius := range radiusSteps {
 
 			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 				return
 			}
 
-			providers, err := s.rdb.GeoRadius(
+			res, err := s.rdb.Eval(
 				ctx,
-				"providers:geo",
+				luaFindProviders,
+				[]string{"providers:geo"},
 				lng,
 				lat,
-				&redis.GeoRadiusQuery{
-					Radius:   radius,
-					Unit:     "km",
-					WithDist: true,
-					Count:    50,
-				},
+				radius,
+				serviceID,
+				cooldownSec,
+				maxSendPerProv,
+				ttlSec,
 			).Result()
 
-			if err != nil || len(providers) == 0 {
+			if err != nil {
+				log.Println("lua error:", err)
 				continue
 			}
 
-			for _, p := range providers {
+			list, ok := res.([]interface{})
+			if !ok || len(list) == 0 {
+				continue
+			}
 
-				pid := p.Name
+			// ------------------------------------
+			// 🚀 BROADCAST FAN-OUT
+			// ------------------------------------
+			for i := 0; i < len(list); i += 2 {
 
-				// ---------------------------
-				// 🚫 busy provider
-				// ---------------------------
-				if s.rdb.Exists(ctx, "provider:busy:"+pid).Val() == 1 {
-					continue
-				}
+				pid := list[i].(string)
 
-				// ---------------------------
-				// ⏳ cooldown
-				// ---------------------------
-				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
+				distStr := list[i+1].(string)
+				dist, _ := strconv.ParseFloat(distStr, 64)
 
-				ok, _ := s.rdb.SetNX(
-					ctx,
-					cooldownKey,
-					"1",
-					cooldownSec*time.Second,
-				).Result()
-
-				if !ok {
-					continue
-				}
-
-				// ---------------------------
-				// 🔢 SEND LIMIT PER PROVIDER
-				// ---------------------------
-				sendCountKey := "service:sendcount:" + serviceID + ":" + pid
-
-				cnt, _ := s.rdb.Incr(ctx, sendCountKey).Result()
-
-				// safety TTL
-				s.rdb.Expire(ctx, sendCountKey, 90*time.Minute)
-
-				if cnt > maxSendPerProv {
-					continue
-				}
-				distKey := "service:dist:" + serviceID + ":" + pid
-
-				s.rdb.Set(
-					ctx,
-					distKey,
-					p.Dist,
-					30*time.Minute,
-				)
-
-				// ---------------------------
-				// 🚀 SEND ASYNC
-				// ---------------------------
-				go func(providerID string, dist float64, radius float64) {
+				go func(providerID string, distance float64, r float64) {
 
 					if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 						return
 					}
 
+					// push notification
 					go s.notify.SendToProvider(
 						context.Background(),
 						providerID,
@@ -295,6 +319,7 @@ func (s *BiddingService) findProviders(
 						},
 					)
 
+					// websocket
 					s.socket.Emit(
 						"provider:"+providerID,
 						"bid:request",
@@ -313,23 +338,25 @@ func (s *BiddingService) findProviders(
 							},
 							"serviceType": serviceType,
 							"issues":      issues,
-							"distanceKm":  dist,
-							"etaMin":      estimateETA(dist),
-							"radiusKm":    radius,
+							"distanceKm":  distance,
+							"etaMin":      estimateETA(distance),
+							"radiusKm":    r,
 							"expiresIn":   cooldownSec,
 						},
 					)
 
-				}(pid, p.Dist, radius)
+				}(pid, dist, radius)
 			}
 		}
 
-		// -------------------------------
-		// 💤 WAIT NEXT ROUND
-		// -------------------------------
-		time.Sleep(cooldownSec * time.Second)
+		// ------------------------------------
+		// ⚡ FAST LOOP — catches new providers
+		// ------------------------------------
+		time.Sleep(roundDelay)
 	}
 }
+
+
 /* ================= PLACE BID ================= */
 
 func (s *BiddingService) PlaceBid(

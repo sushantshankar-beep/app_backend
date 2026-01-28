@@ -3,8 +3,8 @@ package dto
 import "time"
 
 type CreateRatingRequest struct {
-	BookingID   string `json:"bookingId" binding:"required"`
-	Stars       int    `json:"stars" binding:"required,min=1,max=5"`
+	BookingID   string `json:"bookingId"`
+	Stars       int    `json:"stars"`
 	Review      string `json:"review"`
 	Recommended bool   `json:"recommended"`
 }

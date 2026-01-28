@@ -29,6 +29,30 @@ func (h *RatingHandler) CreateProviderRating(c *gin.Context) {
 		return
 	}
 
+	if req.BookingID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "bookingId is required",
+		})
+		return
+	}
+
+	if req.Stars < 1 || req.Stars > 5 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "stars must be between 1 and 5",
+		})
+		return
+	}
+
+	if !req.Recommended {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "Recommended is required",
+		})
+		return
+	}
+	
 	rating, err := h.svc.CreateProviderRating(c.Request.Context(), userID, req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -48,6 +72,30 @@ func (h *RatingHandler) CreateUserRating(c *gin.Context) {
 	var req dto.CreateRatingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.BookingID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "bookingId is required",
+		})
+		return
+	}
+
+	if req.Stars < 1 || req.Stars > 5 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "stars must be between 1 and 5",
+		})
+		return
+	}
+
+	if !req.Recommended {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   true,
+			"message": "Recommended is required",
+		})
 		return
 	}
 
@@ -91,4 +139,5 @@ func (h *RatingHandler) GetProviderRatings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"ratings": ratings})
 }
+
 

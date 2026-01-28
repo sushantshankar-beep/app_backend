@@ -116,7 +116,6 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 }
 
 /* ================= FIND PROVIDERS ================= */
-
 func (s *BiddingService) findProviders(
 	serviceID string,
 	lat, lng float64,
@@ -137,9 +136,11 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	lockKey := "service:locked:" + serviceID
+	stopKey := "service:stop:" + serviceID
 
-	// fetch once initially
+	// ---------------------------------
+	// fetch service once
+	// ---------------------------------
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -155,37 +156,34 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{50, 100}
 
 	const (
-		cooldownSec     = 60
-		globalTimeout   = 20 * time.Minute
-		maxSendPerProv  = 1000 // practically unlimited, safety only
+		cooldownSec   = 50
+		globalTimeout = 25 * time.Minute
+		maxSendPerProv = 10
 	)
 
 	startedAt := time.Now()
-	round := 1
 
 	for {
 
-		// ===============================
-		// 🛑 GLOBAL SAFETY TIMEOUT
-		// ===============================
+		// -------------------------------
+		// 🛑 GLOBAL TIMEOUT
+		// -------------------------------
 		if time.Since(startedAt) > globalTimeout {
 			log.Printf("⏱️ bidding timeout service=%s", serviceID)
 			return
 		}
 
-		log.Printf("🔁 bidding round %d service=%s", round, serviceID)
-
-		// ===============================
-		// 🔒 STOP IF LOCKED
-		// ===============================
-		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
-			log.Printf("🔒 service locked stop search=%s", serviceID)
+		// -------------------------------
+		// 🛑 HARD STOP FLAG
+		// -------------------------------
+		if s.rdb.Exists(ctx, stopKey).Val() == 1 {
+			log.Printf("🛑 stop flag search ended service=%s", serviceID)
 			return
 		}
 
-		// ===============================
+		// -------------------------------
 		// 🔍 DB STATUS CHECK
-		// ===============================
+		// -------------------------------
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -201,12 +199,12 @@ func (s *BiddingService) findProviders(
 			return
 		}
 
-		// ===============================
+		// -------------------------------
 		// 🔎 GEO SEARCH
-		// ===============================
+		// -------------------------------
 		for _, radius := range radiusSteps {
 
-			if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 				return
 			}
 
@@ -230,11 +228,17 @@ func (s *BiddingService) findProviders(
 			for _, p := range providers {
 
 				pid := p.Name
-				dist := p.Dist
 
-				// ===============================
-				// ⏳ COOLDOWN PER PROVIDER
-				// ===============================
+				// ---------------------------
+				// 🚫 busy provider
+				// ---------------------------
+				if s.rdb.Exists(ctx, "provider:busy:"+pid).Val() == 1 {
+					continue
+				}
+
+				// ---------------------------
+				// ⏳ cooldown
+				// ---------------------------
 				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
 
 				ok, _ := s.rdb.SetNX(
@@ -248,24 +252,26 @@ func (s *BiddingService) findProviders(
 					continue
 				}
 
-				// ===============================
-				// 🔢 SEND COUNT (safety only)
-				// ===============================
-				sendKey := "service:sendCount:" + serviceID + ":" + pid
+				// ---------------------------
+				// 🔢 SEND LIMIT PER PROVIDER
+				// ---------------------------
+				sendCountKey := "service:sendcount:" + serviceID + ":" + pid
 
-				cnt, _ := s.rdb.Incr(ctx, sendKey).Result()
-				s.rdb.Expire(ctx, sendKey, 12*time.Hour)
+				cnt, _ := s.rdb.Incr(ctx, sendCountKey).Result()
+
+				// safety TTL
+				s.rdb.Expire(ctx, sendCountKey, 90*time.Minute)
 
 				if cnt > maxSendPerProv {
 					continue
 				}
 
-				// ===============================
+				// ---------------------------
 				// 🚀 SEND ASYNC
-				// ===============================
-				go func(providerID string, distance float64, radius float64) {
+				// ---------------------------
+				go func(providerID string, dist float64, radius float64) {
 
-					if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+					if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 						return
 					}
 
@@ -297,31 +303,23 @@ func (s *BiddingService) findProviders(
 							},
 							"serviceType": serviceType,
 							"issues":      issues,
-							"distanceKm":  distance,
-							"etaMin":      estimateETA(distance),
+							"distanceKm":  dist,
+							"etaMin":      estimateETA(dist),
 							"radiusKm":    radius,
 							"expiresIn":   cooldownSec,
 						},
 					)
 
-				}(pid, dist, radius)
+				}(pid, p.Dist, radius)
 			}
 		}
 
-		round++
-
-		// ===============================
-		// 💤 WAIT BEFORE NEXT ROUND
-		// ===============================
+		// -------------------------------
+		// 💤 WAIT NEXT ROUND
+		// -------------------------------
 		time.Sleep(cooldownSec * time.Second)
 	}
 }
-
-
-
-
-
-
 /* ================= PLACE BID ================= */
 
 func (s *BiddingService) PlaceBid(
@@ -331,19 +329,13 @@ func (s *BiddingService) PlaceBid(
 	price int,
 ) (string, error) {
 	// 🚫 service cancelled?
-	cancelled := s.rdb.Exists(ctx, "service:cancelled:"+serviceID).Val()
-	if cancelled == 1 {
-		return "", errors.New("service already cancelled")
-	}
-	locked, _ := s.rdb.Exists(
-		ctx,
-		"service:locked:"+serviceID,
-	).Result()
-
-	if locked == 1 {
-		return "", ErrServiceAlreadyAssigned
+	if s.rdb.Exists(ctx, "service:stop:"+serviceID).Val() == 1 {
+		return "", errors.New("service is no longer available")
 	}
 
+	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 1 {
+		return "", errors.New("service is no longer available")
+	}
 	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 	providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
@@ -412,6 +404,22 @@ func (s *BiddingService) AcceptBid(
 	providerID string,
 	price float64,
 ) error {
+	assignKey := "service:assigning:" + serviceID
+	stopKey := "service:stop:" + serviceID
+	lockKey := "service:locked:" + serviceID
+	ok, err := s.rdb.SetNX(ctx, assignKey, "1", 10*time.Second).Result()
+	if err != nil || !ok {
+		return ErrServiceAlreadyAssigned
+	}
+	defer s.rdb.Del(ctx, assignKey)
+
+	// already closed?
+	if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+		return ErrServiceAlreadyAssigned
+	}
+
+	// STOP findProviders immediately
+	s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {

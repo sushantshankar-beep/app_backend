@@ -47,4 +47,28 @@ func (r *VehicleRepo) FindByID(
 	}
 	return &v, err
 }
+func (r *VehicleRepo) FindByIDs(
+	ctx context.Context,
+	ids []primitive.ObjectID,
+) ([]domain.Vehicle, error) {
+
+	cur, err := r.col.Find(
+		ctx,
+		bson.M{"_id": bson.M{"$in": ids}},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var vehicles []domain.Vehicle
+
+	if err := cur.All(ctx, &vehicles); err != nil {
+		return nil, err
+	}
+
+	return vehicles, nil
+}
+
 

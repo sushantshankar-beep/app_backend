@@ -77,8 +77,10 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	
-
+	now := time.Now()
+	svc.Timestamps = &domain.ServiceTimestamps{
+		CreatedAt: &now,
+	}
 	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
 		return "", err
 	}
@@ -156,7 +158,7 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{50, 100}
 
 	const (
-		cooldownSec   = 50
+		cooldownSec   = 60
 		globalTimeout = 25 * time.Minute
 		maxSendPerProv = 10
 	)
@@ -265,6 +267,14 @@ func (s *BiddingService) findProviders(
 				if cnt > maxSendPerProv {
 					continue
 				}
+				distKey := "service:dist:" + serviceID + ":" + pid
+
+				s.rdb.Set(
+					ctx,
+					distKey,
+					p.Dist,
+					30*time.Minute,
+				)
 
 				// ---------------------------
 				// 🚀 SEND ASYNC
@@ -629,6 +639,7 @@ func (s *BiddingService) ProviderCancelService(
 			})
 		}
 	}
+	now := time.Now()
 
 	// 🔄 reset service state
 	_, err := s.acceptedRepo.Col().UpdateByID(
@@ -637,6 +648,9 @@ func (s *BiddingService) ProviderCancelService(
 		bson.M{
 			"$set": bson.M{
 				"status":        domain.StatusSearching,
+				"timestamps.cancelledAt":now,
+				"cancelled.by": "provider",
+				"cancelled.reason": reason,
 				"provider":      primitive.NilObjectID,
 				"acceptedBid":   primitive.NilObjectID,
 				"fixedPrice":    fixedPrice,
@@ -788,6 +802,7 @@ func (s *BiddingService) CancelService(
 	if svc.User.Hex() != userID {
 		return errors.New("not allowed")
 	}
+	now := time.Now()
 
 	// 🔒 STOP search goroutines
 	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
@@ -799,7 +814,9 @@ func (s *BiddingService) CancelService(
 		bson.M{
 			"$set": bson.M{
 				"status":      domain.StatusCancelled,
-				"cancelledBy": "user",
+				"timestamps.cancelledAt": now,
+				"cancelled.by": "user",
+				"cancelled.reason": reason,
 				"cancelledAt": time.Now(),
 				"updatedAt":   time.Now(),
 				"reason" : reason,
@@ -877,9 +894,12 @@ func (s *BiddingService)CancelSearchingServiceBeforeBid(
 	if err != nil {
 		return err
 	}
-
 	lockKey := "service:locked:" + serviceID
+	stopKey := "service:stop:" + serviceID
 
+	// 🔒 STOP search goroutines
+	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
+	s.rdb.Set(ctx, stopKey, "1", 30*time.Minute)
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).

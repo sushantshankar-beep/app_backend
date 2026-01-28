@@ -257,15 +257,15 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	switch newStatus {
 	case domain.StatusStarted:
-		ts["jobStartedAt"] = now
+		update["timestamps.startedAt"] = now
 	case domain.StatusReachedLocation:
-		ts["reachedAt"] = now
+		update["timestamps.reachedAt"] = now
 	case domain.StatusOTPVerified:
-		ts["otpVerifiedAt"] = now
+		update["timestamps.OtpVerified"] = now
 	case domain.StatusInProgress:
-		ts["startedAt"] = now
+		update["timestamps.ServiceStarted"]= now
 	case domain.StatusCompleted:
-		ts["completedAt"] = now
+		update["timestamps.inProgressAt"] = now
 	}
 
 	if len(ts) > 0 {

@@ -28,6 +28,7 @@ import (
 
 type PaymentService struct {
 	repo        *repository.PaymentRepository
+	transactionRepo *repository.PaymentRepository
 	invoiceSvc  *InvoiceService
 	socket      *socket.Emitter
 	redis       *redis.Client
@@ -59,7 +60,7 @@ func NewPaymentService(
 
 	return &PaymentService{
 		repo:                repo,
-		invoiceSvc:          NewInvoiceService(invoiceRepo, acceptedRepo.(*repository.AcceptedServiceRepo), userRepo, providerRepo.(*repository.ProviderRepo)),
+		invoiceSvc:          NewInvoiceService(invoiceRepo, acceptedRepo.(*repository.AcceptedServiceRepo), userRepo, providerRepo.(*repository.ProviderRepo),repo),
 		socket:              socket,
 		acceptedServiceRepo: acceptedRepo,
 		userRepo:			 userRepo,

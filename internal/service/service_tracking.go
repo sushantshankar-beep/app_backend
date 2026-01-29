@@ -266,7 +266,9 @@ func (s *ServiceTrackingService) UpdateStatus(
 	case domain.StatusInProgress:
 		update["timestamps.inProgressAt"]= now
 	case domain.StatusCompleted:
-		update["timestamps.CompleletedAt"] = now
+		update["timestamps.CompletedAt"] = now
+	case domain.StatusCancelled:
+		update["timestamps.CancelledAt"] = now
 	}
 
 	if len(ts) > 0 {

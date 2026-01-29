@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
-
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -19,6 +17,7 @@ type InvoiceService struct {
 	serviceRepo  *repository.AcceptedServiceRepo
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
+	transactionRepo *repository.PaymentRepository
 }
 
 func NewInvoiceService(
@@ -26,18 +25,18 @@ func NewInvoiceService(
 	serviceRepo *repository.AcceptedServiceRepo,
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
+	transactionRepo *repository.PaymentRepository,
 ) *InvoiceService {
 	return &InvoiceService{
 		repo:         repo,
 		serviceRepo:  serviceRepo,
 		userRepo:     userRepo,
 		providerRepo: providerRepo,
+		transactionRepo: transactionRepo,
 	}
 }
 
 func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
-	log.Println("userId",userID)
-	log.Println("serviceId",serviceID)
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	defer func() {
 		if r := recover(); r != nil {
@@ -62,10 +61,15 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
+	transaction , err := s.transactionRepo.GetTransactionByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user: %w", err)
+	}
+
+	
 
 	finalPrice := service.FinalPrice
 	gst := finalPrice * 0.18
-	subTotal := finalPrice - gst
 
 	inv := &domain.Invoice{
 		InvoiceNumber: s.generateInvoiceNumber(service.ID),
@@ -100,15 +104,16 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 		},
 		PricingDeatils: domain.PricingInfo{
 			ServiceCharge: finalPrice,
-			Discount:      0,
-			SubTotal:      subTotal,
 			GST:           gst,
 			Total:         finalPrice + gst,
+		},
+		Transaction:domain.Transaction{
+			PaymentMode: transaction.Method,
 		},
 		CreatedAt: time.Now(),
 	}
     
-	log.Println("inv data", inv)
+	
 	if err := s.repo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}
@@ -117,24 +122,19 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
     if err != nil {
 	  return nil, err
     }
-    log.Println("htmlPath is",htmlPath)
+  
     fileName, err := ConvertHTMLToPDF(htmlPath)
     if err != nil {
 	   return nil, err
     }
 
-
-	log.Println("abcjdcssd",fileName)
     defer os.Remove(htmlPath)
 
     baseURL := os.Getenv("INVOICE_BASE_URL")
-    log.Println("baseURL IS",baseURL)
-
+   
     publicURL := fmt.Sprintf("%s/invoices/%s", baseURL, fileName)
-    log.Println("publicURLLLL",publicURL)
     inv.PDFUrl = publicURL 
 
-	log.Println("ancdsjbnjcsd",inv.PDFUrl)
     _ = s.repo.UpdatePDFUrl(ctx, inv.ID, publicURL)
     return  inv, nil
 }

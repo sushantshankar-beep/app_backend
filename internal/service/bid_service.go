@@ -120,85 +120,92 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 
 /* ================= FIND PROVIDERS ================= */
 const luaFindProviders = `
-	-- KEYS[1] = providers:geo
+-- KEYS[1] = providers:geo
 
-	-- ARGV:
-	-- 1 = lng
-	-- 2 = lat
-	-- 3 = radiusKm
-	-- 4 = serviceID
-	-- 5 = cooldownSec
-	-- 6 = maxSend
-	-- 7 = ttlSec
+-- ARGV:
+-- 1 = lng
+-- 2 = lat
+-- 3 = radiusKm
+-- 4 = serviceID
+-- 5 = cooldownSec
+-- 6 = maxSend
+-- 7 = ttlSec
 
-	local results = redis.call(
-	  "GEORADIUS",
-	  KEYS[1],
-	  ARGV[1],
-	  ARGV[2],
-	  ARGV[3],
-	  "km",
-	  "WITHDIST",
-	  "COUNT",
-	  300
-	)
+local results = redis.call(
+  "GEORADIUS",
+  KEYS[1],
+  ARGV[1],
+  ARGV[2],
+  ARGV[3],
+  "km",
+  "WITHDIST",
+  "COUNT",
+  300
+)
 
-	local out = {}
+local out = {}
 
-	for i=1,#results do
-	  local pid = results[i][1]
-	  local dist = results[i][2]
+for i=1,#results do
+  local pid = results[i][1]
+  local dist = results[i][2]
 
-	  -- skip busy
-	  if redis.call("EXISTS", "provider:busy:"..pid) == 1 then
-	    goto continue
-	  end
+  local skip = false
 
-	  -- skip already active
-	  local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
-	  if redis.call("EXISTS", activeKey) == 1 then
-	    goto continue
-	  end
+  -- skip busy
+  if redis.call("EXISTS", "provider:busy:"..pid) == 1 then
+    skip = true
+  end
 
-	  -- cooldown
-	  local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
-	  if redis.call("SETNX", cdKey, "1") == 0 then
-	    goto continue
-	  end
+  -- skip already active
+  if not skip then
+    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+    if redis.call("EXISTS", activeKey) == 1 then
+      skip = true
+    end
+  end
 
-	  redis.call("EXPIRE", cdKey, ARGV[5])
+  -- cooldown
+  if not skip then
+    local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
+    if redis.call("SETNX", cdKey, "1") == 0 then
+      skip = true
+    else
+      redis.call("EXPIRE", cdKey, ARGV[5])
+    end
+  end
 
-	  -- send count
-	  local scKey = "service:sendcount:"..ARGV[4]..":"..pid
-	  local cnt = redis.call("INCR", scKey)
-	  redis.call("EXPIRE", scKey, ARGV[7])
+  -- send count
+  if not skip then
+    local scKey = "service:sendcount:"..ARGV[4]..":"..pid
+    local cnt = redis.call("INCR", scKey)
+    redis.call("EXPIRE", scKey, ARGV[7])
 
-	  if cnt > tonumber(ARGV[6]) then
-	    goto continue
-	  end
+    if cnt > tonumber(ARGV[6]) then
+      skip = true
+    end
+  end
 
-	  -- cache distance
-	  redis.call(
-	    "SET",
-	    "service:dist:"..ARGV[4]..":"..pid,
-	    dist,
-	    "EX",
-	    1800
-	  )
+  if not skip then
+    -- cache distance
+    redis.call(
+      "SET",
+      "service:dist:"..ARGV[4]..":"..pid,
+      dist,
+      "EX",
+      1800
+    )
 
-	  -- mark active
-	  redis.call("SET", activeKey, "1", "EX", ARGV[5])
+    -- mark active
+    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+    redis.call("SET", activeKey, "1", "EX", ARGV[5])
 
-	  table.insert(out, pid)
-	  table.insert(out, dist)
+    table.insert(out, pid)
+    table.insert(out, dist)
+  end
+end
 
-	  ::continue::
-	end
-
-	return out
+return out
 `
-
-
 func (s *BiddingService) findProviders(
 	serviceID string,
 	lat, lng float64,
@@ -408,6 +415,7 @@ func (s *BiddingService) PlaceBid(
 		"bid:update",
 		map[string]any{
 			"bidId": bidOID.Hex(),
+			"serviceId":serviceID,
 			"price": price,
 			"provider": map[string]any{
 				"id":         providerID,

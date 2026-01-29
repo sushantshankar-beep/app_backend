@@ -124,9 +124,13 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		},
 	)
    log.Println("hey get invoice")
+
+   log.Println("userId",txn.UserID)
+   log.Println("service id",txn.ServiceID)
 	// ---------------- ASYNC SIDE EFFECTS ----------------
 	go s.invoiceSvc.GenerateInvoice(context.Background(), txn.UserID, txn.ServiceID)
-
+  
+	log.Println("DONEEEEE")
 	s.events.Publish("payment.success", events.PaymentEvent{
 		TxnID:     txnID,
 		ServiceID: svc.ID.Hex(),

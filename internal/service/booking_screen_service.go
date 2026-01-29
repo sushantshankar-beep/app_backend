@@ -538,20 +538,82 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 	if err != nil {
 		return nil, err
 	}
+	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
+	if err != nil {
+		return nil, err
+	}
+	
+	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted})
+	if err != nil {
+		return nil, err
+	}
+	
+	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
+	for _, booking := range completedBookings {
+		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		if err != nil {
+			continue
+		}
+		
+		serviceName := ""
+		if len(booking.Issues) > 0 {
+			serviceName = booking.Issues[0]
+		}
+		
+		earnings = append(earnings, dto.EarningDetail{
+			ID:          booking.ID.Hex(),
+			ProviderId:  booking.Provider,
+			ServiceName: serviceName,
+			Amount:      transaction.Amount,
+			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return &dto.EarningsResponse{Earnings: earnings}, nil
+}
+func (s *BookingService) GetProviderTodayEarnings(
+	ctx context.Context,
+	providerID string,
+) (*dto.TodayEarningsResponse, error) {
+
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
 
 	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
 	if err != nil {
 		return nil, err
 	}
 
-	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},)
+	now := time.Now()
+	startOfDay := time.Date(
+		now.Year(), now.Month(), now.Day(),
+		0, 0, 0, 0, now.Location(),
+	)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	completedBookings, err := s.acceptedRepo.
+		GetProviderCompletedBookingsByDate(
+			ctx,
+			providerObjID,
+			startOfDay,
+			endOfDay,
+		)
 	if err != nil {
 		return nil, err
 	}
 
+	var total float64
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 
 	for _, booking := range completedBookings {
+		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+		total += transaction.Amount
+
 		serviceName := ""
 		if len(booking.Issues) > 0 {
 			serviceName = booking.Issues[0]
@@ -561,10 +623,13 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
 			ServiceName: serviceName,
-			Amount:      booking.FinalPrice,
+			Amount:      transaction.Amount,
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
-	return &dto.EarningsResponse{Earnings: earnings}, nil
+	return &dto.TodayEarningsResponse{
+		Total:   total,
+		Earnings: earnings,
+	}, nil
 }

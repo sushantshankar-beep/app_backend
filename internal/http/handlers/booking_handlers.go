@@ -150,3 +150,20 @@ func (h *BookingHandler) GetProviderEarnings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, earnings)
 }
+
+func (h *BookingHandler) GetProviderTodayEarnings(c *gin.Context) {
+	providerID := c.Param("providerID")
+
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "providerID is required"})
+		return
+	}
+
+	earnings, err := h.svc.GetProviderTodayEarnings(c.Request.Context(), providerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, earnings)
+}

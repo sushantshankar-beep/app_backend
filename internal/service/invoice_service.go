@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
+    "log"
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 
@@ -66,8 +66,6 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
-
-	
 
 	finalPrice := service.FinalPrice
 	gst := finalPrice * 0.18

@@ -147,6 +147,9 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/ratings/:providerID", ratingHandler.GetProviderRatings)
 		provider.GET("/dashboard/:providerID", bookingHandler.GetProviderDashboard)
 		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
+		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
+
+
 
 	}
 	meta := r.Group("/meta")

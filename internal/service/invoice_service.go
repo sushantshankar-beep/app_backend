@@ -9,6 +9,7 @@ import (
 
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -76,7 +77,8 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 		InvoiceDate:   time.Now(),
 		ServiceDate:   service.CompletedAt,
 		UserID:        userOID,
-		ServiceID:     service.ServiceNumber,
+		ServiceID:     service.ID.Hex(),
+        ServiceNumber: service.ServiceNumber,
 		CompanyInfo: domain.CompanyInfo{
 			Name:    "Vahanwire",
 			Address: "B819 Noida One Tower B Noida Sector 62 Uttar Pradesh, 201301",
@@ -147,22 +149,18 @@ func (s *InvoiceService) generateInvoiceNumber(serviceID primitive.ObjectID) str
 	return fmt.Sprintf("INV-%s", hexID)
 }
 
-func (s *InvoiceService) GetInvoice(ctx context.Context, invoiceID string) (*domain.Invoice, error) {
-	oid, err := primitive.ObjectIDFromHex(invoiceID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid invoice ID: %w", err)
-	}
-	return s.repo.GetByID(ctx, oid)
+func (s *InvoiceService) GetInvoice(ctx context.Context, bookingID string) (*domain.Invoice, error) {
+	return s.repo.GetByID(ctx, bookingID)
 }
 
-func (s *InvoiceService) GetInvoicePDF(ctx context.Context, invoiceID string) (string, string, error) {
-	invoice, err := s.GetInvoice(ctx, invoiceID)
+func (s *InvoiceService) GetInvoicePDF(ctx context.Context, bookingId string) (string, string, error) {
+	invoice, err := s.GetInvoice(ctx, bookingId)
 	if err != nil {
 		return "", "", err
 	}
 
 	if invoice.PDFUrl == "" {
-		return "", "", fmt.Errorf("PDF not generated for invoice %s", invoiceID)
+		return "", "", fmt.Errorf("PDF not generated for invoice %s", bookingId)
 	}
 
 	filename := filepath.Base(invoice.PDFUrl)

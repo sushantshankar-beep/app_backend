@@ -15,9 +15,9 @@ func NewInvoiceHandler(s *service.InvoiceService) *InvoiceHandler {
 }
 
 func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
-	invoiceID := c.Query("invoiceId")
+	bookingID := c.Query("bookingId")
 
-	invoice, err := h.svc.GetInvoice(c.Request.Context(), invoiceID)
+	invoice, err := h.svc.GetInvoice(c.Request.Context(), bookingID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "invoice not found",
@@ -30,9 +30,9 @@ func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
 	})
 }
 func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
-	invoiceID := c.Query("invoiceId")
+	bookingId := c.Query("bookingId")
 
-	pdfPath, filename, err := h.svc.GetInvoicePDF(c.Request.Context(), invoiceID)
+	pdfPath, filename, err := h.svc.GetInvoicePDF(c.Request.Context(), bookingId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": err.Error(),

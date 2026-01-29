@@ -66,9 +66,9 @@ func (r *InvoiceRepo) Update(ctx context.Context, id primitive.ObjectID, invoice
 	return err
 }
 
-func (r *InvoiceRepo) GetByID(ctx context.Context, id primitive.ObjectID) (*domain.Invoice, error) {
+func (r *InvoiceRepo) GetByID(ctx context.Context, id string) (*domain.Invoice, error) {
 	var invoice domain.Invoice
-	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&invoice)
+	err := r.col.FindOne(ctx, bson.M{"serviceId": id}).Decode(&invoice)
 	if err != nil {
 		return nil, err
 	}

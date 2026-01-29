@@ -54,8 +54,8 @@ func RenderInvoiceHTML(inv *domain.Invoice) (string, error) {
 			"Year":   inv.VehicleDetails.Year,
 			"Fuel":   inv.VehicleDetails.FuelType,
 		},
-		"Service": map[string]any{
-			"ID":            inv.ServiceID,
+		"Service": map[string]interface{}{
+			"ID":            inv.ServiceNumber,
 			"Type":          inv.ServiceInfo.Type,
 			"Status":        inv.ServiceInfo.Status,
 			"PaymentStatus": inv.ServiceInfo.PaymentStatus,

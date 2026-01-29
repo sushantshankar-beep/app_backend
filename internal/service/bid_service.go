@@ -244,7 +244,7 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{10, 25, 50, 100}
 
 	const (
-		cooldownSec    = 63
+		cooldownSec    = 77
 		maxSendPerProv = 8
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
@@ -276,6 +276,11 @@ func (s *BiddingService) findProviders(
 		if current.Status != domain.StatusSearching {
 			return
 		}
+		if s.rdb.Exists(ctx, "service:bidWindow:"+serviceID).Val() == 1 {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
 
 		for _, radius := range radiusSteps {
 
@@ -380,6 +385,30 @@ func (s *BiddingService) PlaceBid(
 	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 1 {
 		return "", errors.New("service is no longer available")
 	}
+	providerLock := "service:providerBidLock:" + serviceID + ":" + providerID
+
+	ok, err := s.rdb.SetNX(ctx, providerLock, "1", 60*time.Second).Result()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", errors.New("provider already placed bid — wait")
+	}
+
+	// ===============================
+	// 🧊 START GLOBAL BID WINDOW
+	// ===============================
+
+	windowKey := "service:bidWindow:" + serviceID
+
+	started, err := s.rdb.SetNX(ctx, windowKey, "1", 60*time.Second).Result()
+	if err != nil {
+		return "", err
+	}
+
+	if started {
+		log.Println("⏸ bid window started for service:", serviceID)
+	}
 	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 	providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
@@ -452,6 +481,7 @@ func (s *BiddingService) AcceptBid(
 	assignKey := "service:assigning:" + serviceID
 	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
+	s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
 	ok, err := s.rdb.SetNX(ctx, assignKey, "1", 10*time.Second).Result()
 	if err != nil || !ok {
 		return ErrServiceAlreadyAssigned
@@ -593,7 +623,8 @@ func (s *BiddingService) RejectBid(
 ) error {
 
 	log.Printf("👎 rejected provider=%s service=%s", providerID, serviceID)
-
+		// clear bid window so new providers can be contacted
+	s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
 	activeKey := "service:activeProvider:" + serviceID + ":" + providerID
 
 	// allow rebid window
@@ -909,6 +940,7 @@ func (s *BiddingService) CancelService(
 		"service:cooldown:" + serviceID + ":*",
 		"service:attempts:" + serviceID + ":*",
 		"service:userReject:" + serviceID + ":*",
+		"service:providerBidLock:" + serviceID + ":*",
 	}
 
 	for _, p := range patterns {
@@ -1022,6 +1054,7 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 			"service:cooldown:" + serviceID + ":*",
 			"service:attempts:" + serviceID + ":*",
 			"service:userReject:" + serviceID + ":*",
+			"service:providerBidLock:" + serviceID + ":*",
 		}
 
 		for _, pattern := range patterns {

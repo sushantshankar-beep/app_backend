@@ -134,6 +134,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 		"booking": map[string]any{
 			"bookingId": svc.ServiceNumber,
 			"status":    "BID_ACCEPTED",
+			"serviceId": serviceID,
 		},
 
 		"vehicle": map[string]any{
@@ -278,7 +279,8 @@ func (s *ServiceTrackingService) UpdateStatus(
 		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
 		return nil, err
 	}
-	gst := "18%"
+	gst := svc.FinalPrice * 18 / 100
+	totalAmount := gst + svc.FinalPrice
 	// 👇 Fetch user
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	userLat := svc.UserLocation.Lat
@@ -289,6 +291,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 	// 🔥 build payload
 	payload := map[string]any{
 		"serviceId":    svc.ServiceNumber,
+		"serviceIdMain": serviceID,
 		"oldStatus":    prevStatus,
 		"newStatus":    newStatus,
 		"date": svc.CreatedAt.Format("2006-01-02"),
@@ -299,6 +302,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"lat" : userLat,
 			"lon" : userLong,
 		},
+		"providerID":svc.Provider.Hex(),
 		"finalAmount": svc.FinalPrice,
 		"gst"    : gst,
 		"issues" : svc.Issues,
@@ -312,7 +316,8 @@ func (s *ServiceTrackingService) UpdateStatus(
 		},
 		"distanceKm" : distance,
 		"eta"      : eta,
-		"timestamps": ts,
+		"timestamps": svc.Timestamps,
+		"totalAmount": totalAmount,
 	}
 
 	if lat != 0 && long != 0 {

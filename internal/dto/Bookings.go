@@ -138,3 +138,8 @@ type EarningDetail struct {
 type EarningsResponse struct {
 	Earnings []EarningDetail `json:"earnings"`
 }
+
+type TodayEarningsResponse struct {
+	Total    float64         `json:"total"`
+	Earnings []EarningDetail `json:"earnings"`
+}

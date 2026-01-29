@@ -263,9 +263,9 @@ func (s *ServiceTrackingService) UpdateStatus(
 	case domain.StatusOTPVerified:
 		update["timestamps.OtpVerified"] = now
 	case domain.StatusInProgress:
-		update["timestamps.ServiceStarted"]= now
+		update["timestamps.inProgressAt"]= now
 	case domain.StatusCompleted:
-		update["timestamps.inProgressAt"] = now
+		update["timestamps.CompleletedAt"] = now
 	}
 
 	if len(ts) > 0 {

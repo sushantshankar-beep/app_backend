@@ -160,9 +160,10 @@ func (s *ProviderService) CreateOrUpdateProfile(
 		return nil, err
 	}
 
+	isDeleted := provider.IsActive == domain.PROVIDER_DELETED
 	wasCompleted := isProviderProfileCompleted(provider)
 
-	if !wasCompleted {
+	if !wasCompleted && !isDeleted {
 		required := []string{"name", "city", "shopAddress"}
 		for _, field := range required {
 			v, ok := req[field]
@@ -216,7 +217,10 @@ func (s *ProviderService) CreateOrUpdateProfile(
 
 	provider.UpdatedAt = time.Now()
 
-	if !wasCompleted && isProviderProfileCompleted(provider) {
+	if isDeleted {
+		provider.IsActive = domain.PROVIDER_ACTIVE
+		provider.FormSubmitted = 1
+	} else if !wasCompleted && isProviderProfileCompleted(provider) {
 		provider.FormSubmitted = 1
 		provider.IsActive = domain.PROVIDER_ACTIVE
 	}
@@ -227,7 +231,6 @@ func (s *ProviderService) CreateOrUpdateProfile(
 
 	return provider, nil
 }
-
 
 /* ---------------- SERVICES ---------------- */
 
@@ -394,6 +397,7 @@ func (s *ProviderService) DeleteProviderAccount(ctx context.Context, id domain.P
 	}
 
 	provider.IsActive = domain.PROVIDER_DELETED
+	provider.FormSubmitted = 0
 	provider.UpdatedAt = time.Now()
 
 	return s.repo.Update(ctx, provider)

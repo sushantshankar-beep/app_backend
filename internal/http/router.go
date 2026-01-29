@@ -9,7 +9,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler, providerAgreementHandler *handlers.AgreementHandler) *gin.Engine {
 	r := gin.Default()
 	r.Static("/invoices", "./internal/storage/invoices")
 
@@ -163,6 +163,11 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 					ContextKey:    "image",
 				},
 		}), imageUploadS3Handler.UploadSingle)
+	}
+
+	providerAgreement := r.Group("/provider-agreement")
+	{
+		providerAgreement.GET("/:id", providerAgreementHandler.GetAgreement)
 	}
 	
 	if homepageHandler != nil {

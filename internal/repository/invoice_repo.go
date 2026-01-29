@@ -3,6 +3,7 @@ package repository
 import (
 	"app_backend/internal/domain"
 	"context"
+	"log"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -84,5 +85,6 @@ func (r *InvoiceRepo) UpdatePDFUrl(ctx context.Context, id primitive.ObjectID, p
 			},
 		},
 	)
+	log.Println("updatedddd urlll")
 	return err
 }

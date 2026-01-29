@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,6 +36,8 @@ func NewInvoiceService(
 }
 
 func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
+	log.Println("userId",userID)
+	log.Println("serviceId",serviceID)
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
@@ -99,7 +102,8 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 		},
 		CreatedAt: time.Now(),
 	}
-
+    
+	log.Println("inv data", inv)
 	if err := s.repo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}
@@ -108,19 +112,24 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
     if err != nil {
 	  return nil, err
     }
-
+    log.Println("htmlPath is",htmlPath)
     fileName, err := ConvertHTMLToPDF(htmlPath)
     if err != nil {
 	   return nil, err
     }
 
+
+	log.Println("abcjdcssd",fileName)
     defer os.Remove(htmlPath)
 
     baseURL := os.Getenv("INVOICE_BASE_URL")
+    log.Println("baseURL IS",baseURL)
 
     publicURL := fmt.Sprintf("%s/invoices/%s", baseURL, fileName)
-
+    log.Println("publicURLLLL",publicURL)
     inv.PDFUrl = publicURL 
+
+	log.Println("ancdsjbnjcsd",inv.PDFUrl)
     _ = s.repo.UpdatePDFUrl(ctx, inv.ID, publicURL)
     return  inv, nil
 }

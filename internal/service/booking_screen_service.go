@@ -11,17 +11,19 @@ import (
 
 	"app_backend/internal/dto"
 	"fmt"
-  
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	
 )
 
 type BookingService struct {
-	acceptedRepo *repository.AcceptedServiceRepo
-	userRepo     *repository.UserRepo
-	providerRepo *repository.ProviderRepo
-	catalogRepo  *repository.ServiceCatalogRepo
+	acceptedRepo    *repository.AcceptedServiceRepo
+	userRepo        *repository.UserRepo
+	providerRepo    *repository.ProviderRepo
+	catalogRepo     *repository.ServiceCatalogRepo
 	transactionRepo *repository.PaymentRepository
+	settlementRepo *repository.SettlementHistoryRepository
 }
 
 func NewBookingService(
@@ -30,13 +32,15 @@ func NewBookingService(
 	providerRepo *repository.ProviderRepo,
 	catalogRepo *repository.ServiceCatalogRepo,
 	transactionRepo *repository.PaymentRepository,
+	settlementRepo *repository.SettlementHistoryRepository,
 ) *BookingService {
 	return &BookingService{
-		acceptedRepo: acceptedRepo,
-		userRepo:     userRepo,
-		providerRepo: providerRepo,
-		catalogRepo:  catalogRepo,
+		acceptedRepo:    acceptedRepo,
+		userRepo:        userRepo,
+		providerRepo:    providerRepo,
+		catalogRepo:     catalogRepo,
 		transactionRepo: transactionRepo,
+		settlementRepo:settlementRepo,
 	}
 }
 
@@ -118,7 +122,7 @@ func (s *BookingService) BuildBookingScreen(
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
 			"model":         svc.Model,
-			"time" : time.Now().Format("03:04:05 PM"),
+			"time":          time.Now().Format("03:04:05 PM"),
 		},
 
 		"billing": map[string]any{
@@ -158,7 +162,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	for _, r := range raw {
 		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
-		
+
 		if err != nil {
 			continue
 		}
@@ -206,7 +210,6 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 		return nil, errors.New("invalid status")
 	}
 }
-
 
 func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serviceID string) (*dto.UserBookingDetailDTO, error) {
 
@@ -475,7 +478,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 			CreatedAt:     service.CreatedAt,
 			VehicleType:   service.VehicleType,
 			VehicleNumber: service.VehicleNumber,
-			Issues: service.Issues,
+			Issues:        service.Issues,
 		}
 
 		result = append(result, expense)
@@ -486,7 +489,6 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 		return nil, 0, err
 	}
 
-
 	return result, totalExpense, nil
 }
 
@@ -495,41 +497,37 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 	if err != nil {
 		return nil, err
 	}
-
 	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
 	if err != nil {
 		return nil, err
 	}
-
-	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},)
+	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted})
 	if err != nil {
 		return nil, err
 	}
-
-	cancelledBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID,[]domain.ServiceStatus{domain.StatusCancelled},)
+	cancelledBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCancelled})
 	if err != nil {
 		return nil, err
 	}
-
 	allTimeEarning := 0.0
 	todayEarning := 0.0
 	today := time.Now().Truncate(24 * time.Hour)
-
 	for _, booking := range completedBookings {
-		allTimeEarning += booking.FinalPrice
-		if booking.CreatedAt.Truncate(24 * time.Hour).Equal(today) {
-			todayEarning += booking.FinalPrice
+		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		if err == nil && transaction != nil {
+			allTimeEarning += transaction.Amount
+			if booking.CreatedAt.Truncate(24 * time.Hour).Equal(today) {
+				todayEarning += transaction.Amount
+			}
 		}
 	}
-
 	stats := &dto.DashboardStats{
 		AllTimeEarning:    allTimeEarning,
 		TodayEarning:      todayEarning,
 		ServicesCompleted: len(completedBookings),
-		PaymentSettlement:  0,
+		PaymentSettlement: 0,
 		CancelledServices: len(cancelledBookings),
 	}
-
 	return stats, nil
 }
 
@@ -542,24 +540,24 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 	if err != nil {
 		return nil, err
 	}
-	
+
 	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted})
 	if err != nil {
 		return nil, err
 	}
-	
+
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 	for _, booking := range completedBookings {
 		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
 		if err != nil {
 			continue
 		}
-		
+
 		serviceName := ""
 		if len(booking.Issues) > 0 {
 			serviceName = booking.Issues[0]
 		}
-		
+
 		earnings = append(earnings, dto.EarningDetail{
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
@@ -629,7 +627,48 @@ func (s *BookingService) GetProviderTodayEarnings(
 	}
 
 	return &dto.TodayEarningsResponse{
-		Total:   total,
+		Total:    total,
 		Earnings: earnings,
+	}, nil
+}
+
+func (s *BookingService) GetProviderSettledEarnings(
+	ctx context.Context,
+	providerID string,
+) (*dto.ProviderSettlementResponse, error) {
+
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	records, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID)
+	if err != nil {
+		return nil, err
+	}
+
+	var total float64
+	settlements := make([]dto.ProviderSettlementItem, 0)
+
+	for _, rec := range records {
+		service, err := s.acceptedRepo.FindByID(ctx, rec.ServiceID.Hex())
+		if err != nil {
+			continue
+		}
+
+		total += rec.NetAmount
+
+		settlements = append(settlements, dto.ProviderSettlementItem{
+			ID:            rec.ServiceID.Hex(),
+			ProviderID:    rec.ProviderID.Hex(),
+			ServiceNumber: service.ServiceNumber,
+			Amount:        rec.NetAmount,
+			CreatedAt:     rec.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return &dto.ProviderSettlementResponse{
+		Total:       total,
+		Settlements: settlements,
 	}, nil
 }

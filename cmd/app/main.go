@@ -100,6 +100,7 @@ func main() {
 	deviceTokenRepo := repository.NewDeviceTokenRepo(db)
 	ratingRepo := repository.NewRatingRepository(db)
 	providerAgreementRepo := repository.NewAgreementRepo(db)
+	settlementRepo := repository.NewSettlementHistoryRepository(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -159,7 +160,7 @@ func main() {
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo)
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)

@@ -35,7 +35,6 @@ func NewInvoiceService(
 }
 
 func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
-
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)

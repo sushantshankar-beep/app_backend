@@ -3,6 +3,7 @@ package service
 import (
 	"app_backend/internal/domain"
 	"html/template"
+	"log"
 	"os"
 
 	"path/filepath"
@@ -16,8 +17,9 @@ func RenderInvoiceHTML(inv *domain.Invoice) (string, error) {
 	}
 
 	filename := inv.InvoiceNumber + ".html"
+	log.Println("jdcsnbjdsjhbc",filename)
 	htmlPath := filepath.Join("internal/storage/invoices", filename)
-
+    log.Println("jdcsnbjdsjhbc",htmlPath)
 	f, err := os.Create(htmlPath)
 	if err != nil {
 		return "", err

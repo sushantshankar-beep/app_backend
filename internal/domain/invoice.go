@@ -12,6 +12,7 @@ type Invoice struct {
 	ServiceDate    *time.Time         `bson:"serviceDate,omitempty" json:"serviceDate,omitempty"`
 	UserID         primitive.ObjectID `bson:"userId" json:"userId"`
 	ServiceID      string             `bson:"serviceId" json:"serviceId"`
+	ServiceNumber  string              `bson:"serviceNumber" json:"serviceNumber"`
 	CompanyInfo    CompanyInfo        `bson:"companyInfo" json:"companyInfo"`
 	CustomerInfo   CustomerInfo       `bson:"customer" json:"customer"`
 	VehicleDetails VehicleInfo        `bson:"vehicle" json:"vehicle"`

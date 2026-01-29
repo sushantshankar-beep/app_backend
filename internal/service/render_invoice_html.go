@@ -40,7 +40,7 @@ func RenderInvoiceHTML(inv *domain.Invoice) (string, error) {
 			"Fuel":   inv.VehicleDetails.FuelType,
 		},
 		"Service": map[string]interface{}{
-			"ID":            inv.ServiceID,
+			"ID":            inv.ServiceNumber,
 			"Type":          inv.ServiceInfo.Type,
 			"Status":        inv.ServiceInfo.Status,
 			"PaymentStatus": inv.ServiceInfo.PaymentStatus,

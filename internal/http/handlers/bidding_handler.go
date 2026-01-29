@@ -148,7 +148,7 @@ func (h *BiddingHandler) RejectBid(c *gin.Context) {
 	var req struct {
 		ServiceID  string `json:"serviceId" binding:"required"`
 		ProviderID string `json:"providerId" binding:"required"`
-		Price      int     `json:"providerId" binding:"required"`
+		Price      int     `json:"price" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

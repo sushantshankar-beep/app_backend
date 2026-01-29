@@ -244,7 +244,7 @@ func (s *BiddingService) findProviders(
 	radiusSteps := []float64{10, 25, 50, 100}
 
 	const (
-		cooldownSec    = 45
+		cooldownSec    = 63
 		maxSendPerProv = 8
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
@@ -350,7 +350,7 @@ func (s *BiddingService) findProviders(
 							"distanceKm":  distance,
 							"etaMin":      estimateETA(distance),
 							"radiusKm":    r,
-							"expiresIn":   cooldownSec,
+							"expiresIn":   60,
 						},
 					)
 
@@ -612,7 +612,7 @@ func (s *BiddingService) RejectBid(
 	// 🔔 PROVIDER
 	s.socket.Emit(
 		"provider:"+providerID,
-		"bid:rejected",
+		"bid:request",
 		map[string]any{
 			"serviceId": serviceID,
 			"price":     price,

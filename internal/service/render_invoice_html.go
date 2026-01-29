@@ -11,7 +11,6 @@ import (
 
 func RenderInvoiceHTML(inv *domain.Invoice) (string, error) {
 
-	log.Println("iinvoiceeee jksdvbjhdsbjhvd")
 	tmpl, err := template.ParseFiles("internal/template/invoice.html")
 	if err != nil {
 		return "", err
@@ -45,6 +44,7 @@ func RenderInvoiceHTML(inv *domain.Invoice) (string, error) {
 			"Type":          inv.ServiceInfo.Type,
 			"Status":        inv.ServiceInfo.Status,
 			"PaymentStatus": inv.ServiceInfo.PaymentStatus,
+			"PaymentMode": inv.Transaction.PaymentMode,
 		},
 		"Pricing": inv.PricingDeatils,
 	})

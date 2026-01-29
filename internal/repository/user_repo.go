@@ -157,3 +157,23 @@ func (r *UserRepo) AddFallbackVehicle(
 
 	return err
 }
+
+func (r *UserRepo) UpdateTotalExpense(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	total float64,
+) error {
+
+	_, err := r.col.UpdateByID(
+		ctx,
+		userID,
+		bson.M{
+			"$set": bson.M{
+				"totalExpense": total,
+				"updatedAt":    time.Now(),
+			},
+		},
+	)
+
+	return err
+}

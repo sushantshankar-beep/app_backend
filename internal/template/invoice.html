@@ -3,10 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <title>Invoice</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       * {
         box-sizing: border-box;
-        font-family: Arial, sans-serif;
+        font-family: 'Roboto', sans-serif;
       }
       body {
         margin: 0;
@@ -23,12 +24,12 @@
       }
 
       .brand-bar {
-        background: #000;
-        height: 80px;
+        background: #fff;
+        height: 90px;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #fff;
+        color: #000;
         font-size: 26px;
         font-weight: bold;
         position: relative;
@@ -40,7 +41,7 @@
         bottom: 0;
         left: 0;
         right: 0;
-        height: 4px;
+        height: 2.5px;
         background: linear-gradient(
           90deg,
           #ef4444,
@@ -57,6 +58,17 @@
         gap: 8px;
       }
 
+      .logo img {
+        max-width: 45px;
+        height: auto;
+      }
+
+      .logo span {
+        font-size: 28px;
+        font-weight: bold;
+        margin-top: 4px;
+      }
+
       .logo-icon {
         font-size: 32px;
         font-weight: bold;
@@ -67,10 +79,10 @@
       }
 
       .header {
-        background: #3b82f6;
+        background: #266DDF;
         color: #fff;
-        padding: 30px 30px;
-        margin: 30px;
+        padding: 30px;
+        margin: 30px 30px 0;
         display: flex;
         border-radius: 10px;
         justify-content: space-between;
@@ -101,23 +113,25 @@
 
       .cards {
         display: flex;
-        gap: 30px;
-        padding: 30px 40px;
+        gap: 20px;
+        padding: 30px 0;
+        margin: 0 30px -10px;
         background: #fff;
       }
 
       .card {
         flex: 1;
         background: #f8fafc;
-        padding: 24px;
+        padding: 12px 24px;
         border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #EFEFEF;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       }
 
       .card h3 {
         margin: 0 0 16px;
-        color: #3b82f6;
-        font-size: 14px;
+        color: #475569;
+        font-size: 13px;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -129,9 +143,9 @@
       }
 
       .card p {
-        margin: 8px 0;
+        margin: 12px 0;
         font-size: 14px;
-        color: #374151;
+        color: #475569;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -140,35 +154,42 @@
       .card p b {
         font-size: 15px;
         color: #111827;
+        display: block;
+        margin-bottom: 8px;
       }
 
       .icon {
-        color: #6b7280;
+        color: #475569;
         font-size: 14px;
       }
 
       .gst-section {
         margin-top: 16px;
         padding-top: 12px;
-        border-top: 1px solid #e5e7eb;
       }
 
       .gst-label {
         color: #6b7280;
-        font-size: 12px;
+        font-size: 14px;
         margin-bottom: 4px;
       }
 
+      .gst-section p b {
+        font-size: 14px;
+      }
+
       .vehicle {
-        margin: 0 40px 25px;
-        background: #f9fafb;
+        margin: 0 30px 20px;
+        background: #F8FAFC;
         padding: 24px;
         border-radius: 8px;
+        border: 1px solid #EFEFEF;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       }
 
       .vehicle h3 {
         margin: 0 0 20px;
-        font-size: 16px;
+        font-size: 17px;
         color: #111827;
       }
 
@@ -182,20 +203,26 @@
       .label {
         color: 111827;
         font-size: 12px;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
       }
 
       .value {
         font-weight: 600;
-        color: #111827;
+        color: #1E293B;
+        font-size: 13px;
       }
 
       table {
-        width: calc(100% - 80px);
-        margin: 0 40px 20px;
-        border-collapse: collapse;
-        font-size: 14px;
-        background: #fff;
+        width: calc(100% - 60px);
+        margin: 0 30px 20px;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 12px;
+        background: #F8FAFC;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
       }
 
       thead {
@@ -204,52 +231,59 @@
 
       th {
         text-align: left;
-        padding: 14px 12px;
+        padding: 12px 6px;
         font-weight: 600;
         color: #374151;
-        font-size: 13px;
+        font-size: 12px;
       }
 
       td {
-        padding: 16px 12px;
+        padding: 12px 6px;
         border-top: 1px solid #e5e7eb;
         color: #111827;
       }
 
-      .pricing {
-        width: calc(100% - 80px);
-        margin: 20px 40px;
-        padding: 20px;
-        background: #f9fafb;
-        border-radius: 8px;
+      .pricing-row-table {
+        background: #F8FAFC;
+        font-size: 12px;
       }
 
-      .pricing-row {
-        display: flex;
-        justify-content: space-between;
-        margin: 10px 0;
-        font-size: 15px;
+      .service-row td {
+        font-weight: 600;
+      }
+
+      .pricing-row-table td {
+        padding: 14px 12px;
         color: #374151;
+        border-top: none;
       }
 
-      .pricing hr {
-        border: none;
+      .pricing-row-table td:first-child {
+        text-align: left;
+      }
+
+      .first-pricing-row td {
         border-top: 1px solid #e5e7eb;
-        margin: 12px 0;
       }
 
-      .total {
+      .total-row {
         font-weight: bold;
-        font-size: 18px;
+        background: #F2F2F2;
+      }
+
+      .total-row td {
+        font-size: 13px;
         color: #111827;
-        margin-top: 12px;
+        font-weight: 600;
       }
 
       .notes {
-        margin: 30px 40px;
-        background: #f9fafb;
+        margin: 0 30px 20px;
+        background: #F8FAFC;
         padding: 24px;
         border-radius: 8px;
+        border: 1px solid #EFEFEF;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         font-size: 13px;
         color: #374151;
         line-height: 1.6;
@@ -259,7 +293,7 @@
         display: block;
         margin-bottom: 12px;
         color: #111827;
-        font-size: 14px;
+        font-size: 17px;
       }
 
       .notes ol {
@@ -269,13 +303,14 @@
 
       .notes li {
         margin: 8px 0;
+        font-size: 12px;
       }
 
       .footer {
         margin-top: 30px;
         padding: 20px;
         text-align: center;
-        font-weight: 600;
+        font-weight: 700;
         background: linear-gradient(
           90deg,
           #ef4444,
@@ -304,9 +339,9 @@
       <div class="brand-bar">
         <div class="logo">
           <img
-            src="https://vahanwire-bucket-for-dev-qa.s3.amazonaws.com/app_backend/1769620076723_Group_1171276772_(3).png"
-            alt="Logo"
-          />
+          src="https://vahanwire-bucket-for-dev-qa.s3.amazonaws.com/app_backend/1769620076723_Group_1171276772_(3).png"
+          alt="Logo"
+        />
           <span>Vahanwire</span>
         </div>
       </div>
@@ -382,35 +417,33 @@
             <th>Service Type</th>
             <th>Status</th>
             <th>Payment</th>
+            <th>Payment Mode</th>
             <th>Amount</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
+          <tr class="service-row">
             <td>{{.Service.ID}}</td>
             <td>{{.Service.Type}}</td>
             <td>{{.Service.Status}}</td>
             <td>{{.Service.PaymentStatus}}</td>
+            <td>{{.Service.PaymentMode}}</td>
             <td>₹ {{.Pricing.ServiceCharge}}</td>
+          </tr>
+          <tr class="pricing-row-table first-pricing-row">
+            <td colspan="5">Service Charge</td>
+            <td>₹ {{.Pricing.ServiceCharge}}</td>
+          </tr>
+          <tr class="pricing-row-table">
+            <td colspan="5">GST (18%)</td>
+            <td>₹ {{.Pricing.GST}}</td>
+          </tr>
+          <tr class="pricing-row-table total-row">
+            <td colspan="5">Total Amount</td>
+            <td>₹ {{.Pricing.Total}}</td>
           </tr>
         </tbody>
       </table>
-
-      <div class="pricing">
-        <div class="pricing-row">
-          <span>Service Charge</span>
-          <span>₹ {{.Pricing.ServiceCharge}}</span>
-        </div>
-        <div class="pricing-row">
-          <span>GST (18%)</span>
-          <span>₹ {{.Pricing.GST}}</span>
-        </div>
-        <hr />
-        <div class="pricing-row total">
-          <span>Total Amount</span>
-          <span>₹ {{.Pricing.Total}}</span>
-        </div>
-      </div>
 
       <div class="notes">
         <b>Notes</b>

@@ -36,6 +36,7 @@ type User struct {
 	AmcPurchased        map[string]string    `bson:"amcPurchased" json:"amcPurchased"`
 	ComplaintsSubmitted []primitive.ObjectID `bson:"complaintsSubmitted" json:"complaintsSubmitted"`
 	ServiceOTP          string               `bson:"service_otp" json:"service_otp"`
+	TotalExpense        float64              `bson:"totalExpense" json:"totalExpense"`
 	VehicleID           *primitive.ObjectID  `bson:"vehicleId,omitempty" json:"vehicleId,omitempty"`
 	PrimaryVehicleID    *primitive.ObjectID  `bson:"primaryVehicleId,omitempty" json:"primaryVehicleId,omitempty"`
 	FallbackVehicleIDs []primitive.ObjectID  `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`

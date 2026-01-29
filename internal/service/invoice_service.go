@@ -103,7 +103,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 		CreatedAt: time.Now(),
 	}
     
-	log.Println("inv data", inv)
+	
 	if err := s.repo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}

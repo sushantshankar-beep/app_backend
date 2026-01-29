@@ -73,14 +73,6 @@ func AuthUser(tokenSvc ports.TokenService,userRepo ports.UserRepository) gin.Han
 			return
 		}
 
-		if user.IsActive == domain.USER_DELETED {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "Account is deleted",
-			})
-			return
-		}
-
 		if user.IsActive == domain.USER_BLACKLIST {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
@@ -158,14 +150,6 @@ func AuthProvider(tokenSvc ports.TokenService, providerRepo ports.ProviderReposi
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"message": "Account has been suspended",
-			})
-			return
-		}
-
-		if provider.IsActive == domain.PROVIDER_DELETED {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"message": "Account is deleted",
 			})
 			return
 		}

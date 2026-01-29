@@ -99,6 +99,7 @@ func main() {
 	bikeBrandModelRepo := repository.NewBikeBrandModelRepo(db)
 	deviceTokenRepo := repository.NewDeviceTokenRepo(db)
 	ratingRepo := repository.NewRatingRepository(db)
+	providerAgreementRepo := repository.NewAgreementRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -162,6 +163,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
+	agreementSvc := service.NewAgreementService(providerAgreementRepo)
 
 
 	// Bidding service
@@ -197,11 +199,12 @@ func main() {
     imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)
 	ratingHandler := handlers.NewRatingHandler(ratingService)
+	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)
 
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

@@ -120,16 +120,14 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	if err != nil {
 		return nil, "", errors.New("invalid user id")
 	}
-
 	user, err := s.users.GetByID(ctx, objID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	isCreate := user.Name == "" &&
-		user.Email == "" &&
-		user.SelectedCity == ""
-
+	isDeleted := user.IsActive == domain.USER_DELETED
+	isCreate := (user.Name == "" && user.Email == "" && user.SelectedCity == "") || isDeleted
+	
 	update := bson.M{}
 	setString(update, "name", req["name"])
 	setString(update, "email", req["email"])
@@ -137,37 +135,36 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "selectedCity", req["selectedCity"])
 	setString(update, "appStateStatus", req["appStateStatus"])
 	setString(update, "image_url", req["imageUrl"])
-	setString(update,"isActive",req["isActive"])
-
-	if isCreate {
+	
+	if isCreate || isDeleted {
 		update["isActive"] = domain.USER_ACTIVE
+		update["isNew"] = true
 	}
-
-	if val, ok := req["isActive"]; ok {
+	
+	if val, ok := req["isActive"]; ok && !isDeleted {
 		setString(update, "isActive", val)
 	}
 
-	if update["name"] != nil &&
-		update["email"] != nil {
+	if update["name"] != nil && update["email"] != nil {
 		update["isProfileComplete"] = true
 	}
+	
 	update["updatedAt"] = time.Now()
-
+	
 	if len(update) == 1 {
 		return user, "unchanged", nil
 	}
-
+	
 	updatedUser, err := s.users.UpdateByID(ctx, objID, update)
 	if err != nil {
 		return nil, "", err
 	}
-
+	
 	if isCreate {
 		return updatedUser, "created", nil
 	}
 	return updatedUser, "updated", nil
 }
-
 func setString(update bson.M, key string, v any) {
 	if s, ok := v.(string); ok && s != "" {
 		update[key] = s

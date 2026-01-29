@@ -39,6 +39,11 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 	log.Println("userId",userID)
 	log.Println("serviceId",serviceID)
 	userOID, err := primitive.ObjectIDFromHex(userID)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("🔥 panic in GenerateInvoice:", r)
+		}
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}

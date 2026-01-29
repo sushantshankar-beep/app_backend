@@ -14,6 +14,7 @@ import (
 	"errors"
 	// "sync"
 	"app_backend/internal/ports"
+	"strconv"
 )
 
 type BiddingService struct {
@@ -118,6 +119,93 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 }
 
 /* ================= FIND PROVIDERS ================= */
+const luaFindProviders = `
+-- KEYS[1] = providers:geo
+
+-- ARGV:
+-- 1 = lng
+-- 2 = lat
+-- 3 = radiusKm
+-- 4 = serviceID
+-- 5 = cooldownSec
+-- 6 = maxSend
+-- 7 = ttlSec
+
+local results = redis.call(
+  "GEORADIUS",
+  KEYS[1],
+  ARGV[1],
+  ARGV[2],
+  ARGV[3],
+  "km",
+  "WITHDIST",
+  "COUNT",
+  300
+)
+
+local out = {}
+
+for i=1,#results do
+  local pid = results[i][1]
+  local dist = results[i][2]
+
+  local skip = false
+
+  -- skip busy
+  if redis.call("EXISTS", "provider:busy:"..pid) == 1 then
+    skip = true
+  end
+
+  -- skip already active
+  if not skip then
+    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+    if redis.call("EXISTS", activeKey) == 1 then
+      skip = true
+    end
+  end
+
+  -- cooldown
+  if not skip then
+    local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
+    if redis.call("SETNX", cdKey, "1") == 0 then
+      skip = true
+    else
+      redis.call("EXPIRE", cdKey, ARGV[5])
+    end
+  end
+
+  -- send count
+  if not skip then
+    local scKey = "service:sendcount:"..ARGV[4]..":"..pid
+    local cnt = redis.call("INCR", scKey)
+    redis.call("EXPIRE", scKey, ARGV[7])
+
+    if cnt > tonumber(ARGV[6]) then
+      skip = true
+    end
+  end
+
+  if not skip then
+    -- cache distance
+    redis.call(
+      "SET",
+      "service:dist:"..ARGV[4]..":"..pid,
+      dist,
+      "EX",
+      1800
+    )
+
+    -- mark active
+    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+    redis.call("SET", activeKey, "1", "EX", ARGV[5])
+
+    table.insert(out, pid)
+    table.insert(out, dist)
+  end
+end
+
+return out
+`
 func (s *BiddingService) findProviders(
 	serviceID string,
 	lat, lng float64,
@@ -133,16 +221,14 @@ func (s *BiddingService) findProviders(
 
 	ctx := context.Background()
 
+	stopKey := "service:stop:" + serviceID
+	lockKey := "service:locked:" + serviceID
+
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return
 	}
 
-	stopKey := "service:stop:" + serviceID
-
-	// ---------------------------------
-	// fetch service once
-	// ---------------------------------
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -155,37 +241,31 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{50, 100}
+	radiusSteps := []float64{10, 25, 50, 100}
 
 	const (
-		cooldownSec   = 60
-		globalTimeout = 25 * time.Minute
-		maxSendPerProv = 10
+		cooldownSec    = 63
+		maxSendPerProv = 8
+		ttlSec         = 7200
+		roundDelay     = 5 * time.Second
+		globalTimeout  = 30 * time.Minute
 	)
 
 	startedAt := time.Now()
 
 	for {
 
-		// -------------------------------
-		// 🛑 GLOBAL TIMEOUT
-		// -------------------------------
 		if time.Since(startedAt) > globalTimeout {
-			log.Printf("⏱️ bidding timeout service=%s", serviceID)
+			log.Println("⏱ bidding timeout", serviceID)
 			return
 		}
 
-		// -------------------------------
-		// 🛑 HARD STOP FLAG
-		// -------------------------------
-		if s.rdb.Exists(ctx, stopKey).Val() == 1 {
-			log.Printf("🛑 stop flag search ended service=%s", serviceID)
+		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
+			s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			log.Println("🛑 dispatch stopped", serviceID)
 			return
 		}
 
-		// -------------------------------
-		// 🔍 DB STATUS CHECK
-		// -------------------------------
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -194,92 +274,46 @@ func (s *BiddingService) findProviders(
 		}
 
 		if current.Status != domain.StatusSearching {
-			log.Printf("🛑 status changed stop search=%s status=%s",
-				serviceID,
-				current.Status,
-			)
 			return
 		}
 
-		// -------------------------------
-		// 🔎 GEO SEARCH
-		// -------------------------------
 		for _, radius := range radiusSteps {
 
 			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 				return
 			}
 
-			providers, err := s.rdb.GeoRadius(
+			res, err := s.rdb.Eval(
 				ctx,
-				"providers:geo",
+				luaFindProviders,
+				[]string{"providers:geo"},
 				lng,
 				lat,
-				&redis.GeoRadiusQuery{
-					Radius:   radius,
-					Unit:     "km",
-					WithDist: true,
-					Count:    50,
-				},
+				radius,
+				serviceID,
+				cooldownSec,
+				maxSendPerProv,
+				ttlSec,
 			).Result()
 
-			if err != nil || len(providers) == 0 {
+			if err != nil {
+				log.Println("lua geo error:", err)
 				continue
 			}
 
-			for _, p := range providers {
+			list, ok := res.([]interface{})
+			if !ok || len(list) == 0 {
+				continue
+			}
 
-				pid := p.Name
+			for i := 0; i < len(list); i += 2 {
 
-				// ---------------------------
-				// 🚫 busy provider
-				// ---------------------------
-				if s.rdb.Exists(ctx, "provider:busy:"+pid).Val() == 1 {
-					continue
-				}
+				pid := list[i].(string)
 
-				// ---------------------------
-				// ⏳ cooldown
-				// ---------------------------
-				cooldownKey := "service:cooldown:" + serviceID + ":" + pid
+				distStr := list[i+1].(string)
+				dist, _ := strconv.ParseFloat(distStr, 64)
 
-				ok, _ := s.rdb.SetNX(
-					ctx,
-					cooldownKey,
-					"1",
-					cooldownSec*time.Second,
-				).Result()
-
-				if !ok {
-					continue
-				}
-
-				// ---------------------------
-				// 🔢 SEND LIMIT PER PROVIDER
-				// ---------------------------
-				sendCountKey := "service:sendcount:" + serviceID + ":" + pid
-
-				cnt, _ := s.rdb.Incr(ctx, sendCountKey).Result()
-
-				// safety TTL
-				s.rdb.Expire(ctx, sendCountKey, 90*time.Minute)
-
-				if cnt > maxSendPerProv {
-					continue
-				}
-				distKey := "service:dist:" + serviceID + ":" + pid
-
-				s.rdb.Set(
-					ctx,
-					distKey,
-					p.Dist,
-					30*time.Minute,
-				)
-
-				// ---------------------------
-				// 🚀 SEND ASYNC
-				// ---------------------------
-				go func(providerID string, dist float64, radius float64) {
+				go func(providerID string, distance float64, r float64) {
 
 					if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 						return
@@ -313,23 +347,23 @@ func (s *BiddingService) findProviders(
 							},
 							"serviceType": serviceType,
 							"issues":      issues,
-							"distanceKm":  dist,
-							"etaMin":      estimateETA(dist),
-							"radiusKm":    radius,
-							"expiresIn":   cooldownSec,
+							"distanceKm":  distance,
+							"etaMin":      estimateETA(distance),
+							"radiusKm":    r,
+							"expiresIn":   60,
 						},
 					)
 
-				}(pid, p.Dist, radius)
+				}(pid, dist, radius)
 			}
 		}
 
-		// -------------------------------
-		// 💤 WAIT NEXT ROUND
-		// -------------------------------
-		time.Sleep(cooldownSec * time.Second)
+		time.Sleep(roundDelay)
 	}
 }
+
+
+
 /* ================= PLACE BID ================= */
 
 func (s *BiddingService) PlaceBid(
@@ -381,6 +415,7 @@ func (s *BiddingService) PlaceBid(
 		"bid:update",
 		map[string]any{
 			"bidId": bidOID.Hex(),
+			"serviceId":serviceID,
 			"price": price,
 			"provider": map[string]any{
 				"id":         providerID,
@@ -554,40 +589,54 @@ func (s *BiddingService) RejectBid(
 	ctx context.Context,
 	serviceID string,
 	providerID string,
+	price int,
 ) error {
 
-	log.Printf(
-		"👎 user rejected provider=%s service=%s",
-		providerID,
-		serviceID,
-	)
+	log.Printf("👎 rejected provider=%s service=%s", providerID, serviceID)
+
+	activeKey := "service:activeProvider:" + serviceID + ":" + providerID
+
+	// allow rebid window
+	s.rdb.Set(ctx, activeKey, "1", 60*time.Second)
+
+	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	dist, _ := s.rdb.Get(
+		ctx,
+		"service:dist:"+serviceID+":"+providerID,
+	).Float64()
 
 	// 🔔 PROVIDER
-	s.socket.EmitWithRetry(
+	s.socket.Emit(
 		"provider:"+providerID,
-		"bid:rejected",
+		"bid:request",
 		map[string]any{
 			"serviceId": serviceID,
+			"price":     price,
+			"vehicle": map[string]any{
+				"type":   svc.VehicleType,
+				"number": svc.VehicleNumber,
+				"brand":  svc.Brand,
+				"year":   svc.ModelYear,
+				"fuel":   svc.FuelType,
+				"model":  svc.Model,
+			},
+			"serviceType": svc.ServiceType,
+			"issues":      svc.Issues,
+			"distanceKm":  dist,
+			"etaMin":      estimateETA(dist),
+			"rebid":       true,
 		},
-		1,
-	)
-
-	// 🔔 USER
-	s.socket.EmitWithRetry(
-		"user:"+serviceID,
-		"bid:rejected",
-		map[string]any{
-			"serviceId":  serviceID,
-			"providerId": providerID,
-		},
-		1,
 	)
 
 	go s.notify.SendToProvider(
 		context.Background(),
 		providerID,
 		"Bid Rejected",
-		"User rejected your bid.",
+		"Customer rejected your bid. You can offer a new price.",
 		map[string]string{
 			"serviceId": serviceID,
 		},
@@ -595,6 +644,7 @@ func (s *BiddingService) RejectBid(
 
 	return nil
 }
+
 
 
 func (s *BiddingService) ProviderCancelService(
@@ -884,7 +934,7 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
-func (s *BiddingService)CancelSearchingServiceBeforeBid(
+func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	ctx context.Context,
 	serviceID string,
 	userID string,
@@ -894,30 +944,40 @@ func (s *BiddingService)CancelSearchingServiceBeforeBid(
 	if err != nil {
 		return err
 	}
+
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+
 	lockKey := "service:locked:" + serviceID
 	stopKey := "service:stop:" + serviceID
 
-	// 🔒 STOP search goroutines
-	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
-	s.rdb.Set(ctx, stopKey, "1", 30*time.Minute)
-	var svc domain.AcceptedService
-	if err := s.acceptedRepo.Col().
-		FindOne(ctx, bson.M{"_id": serviceOID}).
-		Decode(&svc); err != nil {
-		return errors.New("service not found")
+	// ===========================
+	// 🚀 FAST: Redis pipeline
+	// ===========================
+
+	pipe := s.rdb.Pipeline()
+	pipe.Set(ctx, lockKey, "1", 15*time.Minute)
+	pipe.Set(ctx, stopKey, "1", 30*time.Minute)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
 	}
 
-	if svc.User.Hex() != userID {
-		return errors.New("not allowed")
-	}
+	// ===========================
+	// 🚀 FAST: Atomic DB update
+	// ===========================
 
-	// 🔒 STOP search goroutines
-	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
-
-	// ❌ DB UPDATE
-	_, err = s.acceptedRepo.Col().UpdateByID(
+	res, err := s.acceptedRepo.Col().UpdateOne(
 		ctx,
-		serviceOID,
+		bson.M{
+			"_id":  serviceOID,
+			"user": userOID,
+			"status": bson.M{
+				"$ne": domain.StatusCancelled,
+			},
+		},
 		bson.M{
 			"$set": bson.M{
 				"status":      domain.StatusCancelled,
@@ -927,33 +987,17 @@ func (s *BiddingService)CancelSearchingServiceBeforeBid(
 			},
 		},
 	)
+
 	if err != nil {
 		return err
 	}
 
-	// ===========================
-	// 📡 INFORM PROVIDERS
-	// ===========================
-
-	// ===========================
-	// 🧹 REDIS CLEANUP
-	// ===========================
-
-	patterns := []string{
-		"service:cooldown:" + serviceID + ":*",
-		"service:attempts:" + serviceID + ":*",
-		"service:userReject:" + serviceID + ":*",
-	}
-
-	for _, p := range patterns {
-		iter := s.rdb.Scan(ctx, 0, p, 200).Iterator()
-		for iter.Next(ctx) {
-			s.rdb.Del(ctx, iter.Val())
-		}
+	if res.MatchedCount == 0 {
+		return errors.New("service not found or already cancelled")
 	}
 
 	// ===========================
-	// 👤 USER ROOM
+	// 📡 INFORM USER IMMEDIATELY
 	// ===========================
 
 	s.socket.Emit(
@@ -966,8 +1010,45 @@ func (s *BiddingService)CancelSearchingServiceBeforeBid(
 
 	s.socket.CloseRoom("user:" + serviceID)
 
+	// ===========================
+	// 🧹 BACKGROUND REDIS CLEANUP
+	// ===========================
+
+	go func(serviceID string) {
+
+		ctxBg := context.Background()
+
+		patterns := []string{
+			"service:cooldown:" + serviceID + ":*",
+			"service:attempts:" + serviceID + ":*",
+			"service:userReject:" + serviceID + ":*",
+		}
+
+		for _, pattern := range patterns {
+
+			iter := s.rdb.Scan(ctxBg, 0, pattern, 500).Iterator()
+
+			batch := make([]string, 0, 100)
+
+			for iter.Next(ctxBg) {
+				batch = append(batch, iter.Val())
+
+				if len(batch) >= 100 {
+					s.rdb.Del(ctxBg, batch...)
+					batch = batch[:0]
+				}
+			}
+
+			if len(batch) > 0 {
+				s.rdb.Del(ctxBg, batch...)
+			}
+		}
+
+	}(serviceID)
+
 	return nil
 }
+
 
 func (s *BiddingService) CancelSearchingService(
 	ctx context.Context,

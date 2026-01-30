@@ -22,7 +22,7 @@ type Complaint struct {
 
 	UserComplaint     *ComplaintSide `bson:"userComplaint,omitempty" json:"userComplaint,omitempty"`
 	ProviderComplaint *ComplaintSide `bson:"providerComplaint,omitempty" json:"providerComplaint,omitempty"`
-
+     ServiceNumber string `bson:"serviceNumber" json:"serviceNumber"`
 	Status    string               `bson:"status" json:"status"`
 	Timeline  map[string]time.Time `bson:"timeline" json:"timeline"`
 	CreatedAt time.Time            `bson:"createdAt" json:"createdAt"`

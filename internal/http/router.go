@@ -122,7 +122,6 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
 		provider.POST("/agreement",providerAuth, providerHandler.SubmitProviderAgreement)
-		
 		provider.PUT("/dashboard", providerAuth, providerHandler.Dashboard)
 		provider.POST("/online", providerAuth, providerStatus.GoOnline)
 		provider.POST("/offline", providerAuth, providerStatus.GoOffline)

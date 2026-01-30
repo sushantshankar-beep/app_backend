@@ -116,6 +116,7 @@ func (s *ComplaintService) RaiseComplaint(
 		Timeline: map[string]time.Time{
 			"initiated": time.Now(),
 		},
+		ServiceNumber: acceptedService.ServiceNumber,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

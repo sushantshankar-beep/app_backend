@@ -226,15 +226,7 @@ func (h *ProviderHandler) SubmitProviderAgreement(c *gin.Context) {
 		return
 	}
 
-	urls, exists := s3.GetUploadedURLs(c, "agreementPdf")
-	if !exists || len(urls) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "agreementPdf is required",
-		})
-		return
-	}
-
-	updated, err := h.svc.SubmitAgreement( c.Request.Context(), providerID, urls[0])
+	updated, err := h.svc.SubmitAgreement( c.Request.Context(), providerID)
 
 	if err != nil {
 		if errors.Is(err, domain.ErrAlreadySubmitted) {

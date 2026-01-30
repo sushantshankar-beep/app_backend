@@ -62,11 +62,17 @@ func (s *ComplaintService) RaiseComplaint(
 		if err != nil {
 			return nil, errors.New("invalid authenticated user ID")
 		}
+		if acceptedService.User != userID {
+			return nil, errors.New("unauthorized: this booking does not belong to you")
+		}
 		providerID = acceptedService.Provider
 	} else {
 		providerID, err = primitive.ObjectIDFromHex(authenticatedID)
 		if err != nil {
 			return nil, errors.New("invalid authenticated provider ID")
+		}
+		if acceptedService.Provider != providerID {
+			return nil, errors.New("unauthorized: this booking does not belong to you")
 		}
 		userID = acceptedService.User
 	}
@@ -74,6 +80,13 @@ func (s *ComplaintService) RaiseComplaint(
 	existing, _ := s.repo.FindByAcceptedServiceId(ctx, acceptedServiceID)
 
 	if existing != nil {
+		if raisedBy == "user" && existing.UserComplaint != nil {
+			return nil, errors.New("you have already raised a complaint for this booking")
+		}
+		if raisedBy == "provider" && existing.ProviderComplaint != nil {
+			return nil, errors.New("you have already raised a complaint for this booking")
+		}
+
 		side := &domain.ComplaintSide{
 			Problem:  problem,
 			Photos:   photoURLs,

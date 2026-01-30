@@ -53,8 +53,6 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		c.Request.Context(),
 		c.PostForm("acceptedService"),
 		c.PostForm("problem"),
-		c.PostForm("providerId"),
-		c.PostForm("userId"),
 		photoURLs,
 		raisedBy,
 		authenticatedID,

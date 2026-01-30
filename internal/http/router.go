@@ -169,7 +169,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 
 	providerAgreement := r.Group("/provider-agreement")
 	{
-		providerAgreement.GET("/:id", providerAgreementHandler.GetAgreement)
+
+		providerAgreement.GET("", providerAuth,providerAgreementHandler.GetProviderAgreement)
 	}
 	
 	if homepageHandler != nil {

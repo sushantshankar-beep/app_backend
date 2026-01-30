@@ -44,3 +44,32 @@ func (r *SettlementHistoryRepository) GetProviderSettledRecords(
 
 	return records, nil
 }
+
+
+func (r *SettlementHistoryRepository) GetTotalSettlementByProvider(
+	ctx context.Context,
+	providerID primitive.ObjectID,
+) (float64, error) {
+
+	filter := bson.M{
+		"providerId":       providerID,
+		"settlementStatus": "settled",
+	}
+
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(ctx)
+
+	total := 0.0
+	for cursor.Next(ctx) {
+		var record domain.SettlementRecord
+		if err := cursor.Decode(&record); err != nil {
+			return 0, err
+		}
+		total += record.NetAmount
+	}
+
+	return total, nil
+}

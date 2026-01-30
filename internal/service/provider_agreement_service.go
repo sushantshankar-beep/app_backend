@@ -1,83 +1,110 @@
 package service
 
 import (
-	"time"
-	"context"
-	"html/template"
+	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/repository"
+	"context"
+	"fmt"
+	"strings"
+	"time"
 )
 
 type AgreementService struct {
 	agreementRepo *repository.AgreementRepo
+	providerRepo  *repository.ProviderRepo
 }
 
-func NewAgreementService(ar *repository.AgreementRepo) *AgreementService {
+func NewAgreementService(ar *repository.AgreementRepo, pr *repository.ProviderRepo) *AgreementService {
 	return &AgreementService{
 		agreementRepo: ar,
+		providerRepo:  pr,
 	}
 }
 
-func (s *AgreementService) GetAgreement(ctx context.Context, id string) (*dto.AgreementResponse, error) {
-	a, err := s.agreementRepo.FindByID(ctx, id)
+func (s *AgreementService) GetProviderAgreement(ctx context.Context, providerID domain.ProviderID) (*dto.AgreementHTMLResponse, error) {
+
+	agreementTemplate, err := s.agreementRepo.FindDefault(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("agreement template not found: %w", err)
 	}
 
-	paragraphs := make([]dto.ParagraphResponse, len(a.Paragraphs))
-	for i, p := range a.Paragraphs {
-		paragraphs[i] = dto.ParagraphResponse{
+	provider, err := s.providerRepo.FindByID(ctx, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("provider not found: %w", err)
+	}
+
+	var dateTimeStr string
+	if provider.AgreementSubmittedAt != nil {
+		dateTimeStr = provider.AgreementSubmittedAt.Format("02/01/2006, 15:04")
+	} else {
+		dateTimeStr = time.Now().Format("02/01/2006, 15:04")
+	}
+
+	placeStr := provider.City
+	if placeStr == "" {
+		placeStr = "New Delhi"
+	}
+
+	templateData := map[string]interface{}{
+		"provider": map[string]string{
+			"name":        provider.Name,
+			"companyName": provider.CompanyName,
+		},
+		"agreement": map[string]string{
+			"dateTime":          dateTimeStr,
+			"place":             placeStr,
+			"commissionPercent": fmt.Sprintf("%.0f", provider.CommissionPercentage),
+		},
+	}
+
+	paragraphs := make([]dto.ParagraphHTML, len(agreementTemplate.Paragraphs))
+	for i, p := range agreementTemplate.Paragraphs {
+		paragraphs[i] = dto.ParagraphHTML{
 			Number:  p.Number,
-			Title:   p.Title,
-			Content: p.Content,
+			Title:   s.processTemplate(p.Title, templateData),
+			Content: s.processTemplate(p.Content, templateData),
 		}
 	}
 
-	return &dto.AgreementResponse{
-		ID:              a.ID.Hex(),
-		Title:           a.Title,
-		Paragraphs:      paragraphs,
-		AgreementOf:     a.AgreementOf,
-		AgreementFor:    a.AgreementFor,
-		CompanyName:     a.CompanyName,
-		Annexures:       a.Annexures,
-		CommercialTerms: a.CommercialTerms,
-		MarketplaceFee:  a.MarketplaceFee,
-		PaymentGateway:  a.PaymentGateway,
-		AdditionalNotes: a.AdditionalNotes,
-		CreatedAt:       a.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       a.UpdatedAt.Format(time.RFC3339),
+	return &dto.AgreementHTMLResponse{
+		ID:                agreementTemplate.ID.Hex(),
+		Title:             agreementTemplate.Title,
+		AgreementOf:       agreementTemplate.AgreementOf, 
+		AgreementFor:      s.processTemplate(agreementTemplate.AgreementFor, templateData),
+		CompanyName:       provider.CompanyName,        
+		DateTime:          dateTimeStr,                  
+		Place:             placeStr,                    
+		CommissionPercent: fmt.Sprintf("%.0f", provider.CommissionPercentage), 
+		ProviderName:      provider.Name,                
+		Paragraphs:        paragraphs,
+		CommercialTerms:   agreementTemplate.CommercialTerms,
+		MarketplaceFee:    s.processTemplate(agreementTemplate.MarketplaceFee, templateData),  
+		PaymentGateway:    agreementTemplate.PaymentGateway,    
+		AdditionalNotes:   agreementTemplate.AdditionalNotes,   
+		Annexures:         agreementTemplate.Annexures,    
+		CreatedAt:         agreementTemplate.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         agreementTemplate.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 
-func (s *AgreementService) GetAgreementSafeHTML(ctx context.Context, id string) (*dto.SafeHTMLAgreementResponse, error) {
-	a, err := s.agreementRepo.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
+func (s *AgreementService) processTemplate(content string, data map[string]interface{}) string {
+	if content == "" {
+		return content
 	}
 
-	paragraphs := make([]dto.SafeParagraphResponse, len(a.Paragraphs))
-	for i, p := range a.Paragraphs {
-		paragraphs[i] = dto.SafeParagraphResponse{
-			Number:  p.Number,
-			Title:   p.Title,
-			Content: template.HTML(p.Content),
-		}
+	result := content
+
+	if providerData, ok := data["provider"].(map[string]string); ok {
+		result = strings.ReplaceAll(result, "{provider.name}", providerData["name"])
+		result = strings.ReplaceAll(result, "{provider.companyName}", providerData["companyName"])
 	}
 
-	return &dto.SafeHTMLAgreementResponse{
-		ID:              a.ID.Hex(),
-		Title:           a.Title,
-		Paragraphs:      paragraphs,
-		AgreementOf:     template.HTML(a.AgreementOf),
-		AgreementFor:    template.HTML(a.AgreementFor),
-		CompanyName:     template.HTML(a.CompanyName),
-		Annexures:       template.HTML(a.Annexures),
-		CommercialTerms: template.HTML(a.CommercialTerms),
-		MarketplaceFee:  template.HTML(a.MarketplaceFee),
-		PaymentGateway:  template.HTML(a.PaymentGateway),
-		AdditionalNotes: template.HTML(a.AdditionalNotes),
-		CreatedAt:       a.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       a.UpdatedAt.Format(time.RFC3339),
-	}, nil
+	if agreementData, ok := data["agreement"].(map[string]string); ok {
+		result = strings.ReplaceAll(result, "{agreement.dateTime}", agreementData["dateTime"])
+		result = strings.ReplaceAll(result, "{agreement.place}", agreementData["place"])
+		result = strings.ReplaceAll(result, "{agreement.commissionPercent}", agreementData["commissionPercent"])
+	}
+
+	return result
 }

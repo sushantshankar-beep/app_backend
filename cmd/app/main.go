@@ -170,7 +170,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
-	agreementSvc := service.NewAgreementService(providerAgreementRepo)
+	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
 
 
 	// Bidding service

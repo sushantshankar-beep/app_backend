@@ -1,3 +1,4 @@
+
 package service
 import (
 	"context"
@@ -15,6 +16,7 @@ import (
 	// "sync"
 	"app_backend/internal/ports"
 	"strconv"
+	"encoding/json" 
 )
 
 type BiddingService struct {
@@ -26,6 +28,8 @@ type BiddingService struct {
 	providerRepo *repository.ProviderRepo
 	counterRepo  *repository.CounterRepo
 	notify       ports.NotificationService
+	paymentRepo *repository.PaymentRepository
+	refundRepo   *repository.RefundRepo 
 	
 }
 
@@ -38,6 +42,8 @@ func NewBiddingService(
 	providerRepo *repository.ProviderRepo,
 	counterRepo *repository.CounterRepo,
 	notify ports.NotificationService,
+	paymentRepo *repository.PaymentRepository,
+	refundRepo   *repository.RefundRepo, 
 ) *BiddingService {
 	return &BiddingService{
 		rdb:          rdb,
@@ -48,6 +54,8 @@ func NewBiddingService(
 		providerRepo: providerRepo,
 		counterRepo: counterRepo,
 		notify:       notify,
+		paymentRepo: paymentRepo,
+		refundRepo: refundRepo,
 	}
 }
 var ErrServiceAlreadyAssigned = errors.New("service already assigned")
@@ -949,6 +957,40 @@ func (s *BiddingService) CancelService(
 			s.rdb.Del(ctx, iter.Val())
 		}
 	}
+	paymentTxn, err := s.paymentRepo.FindByServiceID(ctx, serviceID)
+	if err == nil {
+
+		refundLock := "refund:lock:" + paymentTxn.MihPayID
+
+		ok, _ := s.rdb.SetNX(ctx, refundLock, "1", 24*time.Hour).Result()
+
+		if ok {
+
+			job := domain.RefundJob{
+				ServiceID: serviceID,
+				MihPayID: paymentTxn.MihPayID,
+				Amount: paymentTxn.Amount,
+				Retries: 0,
+			}
+
+			b, _ := json.Marshal(job)
+
+			s.rdb.RPush(ctx, "refund:queue", b)
+
+			s.refundRepo.Create(ctx, &domain.RefundTransaction{
+				TxnID: paymentTxn.TxnID,
+				MihPayID: paymentTxn.MihPayID,
+				ServiceID: serviceID,
+				UserID: paymentTxn.UserID,
+				Amount: paymentTxn.Amount,
+				Status: "pending",
+				Reason: reason,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			})
+		}
+	}
+
 
 	// ===========================
 	// 👤 USER ROOM

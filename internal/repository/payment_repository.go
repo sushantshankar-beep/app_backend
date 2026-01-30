@@ -86,3 +86,18 @@ func (r *PaymentRepository) GetTransactionByServiceID(ctx context.Context, servi
 	
 	return &transaction, nil
 }
+func (r *PaymentRepository) FindByServiceID(
+	ctx context.Context,
+	serviceID string,
+) (*domain.PaymentTransaction, error) {
+
+	var txn domain.PaymentTransaction
+
+	err := r.txnCol.FindOne(ctx, bson.M{
+		"serviceId": serviceID,
+		"status":    "paid",
+	}).Decode(&txn)
+
+	return &txn, err
+}
+

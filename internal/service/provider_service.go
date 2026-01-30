@@ -24,9 +24,10 @@ type ProviderService struct {
 	token               ports.TokenService
 	queue               *worker.OTPQueue
 	acceptedServiceRepo ports.AcceptedServiceRepository
+	providerRepo  *repository.ProviderRepo
 }
 
-func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
 		counterRepo:		counterRepo,
@@ -34,6 +35,7 @@ func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.Co
 		token:               token,
 		queue:               q,
 		acceptedServiceRepo: acceptedRepo,
+		providerRepo: providerRepo,
 	}
 }
 func isProviderProfileCompleted(p *domain.Provider) bool {
@@ -378,7 +380,7 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 	provider.AgreementSubmittedAt = &now
 	provider.UpdatedAt = now
 
-	if err := s.repo.Update(ctx, provider); err != nil {
+	if err := s.providerRepo.UpdateAgreement(ctx, provider); err != nil {
 		return nil, err
 	}
 

@@ -439,13 +439,11 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 
 	const (
 		gstPercent        = 18.0
-		commissionPercent = 20.0
 	)
 
 	serviceCharge := r.FinalPrice
-	commissionAmount := (serviceCharge * commissionPercent) / 100
-	gstOnCommission := (commissionAmount * gstPercent) / 100
-	providerPayout := serviceCharge - commissionAmount - gstOnCommission
+	gstOnCommission := (serviceCharge * gstPercent) / 100
+	providerPayout := serviceCharge + gstOnCommission
 
 	return &dto.ProviderBookingDetailDTO{
 		ID:            r.ID,
@@ -466,8 +464,8 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		Complaint:     complaintDTO,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:     utils.RoundTo2(serviceCharge),
-			CommissionPercent: commissionPercent,
-			CommissionAmount:  utils.RoundTo2(commissionAmount),
+			// CommissionPercent: commissionPercent,
+			// CommissionAmount:  utils.RoundTo2(commissionAmount),
 			GSTPercent:        gstPercent,
 			GSTAmount:         utils.RoundTo2(gstOnCommission),
 			TotalPayable:      serviceCharge,

@@ -175,3 +175,24 @@ func (r *ProviderRepo) UpdateKYCID(ctx context.Context, providerID string, kycID
 	_, err = r.col.UpdateOne(ctx, filter, update)
 	return err
 }
+
+func (r *ProviderRepo) UpdateAgreement(ctx context.Context, p *domain.Provider) error {
+    // Convert ProviderID to ObjectID
+    objID, err := primitive.ObjectIDFromHex(string(p.ID))
+    if err != nil {
+        return err
+    }
+    
+    // Create update document
+    update := bson.M{
+        "$set": bson.M{
+            "isAgreementSubmitted": p.IsAgreementSubmitted,
+            "agreementSubmittedAt": p.AgreementSubmittedAt,
+            "updatedAt":            p.UpdatedAt,
+        },
+    }
+    
+    filter := bson.M{"_id": objID}
+    _, err = r.col.UpdateOne(ctx, filter, update)
+    return err
+}

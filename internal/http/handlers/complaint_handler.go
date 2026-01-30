@@ -44,10 +44,10 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 
 	seq, err := h.svc.GetNextComplaintSequence(c.Request.Context())
 	if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate complaint number"})
-        return
-    }
-    complaintNumber := fmt.Sprintf("CMP%05d", seq)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate complaint number"})
+		return
+	}
+	complaintNumber := fmt.Sprintf("CMP%05d", seq)
 
 	complaint, err := h.svc.RaiseComplaint(
 		c.Request.Context(),
@@ -56,7 +56,7 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		photoURLs,
 		raisedBy,
 		authenticatedID,
-		complaintNumber, 
+		complaintNumber,
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -68,7 +68,6 @@ func (h *ComplaintHandler) RaiseComplaint(c *gin.Context) {
 		"data":    complaint,
 	})
 }
-
 func getString(req map[string]any, key string) (string, bool) {
 	v, ok := req[key]
 	if !ok {

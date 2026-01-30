@@ -361,7 +361,7 @@ func (s *ProviderService) CompleteService(ctx context.Context,serviceID string) 
 }
 
 
-func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.ProviderID,	pdfURL string ) (*domain.Provider, error) {
+func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.ProviderID ) (*domain.Provider, error) {
 
 	provider, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -375,7 +375,6 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 	now := time.Now()
 
 	provider.IsAgreementSubmitted = true
-	provider.AgreementPDF = pdfURL
 	provider.AgreementSubmittedAt = &now
 	provider.UpdatedAt = now
 

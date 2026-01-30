@@ -487,6 +487,15 @@ func (s *BiddingService) AcceptBid(
 	providerID string,
 	price float64,
 ) error {
+	providerBusyKey := "provider:busy:" + providerID
+	ok1, err := s.rdb.SetNX(ctx, providerBusyKey, serviceID, 2*time.Hour).Result()
+	if err != nil {
+	    return err
+	}
+	if !ok1 {
+	    return errors.New("provider already assigned to another service")
+	}
+
 	assignKey := "service:assigning:" + serviceID
 	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
@@ -1167,6 +1176,82 @@ func cleanupServiceKeys(ctx context.Context, rdb *redis.Client, serviceID string
 		}
 	}
 }
+func (s *BiddingService) HandleProviderTimeout(
+	ctx context.Context,
+	svc *domain.AcceptedService,
+) {
+
+		serviceID := svc.ID.Hex()
+		providerID := svc.Provider.Hex()
+
+		// 🔒 redis lock so two workers don't race
+		lockKey := "timeout:lock:" + serviceID
+
+		ok, _ := s.rdb.SetNX(ctx, lockKey, "1", 2*time.Minute).Result()
+		if !ok {
+			return
+		}
+
+		log.Println("⚠ releasing timed-out provider", providerID, "service", serviceID)
+
+		// =========================
+		// 🔓 redis cleanup
+		// =========================
+
+		keys := []string{
+			"service:locked:" + serviceID,
+			"service:stop:" + serviceID,
+			"provider:busy:" + providerID,
+		}
+
+		s.rdb.Del(ctx, keys...)
+
+		cleanupServiceKeys(ctx, s.rdb, serviceID)
+
+		// =========================
+		// 🌍 re-add provider geo
+		// =========================
+
+		if svc.ProviderLocation != nil {
+
+			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+				Name:      providerID,
+				Longitude: svc.ProviderLocation.Long,
+				Latitude:  svc.ProviderLocation.Lat,
+			})
+		}
+
+		// =========================
+		// 🔄 DB reset
+		// =========================
+
+		_ = s.acceptedRepo.UpdateByID(
+			ctx,
+			svc.ID,
+			bson.M{
+				"$set": bson.M{
+					"status": domain.StatusSearching,
+					"provider": primitive.NilObjectID,
+					"acceptedBid": primitive.NilObjectID,
+					"updatedAt": time.Now(),
+				},
+			},
+		)
+
+		// =========================
+		// 🔔 notify user
+		// =========================
+
+		s.socket.Emit(
+			"user:"+serviceID,
+			"provider:timeout",
+			map[string]any{
+				"serviceId": serviceID,
+			},
+		)
+	}
+
+
 
 
 

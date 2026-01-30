@@ -9,6 +9,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 /*
@@ -199,6 +200,10 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 				"serviceId": svc.ID.Hex(),
 			},
 		)
+		go s.releaseProviderAfterGrace(
+			txn.ServiceID,
+			svc.Provider.Hex(),
+		)
 	}
 }
 
@@ -207,6 +212,9 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 RELEASE PROVIDER AFTER GRACE
 */
 func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string) {
+
+	log.Println("⏳ grace timer started for provider:", providerID)
+
 	time.Sleep(5 * time.Minute)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -223,22 +231,32 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 	}
 
 	if err := domain.CanReleaseProviderAfterFailure(svc); err != nil {
+		log.Println("⛔ not releasing provider:", err)
 		return
 	}
 
-	_ = s.redis.Del(ctx, "reserve:"+providerID).Err()
+	log.Println("✅ releasing provider:", providerID)
 
-	_ = s.acceptedServiceRepo.UpdatePaymentStatus(
+	// ---------------- REDIS CLEANUP ----------------
+	if err := s.redis.Del(ctx, "reserve:"+providerID).Err(); err != nil {
+		log.Println("⚠ redis delete failed:", err)
+	}
+
+	// ---------------- FINAL STATUS ----------------
+	_ = s.acceptedServiceRepo.UpdateStatus(
 		ctx,
 		serviceOID,
-		domain.PaymentFailed,
+		"cancelled",
+		bson.M{},
 	)
 
+	// ---------------- EVENTS ----------------
 	s.events.Publish("payment.failed.final", events.PaymentEvent{
 		ServiceID: serviceID,
 		Status:    "cancelled",
 	})
 
+	// ---------------- USER SOCKET ----------------
 	s.socket.EmitWithRetry(
 		"user:"+svc.User.Hex(),
 		"service:cancelled",

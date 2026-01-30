@@ -75,7 +75,6 @@ func main() {
 	}
 	service.TestFCMSend(firebaseClient)
 
-
 	//repository
 	paymentRepo := repository.NewPaymentRepository(db)
 	userRepo := repository.NewUserRepo(db)
@@ -205,6 +204,11 @@ func main() {
 		refundRepo,
 		paymentRepo,
 	)
+	timeoutWorker := worker.NewProviderTimeoutWorker(
+		ports.AcceptedServiceRepository(acceptedServiceRepo),
+		biddingSvc,
+	)
+	timeoutWorker.Start()
 
 	amcValidationHandler := handlers.NewAMCValidationHandler(amcValidationSvc)
 	biddingHandler := handlers.NewBiddingHandler(biddingSvc)

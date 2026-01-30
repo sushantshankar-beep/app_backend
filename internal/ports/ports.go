@@ -1,5 +1,5 @@
-package ports
 
+package ports
 import (
     "app_backend/internal/domain"
     "context"
@@ -49,6 +49,16 @@ type AcceptedServiceRepository interface {
 	UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) error
 	UpdatePaymentStatus(ctx context.Context, id primitive.ObjectID, status domain.PaymentStatus) error
 	FindStaleSearching(ctx context.Context, before time.Time) ([]domain.AcceptedService, error)
+	FindStuckAssigned(
+		ctx context.Context,
+		before time.Time,
+	) ([]*domain.AcceptedService, error)
+	UpdateStatus(
+		ctx context.Context,
+		id primitive.ObjectID,
+		status domain.ServiceStatus,
+		fields bson.M,
+	) error
 }
 
 type HomepageRepository interface {

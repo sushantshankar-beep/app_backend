@@ -32,8 +32,6 @@ func (s *ComplaintService) RaiseComplaint(
 	ctx context.Context,
 	acceptedServiceStr string,
 	problem string,
-	providerIDStr string,
-	userIDStr string,
 	photoURLs []string,
 	raisedBy string,
 	authenticatedID string,
@@ -49,6 +47,11 @@ func (s *ComplaintService) RaiseComplaint(
 		return nil, errors.New("problem is required")
 	}
 
+	acceptedService, err := s.acceptedSvcRepo.FindByID(ctx, acceptedServiceID.Hex())
+	if err != nil {
+		return nil, errors.New("accepted service not found")
+	}
+
 	var (
 		userID     primitive.ObjectID
 		providerID primitive.ObjectID
@@ -59,19 +62,13 @@ func (s *ComplaintService) RaiseComplaint(
 		if err != nil {
 			return nil, errors.New("invalid authenticated user ID")
 		}
-		providerID, err = primitive.ObjectIDFromHex(providerIDStr)
-		if err != nil {
-			return nil, errors.New("providerId is required and must be valid ObjectID")
-		}
+		providerID = acceptedService.Provider
 	} else {
 		providerID, err = primitive.ObjectIDFromHex(authenticatedID)
 		if err != nil {
 			return nil, errors.New("invalid authenticated provider ID")
 		}
-		userID, err = primitive.ObjectIDFromHex(userIDStr)
-		if err != nil {
-			return nil, errors.New("userId is required and must be valid ObjectID")
-		}
+		userID = acceptedService.User
 	}
 
 	existing, _ := s.repo.FindByAcceptedServiceId(ctx, acceptedServiceID)

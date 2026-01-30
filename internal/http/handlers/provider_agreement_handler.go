@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"github.com/gin-gonic/gin"
 	"app_backend/internal/service"
+	"app_backend/internal/domain"
+	"app_backend/internal/http/middleware"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type AgreementHandler struct {
@@ -11,30 +14,19 @@ type AgreementHandler struct {
 }
 
 func NewAgreementHandler(svc *service.AgreementService) *AgreementHandler {
-	return &AgreementHandler{
-		svc: svc,
-	}
+	return &AgreementHandler{svc: svc}
 }
 
-func (h *AgreementHandler) GetAgreement(c *gin.Context) {
-	id := c.Param("id")
+func (h *AgreementHandler) GetProviderAgreement(c *gin.Context) {
 
-	safeHTML := c.Query("safe") == "true"
-
-	if safeHTML {
-		agreement, err := h.svc.GetAgreementSafeHTML(c, id)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-		c.JSON(http.StatusOK, agreement)
-		return
-	}
-
-	agreement, err := h.svc.GetAgreement(c, id)
+	providerObjID := c.MustGet(middleware.ContextKeyProviderObjID).(primitive.ObjectID)
+	providerID := domain.ProviderID(providerObjID.Hex())
+	
+	agreement, err := h.svc.GetProviderAgreement(c, providerID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, agreement)
 }

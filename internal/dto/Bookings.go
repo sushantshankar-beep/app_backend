@@ -41,6 +41,7 @@ type UserBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
+	Complaint *ComplaintDTO `json:"complaint,omitempty"`
 }
 
 type BillingDetailsDTO struct {
@@ -94,6 +95,7 @@ type ProviderBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
+	Complaint *ComplaintDTO `json:"complaint,omitempty"`
 }
 
 type ProviderBillingDetailsDTO struct {
@@ -142,4 +144,27 @@ type EarningsResponse struct {
 type TodayEarningsResponse struct {
 	Total    float64         `json:"total"`
 	Earnings []EarningDetail `json:"earnings"`
+}
+
+
+type ComplaintDTO struct {
+	ID              string                     `json:"_id"`
+	ComplaintNumber string                     `json:"complaintNumber"`
+	Status          string                     `json:"status"`
+	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint,omitempty"`
+	UserIssue   *UserComplaintDTO     `json:"userComplaint,omitempty"`
+	CreatedAt       time.Time                  `json:"createdAt"`
+	UpdatedAt       time.Time                  `json:"updatedAt"`
+}
+
+type ProviderComplaintDTO struct {
+	Problem  string    `json:"problem"`
+	Photos   []string  `json:"photos"`
+	RaisedAt time.Time `json:"raisedAt"`
+}
+
+type UserComplaintDTO struct {
+	Problem  string    `json:"problem"`
+	Photos   []string  `json:"photos"`
+	RaisedAt time.Time `json:"raisedAt"`
 }

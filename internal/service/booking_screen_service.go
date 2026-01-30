@@ -14,7 +14,6 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	
 )
 
 type BookingService struct {
@@ -24,6 +23,7 @@ type BookingService struct {
 	catalogRepo     *repository.ServiceCatalogRepo
 	transactionRepo *repository.PaymentRepository
 	settlementRepo *repository.SettlementHistoryRepository
+	complaintRepo *repository.ComplaintRepo
 }
 
 func NewBookingService(
@@ -33,6 +33,7 @@ func NewBookingService(
 	catalogRepo *repository.ServiceCatalogRepo,
 	transactionRepo *repository.PaymentRepository,
 	settlementRepo *repository.SettlementHistoryRepository,
+	complaintRepo *repository.ComplaintRepo,
 ) *BookingService {
 	return &BookingService{
 		acceptedRepo:    acceptedRepo,
@@ -41,6 +42,7 @@ func NewBookingService(
 		catalogRepo:     catalogRepo,
 		transactionRepo: transactionRepo,
 		settlementRepo:settlementRepo,
+		complaintRepo: complaintRepo,
 	}
 }
 
@@ -241,6 +243,32 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
+	
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+	if err != nil {
+		return nil, err
+	}
+
+	var complaintDTO *dto.ComplaintDTO
+	if complaint != nil {
+		complaintDTO = &dto.ComplaintDTO{
+			ID:              complaint.ID.Hex(),
+			ComplaintNumber: complaint.ComplaintNumber,
+			Status:          string(complaint.Status),
+			CreatedAt:       complaint.CreatedAt,
+			UpdatedAt:       complaint.UpdatedAt,
+		}
+
+		if complaint.UserComplaint != nil {
+			complaintDTO.UserIssue = &dto.UserComplaintDTO{
+				Problem:  complaint.UserComplaint.Problem,
+				Photos:   complaint.UserComplaint.Photos,
+				RaisedAt: complaint.UserComplaint.RaisedAt,
+			}
+		}
+	}
+
+
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
@@ -270,6 +298,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
+		Complaint:     complaintDTO,
 		UserLocation: dto.UserLocation{
 			Lat:  r.UserLocation.Lat,
 			Long: r.UserLocation.Long,
@@ -384,6 +413,30 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		return nil, err
 	}
 
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+	if err != nil {
+		return nil, err
+	}
+
+	var complaintDTO *dto.ComplaintDTO
+	if complaint != nil {
+		complaintDTO = &dto.ComplaintDTO{
+			ID:              complaint.ID.Hex(),
+			ComplaintNumber: complaint.ComplaintNumber,
+			Status:          string(complaint.Status),
+			CreatedAt:       complaint.CreatedAt,
+			UpdatedAt:       complaint.UpdatedAt,
+		}
+
+		if complaint.ProviderComplaint != nil {
+			complaintDTO.ProviderIssue = &dto.ProviderComplaintDTO{
+				Problem:  complaint.ProviderComplaint.Problem,
+				Photos:   complaint.ProviderComplaint.Photos,
+				RaisedAt: complaint.ProviderComplaint.RaisedAt,
+			}
+		}
+	}
+
 	const (
 		gstPercent        = 18.0
 		commissionPercent = 20.0
@@ -410,6 +463,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		Timestamps:    r.Timestamps,
 		ProviderName:  provider.Name,
 		UserName:      user.Name,
+		Complaint:     complaintDTO,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:     utils.RoundTo2(serviceCharge),
 			CommissionPercent: commissionPercent,

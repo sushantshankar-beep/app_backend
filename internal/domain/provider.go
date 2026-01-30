@@ -37,7 +37,7 @@ type Provider struct {
 	KYCID                primitive.ObjectID `bson:"kycId,omitempty" json:"kycId,omitempty"`
 	FormSubmitted        int                `bson:"formSubmitted" json:"formSubmitted"`
 	IsAgreementSubmitted bool               `bson:"isAgreementSubmitted" json:"isAgreementSubmitted"`
-	AgreementSubmittedAt *time.Time          `bson:"agreementSubmittedAt,omitempty" json:"agreementSubmittedAt,omitempty"`
+	AgreementSubmittedAt   *time.Time        `bson:"agreementSubmittedAt,omitempty" json:"agreementSubmittedAt,omitempty"`
 	AgreementPDF         string             `bson:"agreementPdf,omitempty" json:"agreementPdf,omitempty"`
 	CommissionPercentage float64            `bson:"commissionPercentage,omitempty" json:"commissionPercentage,omitempty"`
 	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`

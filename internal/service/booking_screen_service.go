@@ -521,11 +521,17 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 			}
 		}
 	}
+
+	totalSettlement, err := s.settlementRepo.
+		GetTotalSettlementByProvider(ctx, providerObjID)
+	if err != nil {
+		return nil, err
+	}
 	stats := &dto.DashboardStats{
 		AllTimeEarning:    allTimeEarning,
 		TodayEarning:      todayEarning,
 		ServicesCompleted: len(completedBookings),
-		PaymentSettlement: 0,
+		PaymentSettlement: totalSettlement,
 		CancelledServices: len(cancelledBookings),
 	}
 	return stats, nil

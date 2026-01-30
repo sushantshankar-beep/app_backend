@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
-
+"go.mongodb.org/mongo-driver/mongo"
 	"app_backend/internal/dto"
 	"fmt"
 
@@ -22,8 +23,8 @@ type BookingService struct {
 	providerRepo    *repository.ProviderRepo
 	catalogRepo     *repository.ServiceCatalogRepo
 	transactionRepo *repository.PaymentRepository
-	settlementRepo *repository.SettlementHistoryRepository
-	complaintRepo *repository.ComplaintRepo
+	settlementRepo  *repository.SettlementHistoryRepository
+	complaintRepo   *repository.ComplaintRepo
 }
 
 func NewBookingService(
@@ -41,8 +42,8 @@ func NewBookingService(
 		providerRepo:    providerRepo,
 		catalogRepo:     catalogRepo,
 		transactionRepo: transactionRepo,
-		settlementRepo:settlementRepo,
-		complaintRepo: complaintRepo,
+		settlementRepo:  settlementRepo,
+		complaintRepo:   complaintRepo,
 	}
 }
 
@@ -243,9 +244,8 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
-	
 	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
-	if err != nil {
+	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
 
@@ -267,7 +267,6 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			}
 		}
 	}
-
 
 	const gstPercent = 18.0
 
@@ -298,7 +297,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
-		Complaint:     complaintDTO,
+		Complaint: complaintDTO,
 		UserLocation: dto.UserLocation{
 			Lat:  r.UserLocation.Lat,
 			Long: r.UserLocation.Long,
@@ -414,7 +413,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 	}
 
 	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
-	if err != nil {
+	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
 
@@ -438,7 +437,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 	}
 
 	const (
-		gstPercent        = 18.0
+		gstPercent = 18.0
 	)
 
 	serviceCharge := r.FinalPrice
@@ -463,14 +462,14 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		UserName:      user.Name,
 		Complaint:     complaintDTO,
 		Billing: dto.BillingDetailsDTO{
-			ServiceCharge:     utils.RoundTo2(serviceCharge),
+			ServiceCharge: utils.RoundTo2(serviceCharge),
 			// CommissionPercent: commissionPercent,
 			// CommissionAmount:  utils.RoundTo2(commissionAmount),
-			GSTPercent:        gstPercent,
-			GSTAmount:         utils.RoundTo2(gstOnCommission),
-			TotalPayable:      serviceCharge,
-			ProviderPayout:    utils.RoundTo2(providerPayout),
-			PaymentStatus:     string(r.PaymentStatus),
+			GSTPercent:     gstPercent,
+			GSTAmount:      utils.RoundTo2(gstOnCommission),
+			TotalPayable:   serviceCharge,
+			ProviderPayout: utils.RoundTo2(providerPayout),
+			PaymentStatus:  string(r.PaymentStatus),
 		},
 		UserLocation: dto.UserLocation{
 			Lat:  r.UserLocation.Lat,

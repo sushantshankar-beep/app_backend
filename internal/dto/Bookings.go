@@ -41,7 +41,7 @@ type UserBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
-	Complaint *ComplaintDTO `json:"complaint,omitempty"`
+	Complaint *ComplaintDTO `json:"complaint"`
 }
 
 type BillingDetailsDTO struct {
@@ -95,7 +95,7 @@ type ProviderBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
-	Complaint *ComplaintDTO `json:"complaint,omitempty"`
+	Complaint *ComplaintDTO `json:"complaint"`
 }
 
 type ProviderBillingDetailsDTO struct {
@@ -151,8 +151,8 @@ type ComplaintDTO struct {
 	ID              string                     `json:"_id"`
 	ComplaintNumber string                     `json:"complaintNumber"`
 	Status          string                     `json:"status"`
-	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint,omitempty"`
-	UserIssue   *UserComplaintDTO     `json:"userComplaint,omitempty"`
+	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint"`
+	UserIssue       *UserComplaintDTO           `json:"userComplaint"`
 	CreatedAt       time.Time                  `json:"createdAt"`
 	UpdatedAt       time.Time                  `json:"updatedAt"`
 }

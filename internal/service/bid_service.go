@@ -348,6 +348,7 @@ func (s *BiddingService) findProviders(
 						map[string]any{
 							"user": map[string]any{
 								"name": user.Name,
+								"image_url":user.ImageUrl,
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{
@@ -426,7 +427,7 @@ func (s *BiddingService) PlaceBid(
 		Price:      price,
 		CreatedAt:  time.Now(),
 	}
-	provider, err := s.providerRepo.FindByID(
+		provider, err := s.providerRepo.FindByID(
 		ctx,
 		domain.ProviderID(providerID),
 	)
@@ -633,16 +634,23 @@ func (s *BiddingService) RejectBid(
 	log.Printf("👎 rejected provider=%s service=%s", providerID, serviceID)
 		// clear bid window so new providers can be contacted
 	s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
-	activeKey := "service:activeProvider:" + serviceID + ":" + providerID
-
-	// allow rebid window
-	s.rdb.Set(ctx, activeKey, "1", 60*time.Second)
+	keys := []string{
+		"service:providerBidLock:" + serviceID + ":" + providerID,
+		"service:cooldown:" + serviceID + ":" + providerID,
+		"service:sendcount:" + serviceID + ":" + providerID,
+		"service:activeProvider:" + serviceID + ":" + providerID,
+		"service:dist:" + serviceID + ":" + providerID,
+	}
+	s.rdb.Del(ctx, keys...)
 
 	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
 	if err != nil {
 		return err
 	}
-
+	user, err := s.userRepo.GetByID(ctx, svc.User)
+	if err != nil{
+		return err
+	}
 	dist, _ := s.rdb.Get(
 		ctx,
 		"service:dist:"+serviceID+":"+providerID,
@@ -653,6 +661,10 @@ func (s *BiddingService) RejectBid(
 		"provider:"+providerID,
 		"bid:request",
 		map[string]any{
+			"user": map[string]any{
+								"name": user.Name,
+								"image_url":user.ImageUrl,
+							},
 			"serviceId": serviceID,
 			"price":     price,
 			"vehicle": map[string]any{
@@ -668,6 +680,7 @@ func (s *BiddingService) RejectBid(
 			"distanceKm":  dist,
 			"etaMin":      estimateETA(dist),
 			"rebid":       true,
+			"expiresIn":   60,
 		},
 	)
 
@@ -831,7 +844,6 @@ func (s *BiddingService) findProvidersFixedPrice(
 		if err != nil || len(providers) == 0 {
 		    continue
 		}
-
 
 		for _, p := range providers {
 
@@ -1005,6 +1017,7 @@ func (s *BiddingService) CancelService(
 	)
 
 	s.socket.CloseRoom("user:" + serviceID)
+	cleanupServiceKeys(ctx, s.rdb, serviceID)
 
 	return nil
 }
@@ -1135,6 +1148,25 @@ func (s *BiddingService) CancelSearchingService(
 	return s.CancelSearchingServiceBeforeBid(ctx, serviceID, userID)
 }
 
+func cleanupServiceKeys(ctx context.Context, rdb *redis.Client, serviceID string) {
+
+	patterns := []string{
+		"service:cooldown:" + serviceID + ":*",
+		"service:activeProvider:" + serviceID + ":*",
+		"service:sendcount:" + serviceID + ":*",
+		"service:dist:" + serviceID + ":*",
+		"service:providerBidLock:" + serviceID + ":*",
+		"service:stop:" + serviceID,
+		"service:locked:" + serviceID,
+	}
+
+	for _, pattern := range patterns {
+		iter := rdb.Scan(ctx, 0, pattern, 500).Iterator()
+		for iter.Next(ctx) {
+			rdb.Del(ctx, iter.Val())
+		}
+	}
+}
 
 
 

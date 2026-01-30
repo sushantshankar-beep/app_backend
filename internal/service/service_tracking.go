@@ -267,8 +267,100 @@ func (s *ServiceTrackingService) UpdateStatus(
 		update["timestamps.inProgressAt"]= now
 	case domain.StatusCompleted:
 		update["timestamps.CompletedAt"] = now
-	case domain.StatusCancelled:
-		update["timestamps.CancelledAt"] = now
+	    serviceHex := svc.ID.Hex()
+	    providerHex := svc.Provider.Hex()
+
+	    // ===============================
+	    // 🔓 UNLOCK SERVICE
+	    // ===============================
+	    s.rdb.Del(ctx, "service:locked:"+serviceHex)
+	    s.rdb.Del(ctx, "service:stop:"+serviceHex)
+
+	    // ===============================
+	    // 🧹 CLEAR PROVIDER BUSY FLAG
+	    // ===============================
+	    s.rdb.Del(ctx, "provider:busy:"+providerHex)
+
+	    // ===============================
+	    // 🧹 CLEAR SERVICE PROVIDER KEYS
+	    // ===============================
+	    patterns := []string{
+	        "service:cooldown:" + serviceHex + ":*",
+	        "service:sendcount:" + serviceHex + ":*",
+	        "service:activeProvider:" + serviceHex + ":*",
+	        "service:providerBidLock:" + serviceHex + ":*",
+	        "service:dist:" + serviceHex + ":*",
+	    }
+
+	    for _, p := range patterns {
+	        iter := s.rdb.Scan(ctx, 0, p, 500).Iterator()
+	        for iter.Next(ctx) {
+	            s.rdb.Del(ctx, iter.Val())
+	        }
+	    }
+
+	    // ===============================
+	    // 🟢 MARK PROVIDER ONLINE AGAIN
+	    // ===============================
+	    s.rdb.Set(ctx, "provider:online:"+providerHex, "1", 0)
+
+	    // ===============================
+	    // 🌍 RE-ADD PROVIDER TO GEO
+	    // ===============================
+	    if svc.ProviderLocation != nil {
+	        s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+	            Name:      providerHex,
+	            Longitude: svc.ProviderLocation.Long,
+	            Latitude:  svc.ProviderLocation.Lat,
+	        })
+	    }
+
+	    // ===============================
+	    // 📦 ARCHIVE BOOKING
+	    // ===============================
+	    _, _ = s.acceptedRepo.Col().UpdateByID(
+	        ctx,
+	        objID,
+	        bson.M{
+	            "$set": bson.M{
+	                "archived":  true,
+	                "closedAt": time.Now(),
+	            },
+	        },
+	    )
+
+	    // ===============================
+	    // 🔔 NOTIFICATIONS
+	    // ===============================
+	    go s.notify.SendToUser(ctx,
+	        providerHex,
+	        "Service Completed",
+	        "Your booking is complete.",
+	        map[string]string{"serviceId": serviceHex},
+	    )
+
+	    go s.notify.SendToProvider(ctx,
+	        providerHex,
+	        "Job Completed",
+	        "You are now available for new jobs",
+	        map[string]string{"serviceId": serviceHex},
+	    )
+
+	    // ===============================
+	    // 📡 FINAL SOCKET EVENTS
+	    // ===============================
+	    userRoom := "user:" + serviceHex
+	    providerRoom := "provider:" + providerHex
+
+	    s.socket.Emit(userRoom, "service:closed", nil)
+	    s.socket.Emit(providerRoom, "service:closed", nil)
+
+	    go func() {
+	        time.Sleep(400 * time.Millisecond)
+	        s.socket.CloseRoom(userRoom)
+	        s.socket.CloseRoom(providerRoom)
+	    }()
+
 	}
 
 	if len(ts) > 0 {

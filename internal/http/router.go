@@ -18,7 +18,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	{
 		payment.POST("/initiate",userAuth, paymentHandler.InitiatePayment)
 		payment.POST("/webhook", paymentHandler.PayUWebhook)
-		payment.POST("/payu/refund", paymentHandler.RefundWebhook)
+		payment.POST("/refund", paymentHandler.RefundWebhook)
 		payment.GET("/verify/:txnId", userAuth, paymentHandler.VerifyPayment)
 	}
 	// === User Routes ===

@@ -51,23 +51,44 @@ func (w *RefundWorker) process() {
 	}
 
 	var job domain.RefundJob
-
 	if err := json.Unmarshal([]byte(res[1]), &job); err != nil {
 		return
 	}
 
+	// ===========================
+	// 📌 Mark processing
+	// ===========================
+	_ = w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
+		bson.M{"$set": bson.M{
+			"status":     "processing",
+			"updatedAt": time.Now(),
+		}},
+	)
+
+	// ===========================
+	// 🚀 Call gateway
+	// ===========================
 	err = w.processor.ProcessRefund(ctx, job.MihPayID, job.Amount)
 
 	if err == nil {
-		w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
+
+		log.Println("✅ refund success:", job.MihPayID)
+
+		_ = w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
 			bson.M{"$set": bson.M{
-				"status": "processing",
+				"status":     "success",
 				"updatedAt": time.Now(),
 			}},
 		)
+
 		return
 	}
 
+	log.Println("❌ refund failed:", err)
+
+	// ===========================
+	// 🔁 Retry / DLQ
+	// ===========================
 	if job.Retries < 5 {
 
 		job.Retries++
@@ -76,16 +97,18 @@ func (w *RefundWorker) process() {
 		time.Sleep(delay)
 
 		b, _ := json.Marshal(job)
-		w.rdb.RPush(ctx, "refund:queue", b)
+		_ = w.rdb.RPush(ctx, "refund:queue", b).Err()
 
 	} else {
 
-		b, _ := json.Marshal(job)
-		w.rdb.RPush(ctx, "refund:dlq", b)
+		log.Println("💀 refund moved to DLQ:", job.MihPayID)
 
-		w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
+		b, _ := json.Marshal(job)
+		_ = w.rdb.RPush(ctx, "refund:dlq", b).Err()
+
+		_ = w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
 			bson.M{"$set": bson.M{
-				"status": "failed",
+				"status":     "failed",
 				"updatedAt": time.Now(),
 			}},
 		)

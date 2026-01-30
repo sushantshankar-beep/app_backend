@@ -2,12 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
+	// "errors"
 	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"net/url"
 )
-
 func (s *PaymentService) ProcessRefund(
 	ctx context.Context,
 	mihpayid string,
@@ -34,11 +33,12 @@ func (s *PaymentService) ProcessRefund(
 		Post(s.payuURL + "/merchant/postservice?form=2")
 
 	if err != nil || resp.IsError() {
-		return errors.New("payu refund failed")
+		return fmt.Errorf("payu refund failed: %v", err)
 	}
 
-	// Update DB on success
+	// mark refunded (optimistic — webhook is final truth)
 	return s.repo.UpdateTxn(ctx, mihpayid, bson.M{
-		"status": "refunded",
+		"refundStatus": "processing",
 	})
 }
+

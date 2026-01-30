@@ -18,7 +18,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	{
 		payment.POST("/initiate",userAuth, paymentHandler.InitiatePayment)
 		payment.POST("/webhook", paymentHandler.PayUWebhook)
-		payment.POST("/refund", userAuth, paymentHandler.Refund)
+		payment.POST("/payu/refund", paymentHandler.RefundWebhook)
 		payment.GET("/verify/:txnId", userAuth, paymentHandler.VerifyPayment)
 	}
 	// === User Routes ===
@@ -147,6 +147,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/ratings/:providerID", ratingHandler.GetProviderRatings)
 		provider.GET("/dashboard/:providerID", bookingHandler.GetProviderDashboard)
 		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
+		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
+        provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
 
 	}
 	meta := r.Group("/meta")

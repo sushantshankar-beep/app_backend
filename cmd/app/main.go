@@ -100,6 +100,8 @@ func main() {
 	deviceTokenRepo := repository.NewDeviceTokenRepo(db)
 	ratingRepo := repository.NewRatingRepository(db)
 	providerAgreementRepo := repository.NewAgreementRepo(db)
+	settlementRepo := repository.NewSettlementHistoryRepository(db)
+	refundRepo := repository.NewRefundRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -135,7 +137,12 @@ func main() {
 		rdb,
 	)
 	//Refund async worker
-	refundWorker := worker.NewRefundWorker(rdb, paymentSvc)
+	refundWorker := worker.NewRefundWorker(
+		rdb,
+		paymentSvc,   // implements RefundProcessor
+		refundRepo,
+	)
+
 	refundWorker.Start()
 
 	// Auth + OTP
@@ -159,7 +166,7 @@ func main() {
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo)
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
@@ -167,12 +174,19 @@ func main() {
 
 
 	// Bidding service
-	biddingSvc := service.NewBiddingService(rdb, emitter, acceptedServiceRepo,userRepo,bidRepo,providerRepo, counterRepo,notificationSvc)
-	watchdog := worker.NewSearchWatchdog(
-		ports.AcceptedServiceRepository(acceptedServiceRepo),
-		biddingSvc,
+	biddingSvc := service.NewBiddingService(
+		rdb,
+		emitter,
+		acceptedServiceRepo,
+		userRepo,
+		bidRepo,
+		providerRepo,
+		counterRepo,
+		notificationSvc,
+		paymentRepo,
+		refundRepo,
 	)
-
+	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
 	
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb)
@@ -185,7 +199,12 @@ func main() {
 	locationHandler := handlers.NewLocationHandler(locationSvc)
 	complaintHandler := handlers.NewComplaintHandler(complaintSvc)
 	homepageHandler := handlers.NewHomepageHandler(homepageSvc)
-	paymentHandler := handlers.NewPaymentHandler(paymentSvc)
+	paymentHandler := handlers.NewPaymentHandler(
+		paymentSvc,
+		refundRepo,
+		paymentRepo,
+	)
+
 	amcValidationHandler := handlers.NewAMCValidationHandler(amcValidationSvc)
 	biddingHandler := handlers.NewBiddingHandler(biddingSvc)
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)

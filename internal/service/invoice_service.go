@@ -67,8 +67,6 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
 
-	
-
 	finalPrice := service.FinalPrice
 	gst := finalPrice * 0.18
 

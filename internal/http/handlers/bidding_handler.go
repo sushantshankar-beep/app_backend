@@ -128,21 +128,31 @@ func (h *BiddingHandler) AcceptBid(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.AcceptBid(
+	resp, err := h.svc.AcceptBid(
 		c.Request.Context(),
 		req.ServiceID,
 		req.BidID,
 		req.ProviderID,
 		req.Price,
-	); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	)
+
+	// ❌ FAILED (provider already assigned, etc.)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{
+			"message": resp["message"],
+			"bidId":   resp["bidId"],
+		})
 		return
 	}
 
+	// ✅ SUCCESS
 	c.JSON(http.StatusOK, gin.H{
-		"status": "bid_accepted",
+		"status":  "bid_accepted",
+		"bidId":   resp["bidId"],
+		"message": resp["message"],
 	})
 }
+
 func (h *BiddingHandler) RejectBid(c *gin.Context) {
 
 	var req struct {

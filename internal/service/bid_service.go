@@ -487,42 +487,57 @@ func (s *BiddingService) AcceptBid(
 	providerID string,
 	price float64,
 ) error {
-	assignKey := "service:assigning:" + serviceID
+
+	serviceKey := "service:locked:" + serviceID
+	busyKey := "provider:busy:" + providerID
 	stopKey := "service:stop:" + serviceID
-	lockKey := "service:locked:" + serviceID
-	s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
-	ok, err := s.rdb.SetNX(ctx, assignKey, "1", 10*time.Second).Result()
-	if err != nil || !ok {
-		return ErrServiceAlreadyAssigned
-	}
-	defer s.rdb.Del(ctx, assignKey)
 
-	// already closed?
-	if s.rdb.Exists(ctx, lockKey).Val() == 1 {
-		return ErrServiceAlreadyAssigned
+	// -------------------------------
+	// Redis atomic section
+	// -------------------------------
+
+	ok, err := s.rdb.Eval(ctx, `
+-- ARGV[1] = serviceID
+-- ARGV[2] = providerID
+
+local serviceLock = "service:locked:"..ARGV[1]
+local providerBusy = "provider:busy:"..ARGV[2]
+
+if redis.call("EXISTS", serviceLock) == 1 then
+  return 0
+end
+
+if redis.call("EXISTS", providerBusy) == 1 then
+  return 0
+end
+
+redis.call("SET", serviceLock, "1", "EX", 1800)
+redis.call("SET", providerBusy, ARGV[1], "EX", 7200)
+
+return 1
+`, []string{}, serviceID, providerID).Int()
+
+	if err != nil || ok != 1 {
+		return errors.New("provider already assigned or service locked")
 	}
 
-	// STOP findProviders immediately
+	// stop findProviders
 	s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
 
-	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		return err
-	}
+	// -------------------------------
+	// Mongo atomic assign
+	// -------------------------------
 
-	bidOID, err := primitive.ObjectIDFromHex(bidID)
-	if err != nil {
-		return err
-	}
+	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+	bidOID, _ := primitive.ObjectIDFromHex(bidID)
+	providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
-	providerOID, err := primitive.ObjectIDFromHex(providerID)
-	if err != nil {
-		return err
-	}
 	res, err := s.acceptedRepo.Col().UpdateOne(
 		ctx,
 		bson.M{
-			"_id":    serviceOID,
+			"_id":      serviceOID,
+			"status":   domain.StatusSearching,
+			"provider": primitive.NilObjectID,
 		},
 		bson.M{
 			"$set": bson.M{
@@ -536,61 +551,24 @@ func (s *BiddingService) AcceptBid(
 		},
 	)
 
-	if err != nil {
-		return err
-	}
+	if err != nil || res.ModifiedCount == 0 {
 
-	if res.MatchedCount == 0 {
+		// rollback redis locks
+		s.rdb.Del(ctx, serviceKey, busyKey)
+
 		return ErrServiceAlreadyAssigned
 	}
-	s.rdb.Set(ctx,
-		"service:locked:"+serviceID,
-		"1",
-		30*time.Minute,
-	)
-	pos, err := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
-	if err != nil {
-		log.Println("redis geopos failed:", err)
-	}
-	var lat, long float64
-	if len(pos) > 0 && pos[0] != nil {
-		long = pos[0].Longitude
-		lat = pos[0].Latitude
-	}
-	now := time.Now()
-	set := bson.M{
-		"provider":      providerOID,
-		"acceptedBid":   bidOID,
-		"finalPrice":    price,
-		"status":        domain.StatusProviderAssigned,
-		"paymentStatus": domain.PaymentPending,
-		"updatedAt":     now,
-	}
-	if lat != 0 && long != 0 {
-		set["providerLocation"] = bson.M{
-			"lat":       lat,
-			"long":      long,
-			"updatedAt": now,
-		}
-	}
-	// 🔒 Assign provider & lock service
-	if err := s.acceptedRepo.UpdateByID(
-		ctx,
-		serviceOID,
-		bson.M{"$set": set},
-	); err != nil {
-		return err
-	}
-	s.rdb.Set(ctx,
-		"provider:busy:"+providerID,
-		serviceID,
-		2*time.Hour, // auto release safety
-	)
 
-	// ✅ REMOVE PROVIDER FROM GEO (VERY IMPORTANT)
+	// -------------------------------
+	// Remove provider from geo
+	// -------------------------------
+
 	s.rdb.ZRem(ctx, "providers:geo", providerID)
 
-	// 🔔 Notify PROVIDER
+	// -------------------------------
+	// Notify
+	// -------------------------------
+
 	s.socket.Emit(
 		"provider:"+providerID,
 		"bid:accepted",
@@ -600,7 +578,6 @@ func (s *BiddingService) AcceptBid(
 		},
 	)
 
-	// 🔔 Notify USER (recommended)
 	s.socket.Emit(
 		"user:"+serviceID,
 		"service:assigned",
@@ -610,20 +587,18 @@ func (s *BiddingService) AcceptBid(
 			"price":      price,
 		},
 	)
-	log.Println("this is provider id before placing bid",providerID)
+
 	go s.notify.SendToProvider(
 		context.Background(),
 		providerID,
 		"Bid Accepted 🎉",
 		"User accepted your bid.",
-		map[string]string{
-			"serviceId": serviceID,
-		},
+		map[string]string{"serviceId": serviceID},
 	)
-
 
 	return nil
 }
+
 func (s *BiddingService) RejectBid(
 	ctx context.Context,
 	serviceID string,
@@ -1167,6 +1142,82 @@ func cleanupServiceKeys(ctx context.Context, rdb *redis.Client, serviceID string
 		}
 	}
 }
+func (s *BiddingService) HandleProviderTimeout(
+	ctx context.Context,
+	svc *domain.AcceptedService,
+) {
+
+		serviceID := svc.ID.Hex()
+		providerID := svc.Provider.Hex()
+
+		// 🔒 redis lock so two workers don't race
+		lockKey := "timeout:lock:" + serviceID
+
+		ok, _ := s.rdb.SetNX(ctx, lockKey, "1", 2*time.Minute).Result()
+		if !ok {
+			return
+		}
+
+		log.Println("⚠ releasing timed-out provider", providerID, "service", serviceID)
+
+		// =========================
+		// 🔓 redis cleanup
+		// =========================
+
+		keys := []string{
+			"service:locked:" + serviceID,
+			"service:stop:" + serviceID,
+			"provider:busy:" + providerID,
+		}
+
+		s.rdb.Del(ctx, keys...)
+
+		cleanupServiceKeys(ctx, s.rdb, serviceID)
+
+		// =========================
+		// 🌍 re-add provider geo
+		// =========================
+
+		if svc.ProviderLocation != nil {
+
+			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+				Name:      providerID,
+				Longitude: svc.ProviderLocation.Long,
+				Latitude:  svc.ProviderLocation.Lat,
+			})
+		}
+
+		// =========================
+		// 🔄 DB reset
+		// =========================
+
+		_ = s.acceptedRepo.UpdateByID(
+			ctx,
+			svc.ID,
+			bson.M{
+				"$set": bson.M{
+					"status": domain.StatusSearching,
+					"provider": primitive.NilObjectID,
+					"acceptedBid": primitive.NilObjectID,
+					"updatedAt": time.Now(),
+				},
+			},
+		)
+
+		// =========================
+		// 🔔 notify user
+		// =========================
+
+		s.socket.Emit(
+			"user:"+serviceID,
+			"provider:timeout",
+			map[string]any{
+				"serviceId": serviceID,
+			},
+		)
+	}
+
+
 
 
 

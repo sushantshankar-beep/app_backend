@@ -415,6 +415,31 @@ func (r *AcceptedServiceRepo) GetProviderExpensesByDate(
 
 	return bookings, nil
 }
+func (r *AcceptedServiceRepo) FindStuckAssigned(
+	ctx context.Context,
+	before time.Time,
+) ([]*domain.AcceptedService, error) {
+
+	cur, err := r.col.Find(ctx, bson.M{
+		"status": domain.StatusProviderAssigned,
+		"updatedAt": bson.M{
+			"$lt": before,
+		},
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var out []*domain.AcceptedService
+
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 
 func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 	ctx context.Context,

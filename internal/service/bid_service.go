@@ -17,6 +17,7 @@ import (
 	"app_backend/internal/ports"
 	"strconv"
 	"encoding/json" 
+	"math"
 )
 
 type BiddingService struct {
@@ -791,8 +792,11 @@ func (s *BiddingService) ProviderCancelService(
 	fixedPrice := svc.FinalPrice
 
 	// 🔓 unlock service
+	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
 	s.rdb.Del(ctx, lockKey)
+	s.rdb.Del(ctx, stopKey)
+	s.rdb.Del(ctx, "provider:busy:"+providerID)
 
 	// 🧹 clear busy provider
 	s.rdb.Del(ctx, "provider:busy:"+providerID)
@@ -851,6 +855,11 @@ func (s *BiddingService) ProviderCancelService(
 			"serviceId": serviceID,
 		},
 	)
+	s.rdb.Del(ctx,
+	    "service:stop:"+serviceID,
+	    "service:locked:"+serviceID,
+	    "service:bidWindow:"+serviceID,
+	)
 
 	// 🚀 restart bidding with fixed price
 	go s.findProvidersFixedPrice(
@@ -866,6 +875,7 @@ func (s *BiddingService) ProviderCancelService(
 		svc.ServiceType,
 		svc.Model,
 		fixedPrice,
+		providerID,
 	)
 
 	return nil
@@ -882,6 +892,7 @@ func (s *BiddingService) findProvidersFixedPrice(
 	serviceType string,
 	model string,
 	fixedPrice float64,
+	excludeProviderID string,
 ) {
 
 	ctx := context.Background()
@@ -894,9 +905,9 @@ func (s *BiddingService) findProvidersFixedPrice(
 		return
 	}
 
-	// =====================================
-	// 🔍 LOAD SERVICE
-	// =====================================
+	// ===============================
+	// LOAD SERVICE
+	// ===============================
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -905,48 +916,37 @@ func (s *BiddingService) findProvidersFixedPrice(
 		return
 	}
 
-	// =====================================
-	// 👤 LOAD USER
-	// =====================================
+	// ===============================
+	// LOAD USER
+	// ===============================
 
 	user, err := s.userRepo.GetByID(ctx, svc.User)
 	if err != nil {
 		return
 	}
 
-	radiusSteps := []float64{50,100}
+	radiusSteps := []float64{25, 50, 100}
 
 	const (
-		roundDelay    = 5 * time.Second
-		globalTimeout = 30 * time.Minute
+		roundDelay   = 72 * time.Second
+		maxRounds    = 10
+		cooldownSecs = 80
 	)
 
-	startedAt := time.Now()
+	round := 0
 
-	for {
+	for round < maxRounds {
 
-		// ===========================
-		// ⏱ GLOBAL TIMEOUT
-		// ===========================
+		round++
 
-		if time.Since(startedAt) > globalTimeout {
-			log.Println("⏱ fixed-price bidding timeout", serviceID)
-			return
-		}
-
-		// ===========================
-		// 🛑 STOP CONDITIONS
-		// ===========================
+		// ===============================
+		// STOP CONDITIONS
+		// ===============================
 
 		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
 			s.rdb.Exists(ctx, lockKey).Val() == 1 {
-			log.Println("🛑 fixed-price dispatch stopped", serviceID)
 			return
 		}
-
-		// ===========================
-		// 🔄 LOOP RADII
-		// ===========================
 
 		for _, radius := range radiusSteps {
 
@@ -961,9 +961,10 @@ func (s *BiddingService) findProvidersFixedPrice(
 				lng,
 				lat,
 				&redis.GeoRadiusQuery{
-					Radius: radius,
-					Unit:   "km",
-					Count:  50,
+					Radius:   radius,
+					Unit:     "km",
+					Count:    80,
+					WithDist: true,
 				},
 			).Result()
 
@@ -975,9 +976,36 @@ func (s *BiddingService) findProvidersFixedPrice(
 
 				pid := p.Name
 
-				// ===========================
-				// 📡 SOCKET → PROVIDER
-				// ===========================
+				// 🚫 skip cancelling provider
+				if pid == excludeProviderID {
+					continue
+				}
+
+				// 🚫 skip busy
+				if s.rdb.Exists(ctx, "provider:busy:"+pid).Val() == 1 {
+					continue
+				}
+
+				activeKey := "service:activeProvider:" + serviceID + ":" + pid
+				if !s.rdb.SetNX(ctx, activeKey, "1", time.Duration(cooldownSecs)*time.Second).Val() {
+					continue
+				}
+
+				cdKey := "service:cooldown:" + serviceID + ":" + pid
+				if !s.rdb.SetNX(ctx, cdKey, "1", time.Duration(cooldownSecs)*time.Second).Val() {
+					continue
+				}
+
+				// ===============================
+				// DISTANCE + ETA
+				// ===============================
+
+				distKm := round2(p.Dist)
+				eta := estimateETA(distKm)
+
+				// ===============================
+				// SOCKET
+				// ===============================
 
 				s.socket.Emit(
 					"provider:"+pid,
@@ -987,7 +1015,7 @@ func (s *BiddingService) findProvidersFixedPrice(
 							"name":       user.Name,
 							"profileUrl": user.ImageUrl,
 						},
-						"serviceId": serviceID,
+						"serviceId":  serviceID,
 						"fixedPrice": fixedPrice,
 						"vehicle": map[string]any{
 							"type":   vehicleType,
@@ -999,13 +1027,11 @@ func (s *BiddingService) findProvidersFixedPrice(
 						},
 						"serviceType": "fixedPrice",
 						"issues":      issues,
+						"distanceKm":  distKm,
+						"etaMin":      eta,
 						"expiresIn":   60,
 					},
 				)
-
-				// ===========================
-				// 🔔 PUSH
-				// ===========================
 
 				go s.notify.SendToProvider(
 					context.Background(),
@@ -1019,13 +1045,10 @@ func (s *BiddingService) findProvidersFixedPrice(
 			}
 		}
 
-		// ===========================
-		// ⏳ ROUND DELAY
-		// ===========================
-
 		time.Sleep(roundDelay)
 	}
 }
+
 
 
 func (s *BiddingService) CancelService(
@@ -1421,6 +1444,9 @@ func (s *BiddingService) HandleProviderTimeout(
 
 
 /* ================= HELPERS ================= */
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
 
 func estimateETA(distanceKm float64) int {
 	if distanceKm <= 1 {

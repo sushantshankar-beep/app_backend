@@ -25,9 +25,10 @@ type ProviderService struct {
 	queue               *worker.OTPQueue
 	acceptedServiceRepo ports.AcceptedServiceRepository
 	providerRepo  *repository.ProviderRepo
+	kycRepo *repository.KYCRepo
 }
 
-func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo,	kycRepo *repository.KYCRepo) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
 		counterRepo:		counterRepo,
@@ -36,6 +37,7 @@ func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.Co
 		queue:               q,
 		acceptedServiceRepo: acceptedRepo,
 		providerRepo: providerRepo,
+		kycRepo: kycRepo,
 	}
 }
 func isProviderProfileCompleted(p *domain.Provider) bool {
@@ -147,8 +149,30 @@ func (s *ProviderService) VerifyOTP(
 
 /* ---------------- PROFILE ---------------- */
 
-func (s *ProviderService) GetProfile(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {
-	return s.repo.FindByID(ctx, id)
+func (s *ProviderService) GetProfile(
+	ctx context.Context,
+	id domain.ProviderID,
+) (*domain.Provider, error) {
+
+	provider, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	provider.KycStatus = domain.KYC_PENDING
+
+	if provider.KYCID != primitive.NilObjectID {
+		kyc, err := s.kycRepo.FindByProviderID(
+			ctx,
+			string(provider.ID),
+		)
+  
+		if err == nil && kyc != nil {
+			provider.KycStatus = kyc.Status
+		}
+	}
+
+	return provider, nil
 }
 
 func (s *ProviderService) CreateOrUpdateProfile(

@@ -3,15 +3,14 @@ package service
 import (
 	"context"
 	"errors"
-	// "log"
 	"time"
 
 	"app_backend/internal/domain"
+	"app_backend/internal/dto"
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
-"go.mongodb.org/mongo-driver/mongo"
-	"app_backend/internal/dto"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -170,12 +169,17 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			continue
 		}
 
+		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
+		if err != nil {
+			continue
+		}
+
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
-			FinalPrice:    r.FinalPrice,
+			FinalPrice:    tx.Amount,
 			UserName:      user.Name,
 			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,
@@ -255,6 +259,8 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			ID:              complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
+			Timeline: complaint.Timeline,
+			Remark: complaint.Assessment.RemarkForUser,
 			CreatedAt:       complaint.CreatedAt,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
@@ -346,12 +352,17 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
+		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
+		if err != nil {
+			continue
+		}
+
 		result = append(result, dto.ProviderBookingDTO{
 			ID:            r.ID,
 			ProviderID:    providerID,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
-			FinalPrice:    r.FinalPrice,
+			FinalPrice:    tx.Amount,
 			ProviderName:  provider.Name,
 			UserName:      user.Name,
 			VehicleNumber: r.VehicleNumber,
@@ -423,7 +434,9 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 			ID:              complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
+			Timeline: complaint.Timeline,
 			CreatedAt:       complaint.CreatedAt,
+			Remark: complaint.Assessment.RemarkForProvider,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
 

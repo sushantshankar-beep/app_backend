@@ -153,6 +153,8 @@ type ComplaintDTO struct {
 	Status          string                     `json:"status"`
 	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint"`
 	UserIssue       *UserComplaintDTO           `json:"userComplaint"`
+	Timeline  map[string]time.Time `json:"timeline"`
+	Remark  string `json:remark`
 	CreatedAt       time.Time                  `json:"createdAt"`
 	UpdatedAt       time.Time                  `json:"updatedAt"`
 }

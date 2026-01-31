@@ -286,6 +286,39 @@ func (h *BiddingHandler) CancelSearch(c *gin.Context) {
 		"serviceId": serviceID,
 	})
 }
+func (h *BiddingHandler) AcceptOffer(c *gin.Context) {
+
+	var req struct {
+		ServiceID string `json:"serviceId" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := c.GetString("userId")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := h.svc.AcceptOffer(
+		c.Request.Context(),
+		req.ServiceID,
+		userID,
+	); err != nil {
+
+		c.JSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "confirmed",
+	})
+}
 
 
 

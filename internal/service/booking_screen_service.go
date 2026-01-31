@@ -169,12 +169,17 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			continue
 		}
 
+		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
+		if err != nil {
+			continue
+		}
+
 		result = append(result, dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
-			FinalPrice:    r.FinalPrice,
+			FinalPrice:    tx.Amount,
 			UserName:      user.Name,
 			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,

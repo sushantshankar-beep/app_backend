@@ -348,7 +348,7 @@ func (s *BiddingService) findProviders(
 						map[string]any{
 							"user": map[string]any{
 								"name": user.Name,
-								"image_url":user.ImageUrl,
+								"profileUrl":user.ImageUrl,
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{
@@ -466,7 +466,6 @@ func (s *BiddingService) PlaceBid(
 		},
 	)
 	svc, _ := s.acceptedRepo.FindByID(ctx, serviceID)
-	log.Println("this is user id before sending notify",svc.User.Hex())
 	go s.notify.SendToUser(
 		context.Background(),
 		svc.User.Hex(),
@@ -486,118 +485,162 @@ func (s *BiddingService) AcceptBid(
 	bidID string,
 	providerID string,
 	price float64,
-) error {
+) (map[string]string, error) {
 
-	serviceKey := "service:locked:" + serviceID
-	busyKey := "provider:busy:" + providerID
-	stopKey := "service:stop:" + serviceID
+		serviceKey := "service:locked:" + serviceID
+		busyKey := "provider:busy:" + providerID
+		stopKey := "service:stop:" + serviceID
 
-	// -------------------------------
-	// Redis atomic section
-	// -------------------------------
+		// =====================================================
+		// 🔐 REDIS ATOMIC LOCK (SERVICE + PROVIDER)
+		// =====================================================
 
-	ok, err := s.rdb.Eval(ctx, `
--- ARGV[1] = serviceID
--- ARGV[2] = providerID
+		ok, err := s.rdb.Eval(ctx, `
+	-- ARGV[1] = serviceID
+	-- ARGV[2] = providerID
 
-local serviceLock = "service:locked:"..ARGV[1]
-local providerBusy = "provider:busy:"..ARGV[2]
+	local serviceLock = "service:locked:"..ARGV[1]
+	local providerBusy = "provider:busy:"..ARGV[2]
 
-if redis.call("EXISTS", serviceLock) == 1 then
-  return 0
-end
+	if redis.call("EXISTS", serviceLock) == 1 then
+		return 0
+	end
 
-if redis.call("EXISTS", providerBusy) == 1 then
-  return 0
-end
+	if redis.call("EXISTS", providerBusy) == 1 then
+		return 0
+	end
 
-redis.call("SET", serviceLock, "1", "EX", 1800)
-redis.call("SET", providerBusy, ARGV[1], "EX", 7200)
+	redis.call("SET", serviceLock, "1", "EX", 1800)
+	redis.call("SET", providerBusy, ARGV[1], "EX", 7200)
 
-return 1
-`, []string{}, serviceID, providerID).Int()
+	return 1
+	`, []string{}, serviceID, providerID).Int()
 
-	if err != nil || ok != 1 {
-		return errors.New("provider already assigned or service locked")
-	}
+		if err != nil || ok != 1 {
+			return map[string]string{
+				"message": "provider already assigned in some other service",
+				"bidId":   bidID,
+			}, ErrServiceAlreadyAssigned
+		}
 
-	// stop findProviders
-	s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
+		// stop provider search loops immediately
+		s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
 
-	// -------------------------------
-	// Mongo atomic assign
-	// -------------------------------
+		// =====================================================
+		// 📍 FETCH PROVIDER GEO
+		// =====================================================
 
-	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
-	bidOID, _ := primitive.ObjectIDFromHex(bidID)
-	providerOID, _ := primitive.ObjectIDFromHex(providerID)
+		pos, err := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
+		if err != nil {
+			log.Println("redis geopos failed:", err)
+		}
 
-	res, err := s.acceptedRepo.Col().UpdateOne(
-		ctx,
-		bson.M{
-			"_id":      serviceOID,
-			"status":   domain.StatusSearching,
-			"provider": primitive.NilObjectID,
-		},
-		bson.M{
-			"$set": bson.M{
-				"provider":      providerOID,
-				"acceptedBid":   bidOID,
-				"finalPrice":    price,
-				"status":        domain.StatusProviderAssigned,
-				"paymentStatus": domain.PaymentPending,
-				"updatedAt":     time.Now(),
+		var lat, long float64
+		if len(pos) > 0 && pos[0] != nil {
+			long = pos[0].Longitude
+			lat = pos[0].Latitude
+		}
+
+		// =====================================================
+		// 🗄️ MONGO CONDITIONAL ASSIGN
+		// =====================================================
+
+		serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
+		bidOID, _ := primitive.ObjectIDFromHex(bidID)
+		providerOID, _ := primitive.ObjectIDFromHex(providerID)
+
+		now := time.Now()
+
+		set := bson.M{
+			"provider":      providerOID,
+			"acceptedBid":   bidOID,
+			"finalPrice":    price,
+			"status":        domain.StatusProviderAssigned,
+			"paymentStatus": domain.PaymentPending,
+			"updatedAt":     now,
+		}
+
+		if lat != 0 && long != 0 {
+			set["providerLocation"] = bson.M{
+				"lat":       lat,
+				"long":      long,
+				"updatedAt": now,
+			}
+		}
+
+		res, err := s.acceptedRepo.Col().UpdateOne(
+			ctx,
+			bson.M{
+				"_id":      serviceOID,
+				"status":   domain.StatusSearching,
+				"provider": primitive.NilObjectID,
 			},
-		},
-	)
+			bson.M{"$set": set},
+		)
 
-	if err != nil || res.ModifiedCount == 0 {
+		if err != nil || res.ModifiedCount == 0 {
 
-		// rollback redis locks
-		s.rdb.Del(ctx, serviceKey, busyKey)
+			// 🔄 rollback redis locks
+			s.rdb.Del(ctx, serviceKey, busyKey)
 
-		return ErrServiceAlreadyAssigned
-	}
+			return map[string]string{
+				"message": "provider already assigned in some other service",
+				"bidId":   bidID,
+			}, ErrServiceAlreadyAssigned
+		}
 
-	// -------------------------------
-	// Remove provider from geo
-	// -------------------------------
+		// =====================================================
+		// 🚫 REMOVE PROVIDER FROM GEO
+		// =====================================================
 
-	s.rdb.ZRem(ctx, "providers:geo", providerID)
+		s.rdb.ZRem(ctx, "providers:geo", providerID)
 
-	// -------------------------------
-	// Notify
-	// -------------------------------
+		// =====================================================
+		// 📡 SOCKET EVENTS
+		// =====================================================
 
-	s.socket.Emit(
-		"provider:"+providerID,
-		"bid:accepted",
-		map[string]any{
-			"serviceId": serviceID,
-			"price":     price,
-		},
-	)
+		s.socket.Emit(
+			"provider:"+providerID,
+			"bid:accepted",
+			map[string]any{
+				"serviceId": serviceID,
+				"price":     price,
+			},
+		)
 
-	s.socket.Emit(
-		"user:"+serviceID,
-		"service:assigned",
-		map[string]any{
-			"serviceId":  serviceID,
-			"providerId": providerID,
-			"price":      price,
-		},
-	)
+		s.socket.Emit(
+			"user:"+serviceID,
+			"service:assigned",
+			map[string]any{
+				"serviceId":  serviceID,
+				"providerId": providerID,
+				"price":      price,
+			},
+		)
 
-	go s.notify.SendToProvider(
-		context.Background(),
-		providerID,
-		"Bid Accepted 🎉",
-		"User accepted your bid.",
-		map[string]string{"serviceId": serviceID},
-	)
+		// =====================================================
+		// 🔔 PUSH NOTIFICATION
+		// =====================================================
 
-	return nil
+		go s.notify.SendToProvider(
+			context.Background(),
+			providerID,
+			"Bid Accepted 🎉",
+			"User accepted your bid.",
+			map[string]string{
+				"serviceId": serviceID,
+				"type":      "bid_accepted",
+			},
+		)
+
+		// ✅ SUCCESS
+		return map[string]string{
+			"message": "",
+			"bidId":   bidID,
+		}, nil
 }
+
+
 
 func (s *BiddingService) RejectBid(
 	ctx context.Context,
@@ -607,8 +650,43 @@ func (s *BiddingService) RejectBid(
 ) error {
 
 	log.Printf("👎 rejected provider=%s service=%s", providerID, serviceID)
-		// clear bid window so new providers can be contacted
-	s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
+
+	// =====================================================
+	// 🔍 LOAD SERVICE FIRST (CRITICAL)
+	// =====================================================
+	if s.rdb.Exists(ctx, "provider:busy:"+providerID).Val() == 1 {
+		log.Println("⚠ RejectBid skipped — provider busy", providerID)
+		return nil
+	}
+	
+
+	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	// ❗ If service is no longer searching — DO NOTHING
+	if svc.Status != domain.StatusSearching {
+		log.Println(
+			"⚠ RejectBid ignored — service not in SEARCHING:",
+			serviceID,
+			svc.Status,
+		)
+		return nil
+	}
+
+	// =====================================================
+	// 🧊 Re-open bid window ONLY if service unlocked
+	// =====================================================
+
+	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 0 {
+		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
+	}
+
+	// =====================================================
+	// 🧹 CLEAN PROVIDER-SCOPED REDIS KEYS
+	// =====================================================
+
 	keys := []string{
 		"service:providerBidLock:" + serviceID + ":" + providerID,
 		"service:cooldown:" + serviceID + ":" + providerID,
@@ -616,30 +694,39 @@ func (s *BiddingService) RejectBid(
 		"service:activeProvider:" + serviceID + ":" + providerID,
 		"service:dist:" + serviceID + ":" + providerID,
 	}
+
 	s.rdb.Del(ctx, keys...)
 
-	svc, err := s.acceptedRepo.FindByID(ctx, serviceID)
+	// =====================================================
+	// 👤 LOAD USER
+	// =====================================================
+
+	user, err := s.userRepo.GetByID(ctx, svc.User)
 	if err != nil {
 		return err
 	}
-	user, err := s.userRepo.GetByID(ctx, svc.User)
-	if err != nil{
-		return err
-	}
+
+	// =====================================================
+	// 📍 DISTANCE
+	// =====================================================
+
 	dist, _ := s.rdb.Get(
 		ctx,
 		"service:dist:"+serviceID+":"+providerID,
 	).Float64()
 
-	// 🔔 PROVIDER
+	// =====================================================
+	// 📡 SOCKET → PROVIDER REBID
+	// =====================================================
+
 	s.socket.Emit(
 		"provider:"+providerID,
 		"bid:request",
 		map[string]any{
 			"user": map[string]any{
-								"name": user.Name,
-								"image_url":user.ImageUrl,
-							},
+				"name":      user.Name,
+				"image_url": user.ImageUrl,
+			},
 			"serviceId": serviceID,
 			"price":     price,
 			"vehicle": map[string]any{
@@ -659,6 +746,10 @@ func (s *BiddingService) RejectBid(
 		},
 	)
 
+	// =====================================================
+	// 🔔 PUSH NOTIFICATION
+	// =====================================================
+
 	go s.notify.SendToProvider(
 		context.Background(),
 		providerID,
@@ -666,11 +757,13 @@ func (s *BiddingService) RejectBid(
 		"Customer rejected your bid. You can offer a new price.",
 		map[string]string{
 			"serviceId": serviceID,
+			"type":      "bid_rejected",
 		},
 	)
 
 	return nil
 }
+
 
 
 
@@ -695,7 +788,6 @@ func (s *BiddingService) ProviderCancelService(
 	if svc.Provider.Hex() != providerID {
 		return errors.New("not assigned provider")
 	}
-
 	fixedPrice := svc.FinalPrice
 
 	// 🔓 unlock service
@@ -794,66 +886,148 @@ func (s *BiddingService) findProvidersFixedPrice(
 
 	ctx := context.Background()
 
+	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
 
-	radiusSteps := []float64{5, 10, 20, 50}
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return
+	}
 
-	for _, radius := range radiusSteps {
+	// =====================================
+	// 🔍 LOAD SERVICE
+	// =====================================
 
-		if s.rdb.Exists(ctx, lockKey).Val() == 1 {
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
+		return
+	}
+
+	// =====================================
+	// 👤 LOAD USER
+	// =====================================
+
+	user, err := s.userRepo.GetByID(ctx, svc.User)
+	if err != nil {
+		return
+	}
+
+	radiusSteps := []float64{50,100}
+
+	const (
+		roundDelay    = 5 * time.Second
+		globalTimeout = 30 * time.Minute
+	)
+
+	startedAt := time.Now()
+
+	for {
+
+		// ===========================
+		// ⏱ GLOBAL TIMEOUT
+		// ===========================
+
+		if time.Since(startedAt) > globalTimeout {
+			log.Println("⏱ fixed-price bidding timeout", serviceID)
 			return
 		}
 
-		providers, err := s.rdb.GeoRadius(
-		    ctx,
-		    "providers:geo",
-		    lng,
-		    lat,
-		    &redis.GeoRadiusQuery{
-		        Radius: radius,
-		        Unit:   "km",
-		        Count:  50,
-		    },
-		).Result()
+		// ===========================
+		// 🛑 STOP CONDITIONS
+		// ===========================
 
-		if err != nil || len(providers) == 0 {
-		    continue
+		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
+			s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			log.Println("🛑 fixed-price dispatch stopped", serviceID)
+			return
 		}
 
-		for _, p := range providers {
+		// ===========================
+		// 🔄 LOOP RADII
+		// ===========================
 
-			pid := p.Name
+		for _, radius := range radiusSteps {
 
-			s.socket.Emit(
-				"provider:"+pid,
-				"bid:request:fixed",
-				map[string]any{
-					"serviceId": serviceID,
-					"fixedPrice": fixedPrice,
-					"vehicle": map[string]any{
-						"type":   vehicleType,
-						"number": vehicleNumber,
-						"brand":  brand,
-						"year":   modelYear,
-						"fuel":   fuelType,
-						"model":  model,
+			if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
+				s.rdb.Exists(ctx, lockKey).Val() == 1 {
+				return
+			}
+
+			providers, err := s.rdb.GeoRadius(
+				ctx,
+				"providers:geo",
+				lng,
+				lat,
+				&redis.GeoRadiusQuery{
+					Radius: radius,
+					Unit:   "km",
+					Count:  50,
+				},
+			).Result()
+
+			if err != nil || len(providers) == 0 {
+				continue
+			}
+
+			for _, p := range providers {
+
+				pid := p.Name
+
+				// ===========================
+				// 📡 SOCKET → PROVIDER
+				// ===========================
+
+				s.socket.Emit(
+					"provider:"+pid,
+					"bid:request:fixed",
+					map[string]any{
+						"user": map[string]any{
+							"name":       user.Name,
+							"profileUrl": user.ImageUrl,
+						},
+						"serviceId": serviceID,
+						"fixedPrice": fixedPrice,
+						"vehicle": map[string]any{
+							"type":   vehicleType,
+							"number": vehicleNumber,
+							"brand":  brand,
+							"year":   modelYear,
+							"fuel":   fuelType,
+							"model":  model,
+						},
+						"serviceType": "fixedPrice",
+						"issues":      issues,
+						"expiresIn":   60,
 					},
-					"issues": issues,
-				},
-			)
+				)
 
-			go s.notify.SendToProvider(
-				context.Background(),
-				pid,
-				"Service available",
-				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
-				map[string]string{
-					"serviceId": serviceID,
-				},
-			)
+				// ===========================
+				// 🔔 PUSH
+				// ===========================
+
+				go s.notify.SendToProvider(
+					context.Background(),
+					pid,
+					"Service available",
+					fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
+					map[string]string{
+						"serviceId": serviceID,
+					},
+				)
+			}
 		}
+
+		// ===========================
+		// ⏳ ROUND DELAY
+		// ===========================
+
+		time.Sleep(roundDelay)
 	}
 }
+
+
 func (s *BiddingService) CancelService(
 	ctx context.Context,
 	serviceID string,
@@ -882,6 +1056,25 @@ func (s *BiddingService) CancelService(
 
 	// 🔒 STOP search goroutines
 	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
+	cancelledProvider := ""
+	if svc.Provider != primitive.NilObjectID {
+
+		cancelledProvider = svc.Provider.Hex()
+
+		// remove busy lock
+		s.rdb.Del(ctx, "provider:busy:"+cancelledProvider)
+
+		// restore geo
+		if svc.ProviderLocation != nil {
+
+			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+				Name:      cancelledProvider,
+				Longitude: svc.ProviderLocation.Long,
+				Latitude:  svc.ProviderLocation.Lat,
+			})
+		}
+	}
+
 
 	// ❌ DB UPDATE
 	_, err = s.acceptedRepo.Col().UpdateByID(
@@ -1149,6 +1342,10 @@ func (s *BiddingService) HandleProviderTimeout(
 
 		serviceID := svc.ID.Hex()
 		providerID := svc.Provider.Hex()
+		if svc.PaymentStatus == "paid" {
+			log.Println("⛔ timeout ignored — payment done", serviceID)
+			return
+		}
 
 		// 🔒 redis lock so two workers don't race
 		lockKey := "timeout:lock:" + serviceID

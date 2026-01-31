@@ -241,6 +241,9 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 	if err := s.redis.Del(ctx, "reserve:"+providerID).Err(); err != nil {
 		log.Println("⚠ redis delete failed:", err)
 	}
+	if err := s.redis.Del(ctx,"provider:busy:"+providerID); err != nil{
+		log.Println("⚠ redis delete failed:", err)
+	}
 
 	// ---------------- FINAL STATUS ----------------
 	_ = s.acceptedServiceRepo.UpdateStatus(

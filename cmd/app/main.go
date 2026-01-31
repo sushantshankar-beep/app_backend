@@ -62,7 +62,7 @@ func main() {
 	//redis
 	rdb := redis.NewRedis()
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatal("Redis connection failed:", err)
+		log.Println("Redis connection failed:", err)
 	}
 	log.Println("Redis connected")
 

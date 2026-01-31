@@ -14,6 +14,7 @@ import (
 	"math"
 	"app_backend/internal/ports"
 	"github.com/redis/go-redis/v9"
+	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -75,6 +76,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("this is user service id",objID)
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -84,7 +86,9 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	}
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
+	fmt.Println("THIS IS USER",user)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
+	fmt.Println("THIS IS PROVIDER",provider)
 
 	// ----------------------------------
 	// 🧮 Calculate Distance & ETA
@@ -308,6 +312,13 @@ func (s *ServiceTrackingService) UpdateStatus(
 		return nil, err
 	}
 
+	// 🔄 RELOAD UPDATED SERVICE (IMPORTANT FIX)
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": objID}).
+		Decode(&svc); err != nil {
+		return nil, errors.New("failed to reload service after update")
+	}
+
 	// ================= BUILD PAYLOAD =================
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
@@ -347,6 +358,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"name":   provider.Name,
 			"rating": provider.Rating,
 			"phone":  provider.Phone,
+			"profileUrl" : provider.ProfileURL,
 		},
 
 		"vehicle": map[string]any{
@@ -407,6 +419,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	return payload, nil
 }
+
 
 
 func (s *ServiceTrackingService) VerifyOTP(

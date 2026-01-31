@@ -260,6 +260,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
 			Timeline: complaint.Timeline,
+			Remark: complaint.Assessment.RemarkForUser,
 			CreatedAt:       complaint.CreatedAt,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
@@ -430,6 +431,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 			Status:          string(complaint.Status),
 			Timeline: complaint.Timeline,
 			CreatedAt:       complaint.CreatedAt,
+			Remark: complaint.Assessment.RemarkForProvider,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
 

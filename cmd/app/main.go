@@ -161,6 +161,7 @@ func main() {
 		otpQueue,
 		acceptedServiceRepo,
 		providerRepo,
+		kycRepo,
 	)
 	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo,paymentRepo)
 	locationSvc := service.NewLocationService(locationRepo)

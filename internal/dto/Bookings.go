@@ -154,6 +154,7 @@ type ComplaintDTO struct {
 	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint"`
 	UserIssue       *UserComplaintDTO           `json:"userComplaint"`
 	Timeline  map[string]time.Time `json:"timeline"`
+	Remark  string `json:remark`
 	CreatedAt       time.Time                  `json:"createdAt"`
 	UpdatedAt       time.Time                  `json:"updatedAt"`
 }

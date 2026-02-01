@@ -535,11 +535,16 @@ func (s *BiddingService) AcceptBid(
 		if err != nil {
 			log.Println("redis geopos failed:", err)
 		}
+		providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
 		var lat, long float64
 		if len(pos) > 0 && pos[0] != nil {
 			long = pos[0].Longitude
 			lat = pos[0].Latitude
+		}
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerOID.Hex()))
+		if err != nil {
+			log.Println("failed to load provider:", err)
 		}
 
 		// =====================================================
@@ -548,7 +553,6 @@ func (s *BiddingService) AcceptBid(
 
 		serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 		bidOID, _ := primitive.ObjectIDFromHex(bidID)
-		providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
 		now := time.Now()
 
@@ -606,6 +610,7 @@ func (s *BiddingService) AcceptBid(
 			map[string]any{
 				"serviceId": serviceID,
 				"price":     price,
+				"profileUrl": provider.ProfileURL,
 			},
 		)
 
@@ -790,6 +795,10 @@ func (s *BiddingService) ProviderCancelService(
 		return errors.New("not assigned provider")
 	}
 	fixedPrice := svc.FinalPrice
+	providerOID, err1 := primitive.ObjectIDFromHex(providerID)
+	if err1 != nil {
+		return err1
+	}
 
 	// 🔓 unlock service
 	stopKey := "service:stop:" + serviceID
@@ -827,6 +836,7 @@ func (s *BiddingService) ProviderCancelService(
 				"provider":      primitive.NilObjectID,
 				"acceptedBid":   primitive.NilObjectID,
 				"fixedPrice":    fixedPrice,
+				"cancelledProviderId": providerOID,
 				"updatedAt":     time.Now(),
 				"cancelledByProvider": true,
 			},
@@ -858,7 +868,7 @@ func (s *BiddingService) ProviderCancelService(
 	)
 	s.rdb.Del(ctx,
 	    "service:stop:"+serviceID,
-	    "service:locked:"+serviceID,
+	    "service1:locked:"+serviceID,
 	    "service:bidWindow:"+serviceID,
 	)
 
@@ -1016,9 +1026,23 @@ func (s *BiddingService) findProvidersFixedPrice(
 			log.Println("🛑 fixed price stopped:", serviceID)
 			return
 		}
+		var current domain.AcceptedService
+		if err := s.acceptedRepo.Col().
+			FindOne(ctx, bson.M{"_id": serviceOID}).
+			Decode(&current); err != nil {
+			return
+		}
+
+		if current.Status != "searching_after_cancel"{
+
+			log.Println("🛑 fixed-price discovery exit due to status:", current.Status)
+			return
+		}
 
 		for _, radius := range radiusSteps {
-
+			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
+				return
+			}
 			res, err := s.rdb.Eval(
 				ctx,
 				luaFindProvidersFixed,

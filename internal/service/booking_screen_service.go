@@ -115,6 +115,7 @@ func (s *BookingService) BuildBookingScreen(
 			"name":       provider.Name,
 			"rating":     provider.Rating,
 			"etaMinutes": 6,
+			"profileUrl":provider.ProfileURL,
 		},
 
 		"vehicle": map[string]any{
@@ -125,7 +126,7 @@ func (s *BookingService) BuildBookingScreen(
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
 			"model":         svc.Model,
-			"time":          time.Now().Format("03:04:05 PM"),
+			"time":          time.Now().Local().Format("03:04:05 PM"),
 		},
 
 		"billing": map[string]any{

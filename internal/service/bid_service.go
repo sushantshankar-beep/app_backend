@@ -16,6 +16,7 @@ import (
 	// "sync"
 	"app_backend/internal/ports"
 	"strconv"
+	"strings"
 	"encoding/json" 
 	"math"
 )
@@ -731,7 +732,7 @@ func (s *BiddingService) RejectBid(
 		map[string]any{
 			"user": map[string]any{
 				"name":      user.Name,
-				"image_url": user.ImageUrl,
+				"profileUrl": user.ImageUrl,
 			},
 			"serviceId": serviceID,
 			"price":     price,
@@ -976,7 +977,6 @@ func (s *BiddingService) findProvidersFixedPrice(
 	fixedPrice float64,
 	excludeProviderID string,
 ) {
-
 	ctx := context.Background()
 
 	stopKey := "service:stop:" + serviceID
@@ -1107,34 +1107,30 @@ func (s *BiddingService) findProvidersFixedPrice(
 						"expiresIn":   60,
 					},
 				)
-
-				go s.notify.SendToProvider(
-					context.Background(),
-					pid,
-					"Service available",
-					fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPriceGst),
-					map[string]string{
-						"serviceId": serviceID,
-					},
-				)
-			}
+			go s.notify.SendToProvider(
+				context.Background(),
+				pid,
+				"Service available",
+				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
+				map[string]string{
+					"serviceId":  serviceID,
+					"fixedPrice": strconv.FormatFloat(fixedPrice, 'f', 0, 64),
+					"vehicleType": vehicleType,
+					"vehicleNumber": vehicleNumber,
+					"brand": brand,
+					"modelYear": strconv.Itoa(modelYear),
+					"fuelType": fuelType,
+					"model": model,
+					"issues": strings.Join(issues, ","),
+				},
+			)
 		}
 
 		time.Sleep(roundDelay)
 	}
 }
-
-
-
-
-
-
-func (s *BiddingService) CancelService(
-	ctx context.Context,
-	serviceID string,
-	userID string,
-	reason string,
-) error {
+}
+func (s *BiddingService) CancelService(ctx context.Context,serviceID string,userID string,reason string) error {
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
@@ -1207,6 +1203,15 @@ func (s *BiddingService) CancelService(
 	providers, _ := s.rdb.SMembers(ctx, notifiedKey).Result()
 
 	for _, pid := range providers {
+		go s.notify.SendToProvider(
+			context.Background(),
+			pid,
+			"Service Cancelled By User",
+			"User cancelled the service",
+			map[string]string{
+				"serviceId": serviceID,
+			},
+		)
 
 		s.socket.Emit(
 			"provider:"+pid,
@@ -1297,7 +1302,6 @@ func (s *BiddingService) CancelService(
 			"serviceId": serviceID,
 		},
 	)
-
 	s.socket.CloseRoom("user:" + serviceID)
 	cleanupServiceKeys(ctx, s.rdb, serviceID)
 
@@ -1383,22 +1387,38 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	s.socket.CloseRoom(userRoom)
 
 	// ===========================
-	// 📡 INFORM GEO PROVIDERS
+	// 📡 INFORM PROVIDERS
 	// ===========================
 
 	providerIDs, err := s.rdb.SMembers(ctx, providersKey).Result()
-	if err == nil && len(providerIDs) > 0 {
+	if err != nil {
+		log.Println("❌ redis fetch providers error:", err)
+	} else {
+
+		log.Println("📣 cancelling providers:", providerIDs)
 
 		for _, providerID := range providerIDs {
 
 			room := "provider:" + providerID
 
+			// socket
 			s.socket.Emit(
 				room,
 				"service:cancelled",
 				map[string]any{
 					"serviceId": serviceID,
 					"reason":    "cancelled_by_user",
+				},
+			)
+
+			// push
+			go s.notify.SendToProvider(
+				context.Background(),
+				providerID,
+				"Service Cancelled",
+				"User cancelled the request.",
+				map[string]string{
+					"serviceId": serviceID,
 				},
 			)
 		}
@@ -1450,6 +1470,7 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 	return nil
 }
+
 
 
 

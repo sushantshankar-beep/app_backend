@@ -14,7 +14,6 @@ import (
 	"math"
 	"app_backend/internal/ports"
 	"github.com/redis/go-redis/v9"
-	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -24,6 +23,7 @@ type ServiceTrackingService struct {
 	socket       *socket.Emitter
 	notify        ports.NotificationService
 	rdb          *redis.Client
+	complaintRepo *repository.ComplaintRepo
 }
 
 func NewServiceTrackingService(
@@ -31,18 +31,22 @@ func NewServiceTrackingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	socket *socket.Emitter,
-	notify ports.NotificationService, 
-	rdb          *redis.Client, 
+	notify ports.NotificationService,
+	rdb *redis.Client,
+	complaintRepo *repository.ComplaintRepo,
 ) *ServiceTrackingService {
+
 	return &ServiceTrackingService{
-		acceptedRepo: acceptedRepo,
-		userRepo:     userRepo,
-		providerRepo: providerRepo,
-		socket:       socket,
-		notify:    notify,
-		rdb   : rdb,
+		acceptedRepo:  acceptedRepo,
+		userRepo:      userRepo,
+		providerRepo:  providerRepo,
+		socket:        socket,
+		notify:        notify,
+		rdb:           rdb,
+		complaintRepo: complaintRepo,
 	}
 }
+
 
 /* ============================================================
                      TRACKING SCREENS
@@ -76,7 +80,6 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("this is user service id",objID)
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -86,13 +89,12 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	}
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
-	fmt.Println("THIS IS USER",user)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
-	fmt.Println("THIS IS PROVIDER",provider)
 
 	// ----------------------------------
-	// 🧮 Calculate Distance & ETA
+	// 🧮 Distance & ETA
 	// ----------------------------------
+
 	var distanceKm float64
 	var etaMinutes int64
 
@@ -114,13 +116,44 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	// ----------------------------------
 	// 💰 Billing
 	// ----------------------------------
+
 	gstMain := "18%"
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
 	// ----------------------------------
+	// 📄 Complaint (if any)
+	// ----------------------------------
+
+	var complaint any
+	if svc.ComplaintProvider != nil &&
+		*svc.ComplaintProvider != primitive.NilObjectID {
+
+		list, err := s.complaintRepo.FindByProvider(ctx, *svc.ComplaintProvider)
+		if err == nil && len(list) > 0 {
+
+			cmp := list[0]
+
+			var problem string
+
+			if cmp.ProviderComplaint != nil {
+				problem = cmp.ProviderComplaint.Problem
+			}
+
+			complaint = map[string]any{
+				"id":        cmp.ID,
+				"status":    cmp.Status,
+				"problem":   problem,
+				"createdAt": cmp.CreatedAt,
+			}
+		}
+	}
+
+
+	// ----------------------------------
 	// 📦 Response
 	// ----------------------------------
+
 	return map[string]any{
 		"screen": "SERVICE_TRACKING",
 		"status": svc.Status,
@@ -132,8 +165,10 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"rating":     provider.Rating,
 			"etaMinutes": etaMinutes,
 			"distanceKm": distanceKm,
-			"phoneNo" : provider.Phone,
+			"phoneNo":    provider.Phone,
+			"profileUrl": provider.ProfileURL,
 		},
+
 		"booking": map[string]any{
 			"bookingId": svc.ServiceNumber,
 			"status":    "BID_ACCEPTED",
@@ -168,9 +203,12 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"currency":      "INR",
 		},
 
+		"complaint": complaint,
+
 		"timestamps": svc.Timestamps,
 	}, nil
 }
+
 
 
 func (s *ServiceTrackingService) ProviderTrackingScreen(
@@ -192,18 +230,51 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 
+	// ----------------------------------
+	// 📄 Complaint (if exists)
+	// ----------------------------------
+
+	var complaint any
+	if svc.ComplaintUser != nil &&
+		*svc.ComplaintUser != primitive.NilObjectID {
+
+		list, err := s.complaintRepo.FindByUser(ctx, *svc.ComplaintUser)
+		if err == nil && len(list) > 0 {
+
+			cmp := list[0]
+
+			var problem string
+
+			if cmp.UserComplaint != nil {
+				problem = cmp.UserComplaint.Problem
+			}
+
+			complaint = map[string]any{
+				"id":        cmp.ID,
+				"status":    cmp.Status,
+				"problem":   problem,
+				"createdAt": cmp.CreatedAt,
+			}
+		}
+	}
 	return map[string]any{
 		"screen": "PROVIDER_TRACKING",
+
 		"user": map[string]any{
 			"name":  user.Name,
 			"phone": user.Phone,
 			"otp":   user.ServiceOTP,
 		},
+
 		"service": svc.ServiceType,
 		"status":  svc.Status,
+
+		"complaint": complaint,
+
 		"timestamps": svc.Timestamps,
 	}, nil
 }
+
 
 /* ============================================================
                      STATUS ENGINE
@@ -332,7 +403,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	if lat != 0 && long != 0 {
 		distanceKm = distanceKmHaversine(lat, long, userLat, userLong)
-		eta = estimateETA(distanceKm)
+		eta = int(estimateETA(distanceKm))
 	}
 
 	gst := svc.FinalPrice * 18 / 100

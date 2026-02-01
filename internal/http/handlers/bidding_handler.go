@@ -9,6 +9,7 @@ import (
 	"app_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"log"
 )
 
 type BiddingHandler struct {
@@ -286,6 +287,41 @@ func (h *BiddingHandler) CancelSearch(c *gin.Context) {
 		"serviceId": serviceID,
 	})
 }
+func (h *BiddingHandler) AcceptOffer(c *gin.Context) {
 
+	var req struct {
+		ServiceID string `json:"serviceId" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	log.Println("CTX keys:", c.Keys)
+
+	// ✅ fetch from JWT middleware
+
+	providerID := c.GetString("providerId")
+	if providerID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := h.svc.AcceptOffer(
+		c.Request.Context(),
+		req.ServiceID,
+		providerID,
+	); err != nil {
+
+		c.JSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "confirmed",
+	})
+}
 
 

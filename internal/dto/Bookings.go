@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"app_backend/internal/domain"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"time"
 )
@@ -16,6 +17,8 @@ type UserBookingDTO struct {
 	ProviderName  string             `json:"providerName`
 	VehicleType   string             `json:"vehicleType"`
 	Ratings       string             `json:ratings`
+	Cancelled     *domain.CancelInfo `json:"cancelled"`
+	CancelledAt   *time.Time         `json:"cancelledAt"`
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
@@ -41,7 +44,9 @@ type UserBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
-	Complaint *ComplaintDTO `json:"complaint"`
+	Cancelled     *domain.CancelInfo `json:"cancelled"`
+	CancelledAt   *time.Time         `json:"cancelledAt"`
+	Complaint        *ComplaintDTO      `json:"complaint"`
 }
 
 type BillingDetailsDTO struct {
@@ -70,6 +75,8 @@ type ProviderBookingDTO struct {
 	ProviderName  string             `json:"providerName"`
 	UserName      string             `json:"userName"`
 	Ratings       string             `json:ratings`
+	Cancelled     *domain.CancelInfo `json:"cancelled"`
+	CancelledAt   *time.Time         `json:"cancelledAt"`
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
@@ -95,7 +102,9 @@ type ProviderBookingDetailDTO struct {
 	Billing          BillingDetailsDTO  `json:"billing"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
-	Complaint *ComplaintDTO `json:"complaint"`
+	Cancelled     *domain.CancelInfo `json:"cancelled"`
+	CancelledAt   *time.Time         `json:"cancelledAt"`
+	Complaint        *ComplaintDTO      `json:"complaint"`
 }
 
 type ProviderBillingDetailsDTO struct {
@@ -146,17 +155,16 @@ type TodayEarningsResponse struct {
 	Earnings []EarningDetail `json:"earnings"`
 }
 
-
 type ComplaintDTO struct {
-	ID              string                     `json:"_id"`
-	ComplaintNumber string                     `json:"complaintNumber"`
-	Status          string                     `json:"status"`
-	ProviderIssue   *ProviderComplaintDTO     `json:"providerComplaint"`
-	UserIssue       *UserComplaintDTO           `json:"userComplaint"`
-	Timeline  map[string]time.Time `json:"timeline"`
-	Remark  string `json:remark`
-	CreatedAt       time.Time                  `json:"createdAt"`
-	UpdatedAt       time.Time                  `json:"updatedAt"`
+	ID              string                `json:"_id"`
+	ComplaintNumber string                `json:"complaintNumber"`
+	Status          string                `json:"status"`
+	ProviderIssue   *ProviderComplaintDTO `json:"providerComplaint"`
+	UserIssue       *UserComplaintDTO     `json:"userComplaint"`
+	Timeline        map[string]time.Time  `json:"timeline"`
+	Remark          string                `json:remark`
+	CreatedAt       time.Time             `json:"createdAt"`
+	UpdatedAt       time.Time             `json:"updatedAt"`
 }
 
 type ProviderComplaintDTO struct {

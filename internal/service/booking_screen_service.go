@@ -176,7 +176,15 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			continue
 		}
 
-		result = append(result, dto.UserBookingDTO{
+		var cancelled *domain.CancelInfo
+		var cancelledAt *time.Time
+
+		if r.Cancelled != nil && r.CancelledAt != nil {
+			cancelled = r.Cancelled
+			cancelledAt = r.CancelledAt
+		}
+
+		dtoItem := dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
@@ -186,10 +194,15 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,
 			Ratings:       "",
-			CreatedAt:     r.CreatedAt,
 			Issues:        r.Issues,
+			CreatedAt:     r.CreatedAt,
 			UpdatedAt:     r.UpdatedAt,
-		})
+			Cancelled:   cancelled,
+			CancelledAt: cancelledAt,
+		}
+		
+		result = append(result, dtoItem)
+		
 	}
 
 	return result, nil
@@ -199,6 +212,7 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 
 	case "ongoing":
 		return []domain.ServiceStatus{
+			domain.StatusConfirmed,
 			domain.StatusStarted,
 			domain.StatusReachedLocation,
 			domain.StatusOTPVerified,
@@ -307,6 +321,8 @@ func (s *BookingService) GetUserBookingDetails(
 		}
 	}
 
+
+
 	// ---------------- BILLING ----------------
 
 	const gstPercent = 18.0
@@ -331,6 +347,14 @@ func (s *BookingService) GetUserBookingDetails(
 			Lat:  r.ProviderLocation.Lat,
 			Long: r.ProviderLocation.Long,
 		}
+	}
+
+	var cancelled *domain.CancelInfo
+	var cancelledAt *time.Time
+
+	if r.Cancelled != nil && r.CancelledAt != nil {
+		cancelled = r.Cancelled
+		cancelledAt = r.CancelledAt
 	}
 
 	// ---------------- FINAL DTO ----------------
@@ -363,6 +387,8 @@ func (s *BookingService) GetUserBookingDetails(
 			PaymentStatus: string(r.PaymentStatus),
 		},
 
+		Cancelled:   cancelled,
+		CancelledAt: cancelledAt,
 		Complaint: complaintDTO,
 
 		UserLocation:     userLoc,
@@ -413,7 +439,16 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
-		result = append(result, dto.ProviderBookingDTO{
+
+		var cancelled *domain.CancelInfo
+		var cancelledAt *time.Time
+
+		if r.Cancelled != nil && r.CancelledAt != nil {
+			cancelled = r.Cancelled
+			cancelledAt = r.CancelledAt
+		}
+
+		dtoItem := dto.ProviderBookingDTO{
 			ID:            r.ID,
 			ProviderID:    providerID,
 			ServiceNumber: r.ServiceNumber,
@@ -427,9 +462,16 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
+			Cancelled:   cancelled,
+			CancelledAt: cancelledAt,
 			CreatedAt:     r.CreatedAt,
 			UpdatedAt:     r.UpdatedAt,
-		})
+
+		}
+		
+		
+		result = append(result, dtoItem)
+		
 	}
 
 	response := &dto.ProviderBookingResponse{
@@ -559,7 +601,14 @@ func (s *BookingService) GetProviderBookingDetails(
 			Long: r.ProviderLocation.Long,
 		}
 	}
+	
+	var cancelled *domain.CancelInfo
+	var cancelledAt *time.Time
 
+	if r.Cancelled != nil && r.CancelledAt != nil {
+		cancelled = r.Cancelled
+		cancelledAt = r.CancelledAt
+	}
 	// ---------------- FINAL DTO ----------------
 
 	return &dto.ProviderBookingDetailDTO{
@@ -592,7 +641,8 @@ func (s *BookingService) GetProviderBookingDetails(
 			ProviderPayout: utils.RoundTo2(providerPayout),
 			PaymentStatus:  string(r.PaymentStatus),
 		},
-
+		Cancelled:   cancelled,
+		CancelledAt: cancelledAt,
 		UserLocation:     userLoc,
 		ProviderLocation: providerLoc,
 

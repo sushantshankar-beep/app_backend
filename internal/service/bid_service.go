@@ -16,7 +16,8 @@ import (
 	// "sync"
 	"app_backend/internal/ports"
 	"strconv"
-	"encoding/json" 
+	"encoding/json"
+	"strings"
 )
 
 type BiddingService struct {
@@ -882,9 +883,18 @@ func (s *BiddingService) findProvidersFixedPrice(
 				"Service available",
 				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
 				map[string]string{
-					"serviceId": serviceID,
+					"serviceId":  serviceID,
+					"fixedPrice": strconv.FormatFloat(fixedPrice, 'f', 0, 64),
+					"vehicleType": vehicleType,
+					"vehicleNumber": vehicleNumber,
+					"brand": brand,
+					"modelYear": strconv.Itoa(modelYear),
+					"fuelType": fuelType,
+					"model": model,
+					"issues": strings.Join(issues, ","),
 				},
 			)
+			
 		}
 	}
 }
@@ -947,6 +957,15 @@ func (s *BiddingService) CancelService(
 	providers, _ := s.rdb.SMembers(ctx, notifiedKey).Result()
 
 	for _, pid := range providers {
+		go s.notify.SendToProvider(
+			context.Background(),
+			pid,
+			"Service Cancelled By User",
+			"User cancelled the service",
+			map[string]string{
+				"serviceId": serviceID,
+			},
+		)
 
 		s.socket.Emit(
 			"provider:"+pid,
@@ -1024,7 +1043,6 @@ func (s *BiddingService) CancelService(
 			"serviceId": serviceID,
 		},
 	)
-
 	s.socket.CloseRoom("user:" + serviceID)
 	cleanupServiceKeys(ctx, s.rdb, serviceID)
 

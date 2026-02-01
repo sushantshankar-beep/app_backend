@@ -30,6 +30,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/vehicleNumber/:vehicleNumber",userAuth, userVehicleHandler.GetVehicleByNumber)
 		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
 		user.GET("/vehicleData", userAuth, userVehicleHandler.GetVehicleData)
+		user.PUT("vehicleId/:vehicleId", userAuth, userVehicleHandler.UpdateVehicle)
+		user.DELETE("vehicleId/:vehicleId",userAuth, userVehicleHandler.DeleteVehicle)
 		user.GET("/profile", userAuth, userHandler.Profile)
 		user.PUT("/profile", userAuth, s3Uploader.Upload([]s3.FieldConfig{
 			{FormFieldName: "profileImage",ContextKey:    "profileImage",}}), 

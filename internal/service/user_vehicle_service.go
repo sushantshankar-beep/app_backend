@@ -172,3 +172,125 @@ func (s *UserVehicleService) GetMyVehicles(
 	return resp, nil
 }
 
+func (s *UserVehicleService) UpdateVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	vehicleID primitive.ObjectID,
+	req map[string]string,
+) (*domain.Vehicle, error) {
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	isOwned := false
+	if user.PrimaryVehicleID != nil && *user.PrimaryVehicleID == vehicleID {
+		isOwned = true
+	}
+	for _, fid := range user.FallbackVehicleIDs {
+		if fid == vehicleID {
+			isOwned = true
+			break
+		}
+	}
+
+	if !isOwned {
+		return nil, errors.New("vehicle not found or unauthorized")
+	}
+
+	vehicle, err := s.vehicleRepo.FindByID(ctx, vehicleID)
+	if err != nil {
+		return nil, err
+	}
+	if vehicle == nil {
+		return nil, errors.New("vehicle not found")
+	}
+
+	updateData := bson.M{}
+	if val, ok := req["vehicleNumber"]; ok && val != "" {
+		updateData["vehicleNumber"] = val
+	}
+	if val, ok := req["vehicleType"]; ok && val != "" {
+		updateData["vehicleType"] = val
+	}
+	if val, ok := req["brand"]; ok && val != "" {
+		updateData["brand"] = val
+	}
+	if val, ok := req["model"]; ok && val != "" {
+		updateData["model"] = val
+	}
+	if val, ok := req["modelYear"]; ok && val != "" {
+		updateData["modelYear"] = val
+	}
+
+	if len(updateData) == 0 {
+		return nil, errors.New("no fields to update")
+	}
+
+	err = s.vehicleRepo.Update(ctx, vehicleID, updateData)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedVehicle, err := s.vehicleRepo.FindByID(ctx, vehicleID)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedVehicle, nil
+}
+
+func (s *UserVehicleService) DeleteVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	vehicleID primitive.ObjectID,
+) error {
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if user.PrimaryVehicleID != nil && *user.PrimaryVehicleID == vehicleID {
+		if len(user.FallbackVehicleIDs) == 0 {
+			return errors.New("cannot delete the only vehicle")
+		}
+
+		newPrimaryID := user.FallbackVehicleIDs[0]
+		newFallbacks := user.FallbackVehicleIDs[1:]
+
+		err = s.userRepo.SetPrimaryVehicle(ctx, userID, newPrimaryID)
+		if err != nil {
+			return err
+		}
+
+		err = s.userRepo.SetFallbackVehicles(ctx, userID, newFallbacks)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	found := false
+	newFallbacks := []primitive.ObjectID{}
+	for _, fid := range user.FallbackVehicleIDs {
+		if fid == vehicleID {
+			found = true
+			continue
+		}
+		newFallbacks = append(newFallbacks, fid)
+	}
+
+	if !found {
+		return errors.New("vehicle not found or unauthorized")
+	}
+
+	err = s.userRepo.SetFallbackVehicles(ctx, userID, newFallbacks)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

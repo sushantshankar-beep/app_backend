@@ -219,7 +219,13 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 	}
 }
 
-func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serviceID string) (*dto.UserBookingDetailDTO, error) {
+func (s *BookingService) GetUserBookingDetails(
+	ctx context.Context,
+	userID,
+	serviceID string,
+) (*dto.UserBookingDetailDTO, error) {
+
+	// ---------------- PARSE IDS ----------------
 
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -231,37 +237,62 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
+	// ---------------- LOAD USER ----------------
+
 	user, err := s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
 		return nil, err
 	}
+
+	// ---------------- LOAD SERVICE ----------------
 
 	r, err := s.acceptedRepo.GetByID(ctx, serviceObjID)
 	if err != nil {
 		return nil, err
 	}
 
-	provider, err := s.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(r.Provider.Hex()),
-	)
-	if err != nil {
-		return nil, err
+	// ---------------- LOAD PROVIDER (OPTIONAL) ----------------
+
+	var providerName string
+
+	if r.Provider != primitive.NilObjectID {
+		provider, err := s.providerRepo.FindByID(
+			ctx,
+			domain.ProviderID(r.Provider.Hex()),
+		)
+		if err != nil {
+			return nil, err
+		}
+		providerName = provider.Name
 	}
 
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+	// ---------------- LOAD COMPLAINT ----------------
+
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(
+		ctx,
+		serviceObjID,
+	)
 	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
 
+	// ---------------- BUILD COMPLAINT DTO (SAFE) ----------------
+
 	var complaintDTO *dto.ComplaintDTO
+
 	if complaint != nil {
+
+		var remark string
+		if complaint.Assessment != nil {
+			remark = complaint.Assessment.RemarkForUser
+		}
+
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
-			Timeline: complaint.Timeline,
-			Remark: complaint.Assessment.RemarkForUser,
+			Timeline:        complaint.Timeline,
+			Remark:          remark,
 			CreatedAt:       complaint.CreatedAt,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
@@ -275,11 +306,33 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		}
 	}
 
+	// ---------------- BILLING ----------------
+
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
 	gstAmount := (serviceCharge * gstPercent) / 100
 	totalPayable := serviceCharge + gstAmount
+
+	// ---------------- SAFE LOCATIONS ----------------
+
+	var userLoc dto.UserLocation
+	if r.UserLocation != nil {
+		userLoc = dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		}
+	}
+
+	var providerLoc dto.ProviderLocation
+	if r.ProviderLocation != nil {
+		providerLoc = dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
+		}
+	}
+
+	// ---------------- FINAL DTO ----------------
 
 	return &dto.UserBookingDetailDTO{
 		ID:            r.ID,
@@ -287,6 +340,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
+
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,
@@ -294,9 +348,12 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		FuelType:      r.FuelType,
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
-		Timestamps:    r.Timestamps,
-		UserName:      user.Name,
-		ProviderName:  provider.Name,
+
+		Timestamps: r.Timestamps,
+
+		UserName:     user.Name,
+		ProviderName: providerName,
+
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -304,20 +361,17 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
+
 		Complaint: complaintDTO,
-		UserLocation: dto.UserLocation{
-			Lat:  r.UserLocation.Lat,
-			Long: r.UserLocation.Long,
-		},
-		ProviderLocation: dto.ProviderLocation{
-			Lat:  r.ProviderLocation.Lat,
-			Long: r.ProviderLocation.Long,
-		},
+
+		UserLocation:     userLoc,
+		ProviderLocation: providerLoc,
+
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}, nil
-
 }
+
 
 func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
 	sStatus, err := mapStatus(status)

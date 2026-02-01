@@ -207,3 +207,17 @@ func (r *UserRepo) RemoveFallbackVehicle(
 
 	return err
 }
+
+func (r *UserRepo) ClearPrimaryVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$unset": bson.M{"primaryVehicleId": ""}},
+	)
+
+	return err
+}

@@ -253,19 +253,25 @@ func (s *UserVehicleService) DeleteVehicle(
 	}
 
 	if user.PrimaryVehicleID != nil && *user.PrimaryVehicleID == vehicleID {
-		if len(user.FallbackVehicleIDs) == 0 {
-			return errors.New("cannot delete the only vehicle")
+		
+		if len(user.FallbackVehicleIDs) > 0 {
+			newPrimaryID := user.FallbackVehicleIDs[0]
+			newFallbacks := user.FallbackVehicleIDs[1:]
+
+			err = s.userRepo.SetPrimaryVehicle(ctx, userID, newPrimaryID)
+			if err != nil {
+				return err
+			}
+
+			err = s.userRepo.SetFallbackVehicles(ctx, userID, newFallbacks)
+			if err != nil {
+				return err
+			}
+
+			return nil
 		}
 
-		newPrimaryID := user.FallbackVehicleIDs[0]
-		newFallbacks := user.FallbackVehicleIDs[1:]
-
-		err = s.userRepo.SetPrimaryVehicle(ctx, userID, newPrimaryID)
-		if err != nil {
-			return err
-		}
-
-		err = s.userRepo.SetFallbackVehicles(ctx, userID, newFallbacks)
+		err = s.userRepo.ClearPrimaryVehicle(ctx, userID)
 		if err != nil {
 			return err
 		}

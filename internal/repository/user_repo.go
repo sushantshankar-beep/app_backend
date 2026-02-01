@@ -177,3 +177,47 @@ func (r *UserRepo) UpdateTotalExpense(
 
 	return err
 }
+
+func (r *UserRepo) SetFallbackVehicles(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	vehicleIDs []primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$set": bson.M{"fallbackVehicleIds": vehicleIDs}},
+	)
+
+	return err
+}
+
+func (r *UserRepo) RemoveFallbackVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	vehicleID primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$pull": bson.M{"fallbackVehicleIds": vehicleID}},
+	)
+
+	return err
+}
+
+func (r *UserRepo) ClearPrimaryVehicle(
+	ctx context.Context,
+	userID primitive.ObjectID,
+) error {
+
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": userID},
+		bson.M{"$unset": bson.M{"primaryVehicleId": ""}},
+	)
+
+	return err
+}

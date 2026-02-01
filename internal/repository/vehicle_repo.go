@@ -71,4 +71,17 @@ func (r *VehicleRepo) FindByIDs(
 	return vehicles, nil
 }
 
+func (r *VehicleRepo) Update(
+	ctx context.Context,
+	id primitive.ObjectID,
+	updateData bson.M,
+) error {
 
+	_, err := r.col.UpdateOne(
+		ctx,
+		bson.M{"_id": id},
+		bson.M{"$set": updateData},
+	)
+
+	return err
+}

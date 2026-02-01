@@ -10,6 +10,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"go.mongodb.org/mongo-driver/bson"
+	"encoding/json"
+	"strconv"
+	"fmt"
 )
 
 /*
@@ -73,14 +76,16 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 
 	eta := estimateETA(distance)
 
-	// ---------------- PROVIDER PAYLOAD ----------------
+	// ---------------- SOCKET PAYLOAD ----------------
+
 	providerPayload := map[string]any{
 		"serviceId": svc.ID.Hex(),
 		"serviceNo": svc.ServiceNumber,
 
 		"user": map[string]any{
-			"id":   user.ID,
+			"id":   string(user.ID),
 			"name": user.Name,
+			"profileUrl":user.ImageUrl,
 		},
 
 		"vehicle": map[string]any{
@@ -89,7 +94,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"brand":  svc.Brand,
 			"fuel":   svc.FuelType,
 			"year":   svc.ModelYear,
-			"model": svc.Model,
+			"model":  svc.Model,
 		},
 
 		"issues": svc.Issues,
@@ -105,18 +110,62 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		},
 	}
 
-	// ---------------- SOCKET EMITS ----------------
+	// ---------------- SOCKET + NOTIFICATION ----------------
 
-	// 👉 Provider full payload
-	if svc.Provider != primitive.NilObjectID  {
+	if svc.Provider != primitive.NilObjectID {
+
+		providerID := svc.Provider.Hex()
+
+		// 🔥 SOCKET
 		s.socket.Emit(
-			"provider:"+svc.Provider.Hex(),
+			"provider:"+providerID,
 			"payment:success",
 			providerPayload,
 		)
+
+		// 🔔 PUSH NOTIFICATION
+
+		flat := make(map[string]string)
+
+		flat["serviceId"] = svc.ID.Hex()
+		flat["serviceNo"] = svc.ServiceNumber
+		flat["paymentStatus"] = "paid"
+		flat["paymentAmount"] = strconv.FormatFloat(
+			svc.FinalPrice,
+			'f',
+			0,
+			64,
+		)
+
+		flat["distanceKm"] = fmt.Sprintf("%.2f", distance)
+		flat["etaMin"] = strconv.Itoa(eta)
+
+		flat["userId"] = string(user.ID)
+		flat["userName"] = user.Name
+
+		if b, _ := json.Marshal(providerPayload["vehicle"]); b != nil {
+			flat["vehicle"] = string(b)
+		}
+
+		if b, _ := json.Marshal(providerPayload["issues"]); b != nil {
+			flat["issues"] = string(b)
+		}
+
+		if b, _ := json.Marshal(providerPayload["tracking"]); b != nil {
+			flat["tracking"] = string(b)
+		}
+
+		go s.notify.SendToProvider(
+			context.Background(),
+			providerID,
+			"Payment Successful 💰",
+			"User payment completed. Open app.",
+			flat,
+		)
 	}
 
-	// 👉 User lightweight
+	// ---------------- USER SOCKET ----------------
+
 	s.socket.Emit(
 		"user:"+svc.ID.Hex(),
 		"payment:success",
@@ -124,20 +173,25 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"serviceId": svc.ID.Hex(),
 		},
 	)
-   log.Println("hey get invoice")
 
-   log.Println("userId",txn.UserID)
-   log.Println("service id",txn.ServiceID)
-	// ---------------- ASYNC SIDE EFFECTS ----------------
-	go s.invoiceSvc.GenerateInvoice(context.Background(), txn.UserID, txn.ServiceID)
-  
-	log.Println("DONEEEEE")
+	// ---------------- SIDE EFFECTS ----------------
+
+	go s.invoiceSvc.GenerateInvoice(
+		context.Background(),
+		txn.UserID,
+		txn.ServiceID,
+	)
+
 	s.events.Publish("payment.success", events.PaymentEvent{
 		TxnID:     txnID,
 		ServiceID: svc.ID.Hex(),
 		Status:    "paid",
 	})
+
+	log.Println("DONEEEEE payment success")
 }
+
+
 
 
 /*
@@ -239,6 +293,9 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 
 	// ---------------- REDIS CLEANUP ----------------
 	if err := s.redis.Del(ctx, "reserve:"+providerID).Err(); err != nil {
+		log.Println("⚠ redis delete failed:", err)
+	}
+	if err := s.redis.Del(ctx,"provider:busy:"+providerID); err != nil{
 		log.Println("⚠ redis delete failed:", err)
 	}
 

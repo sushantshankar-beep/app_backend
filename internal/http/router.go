@@ -30,6 +30,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/vehicleNumber/:vehicleNumber",userAuth, userVehicleHandler.GetVehicleByNumber)
 		user.POST("/vehicle", userAuth,userVehicleHandler.SaveVehicle)
 		user.GET("/vehicleData", userAuth, userVehicleHandler.GetVehicleData)
+		user.PUT("vehicleId/:vehicleId", userAuth, userVehicleHandler.UpdateVehicle)
+		user.DELETE("vehicleId/:vehicleId",userAuth, userVehicleHandler.DeleteVehicle)
 		user.GET("/profile", userAuth, userHandler.Profile)
 		user.PUT("/profile", userAuth, s3Uploader.Upload([]s3.FieldConfig{
 			{FormFieldName: "profileImage",ContextKey:    "profileImage",}}), 
@@ -68,7 +70,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		bid.POST("/accept", biddingHandler.AcceptBid)
 		bid.POST("/reject", biddingHandler.RejectBid)
 		bid.POST("/cancel/:id",biddingHandler.CancelService)
-		bid.POST("/cancelSearch/:id", biddingHandler.CancelSearch) 
+		bid.POST("/cancelSearch/:id", biddingHandler.CancelSearch)
 	}
 
 	// === Websocket handling ===
@@ -119,6 +121,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		    },
 	    }), providerHandler.CreateOrUpdateProfile )
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
+		provider.POST("/accept-offer",providerAuth, biddingHandler.AcceptOffer)
 		provider.GET("/location", providerAuth, locationHandler.GetProviderLocation)
 		provider.PUT("/profile", providerAuth, providerHandler.CreateOrUpdateProfile)
 		provider.POST("/agreement",providerAuth, providerHandler.SubmitProviderAgreement)

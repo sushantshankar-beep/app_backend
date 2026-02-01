@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ProviderStatus string
@@ -42,6 +43,7 @@ type Provider struct {
 	CommissionPercentage float64            `bson:"commissionPercentage,omitempty" json:"commissionPercentage,omitempty"`
 	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`
 	Rating               string             `bson:"rating" json:"rating"`
+	KycStatus            KYCStatus          `bson:"-" json:"kycStatus"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

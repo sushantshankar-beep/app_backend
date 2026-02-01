@@ -3,18 +3,18 @@ package service
 import (
 	"context"
 	"errors"
-	// "log"
 	"time"
 
 	"app_backend/internal/domain"
+	"app_backend/internal/dto"
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
-"go.mongodb.org/mongo-driver/mongo"
-	"app_backend/internal/dto"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	// "fmt"
 )
 
 type BookingService struct {
@@ -115,6 +115,7 @@ func (s *BookingService) BuildBookingScreen(
 			"name":       provider.Name,
 			"rating":     provider.Rating,
 			"etaMinutes": 6,
+			"profileUrl":provider.ProfileURL,
 		},
 
 		"vehicle": map[string]any{
@@ -125,7 +126,7 @@ func (s *BookingService) BuildBookingScreen(
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
 			"model":         svc.Model,
-			"time":          time.Now().Format("03:04:05 PM"),
+			"time":          time.Now().Local().Format("03:04:05 PM"),
 		},
 
 		"billing": map[string]any{
@@ -170,20 +171,38 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			continue
 		}
 
-		result = append(result, dto.UserBookingDTO{
+		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+		var cancelled *domain.CancelInfo
+		var cancelledAt *time.Time
+
+		if r.Cancelled != nil && r.CancelledAt != nil {
+			cancelled = r.Cancelled
+			cancelledAt = r.CancelledAt
+		}
+
+		dtoItem := dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
-			FinalPrice:    r.FinalPrice,
+			FinalPrice:    tx.Amount,
 			UserName:      user.Name,
 			ProviderName:  provider.Name,
 			VehicleType:   r.VehicleType,
 			Ratings:       "",
-			CreatedAt:     r.CreatedAt,
 			Issues:        r.Issues,
+			CreatedAt:     r.CreatedAt,
 			UpdatedAt:     r.UpdatedAt,
-		})
+			Cancelled:   cancelled,
+			CancelledAt: cancelledAt,
+		}
+		
+		result = append(result, dtoItem)
+		
 	}
 
 	return result, nil
@@ -193,6 +212,7 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 
 	case "ongoing":
 		return []domain.ServiceStatus{
+			domain.StatusConfirmed,
 			domain.StatusStarted,
 			domain.StatusReachedLocation,
 			domain.StatusOTPVerified,
@@ -214,7 +234,13 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 	}
 }
 
-func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serviceID string) (*dto.UserBookingDetailDTO, error) {
+func (s *BookingService) GetUserBookingDetails(
+	ctx context.Context,
+	userID,
+	serviceID string,
+) (*dto.UserBookingDetailDTO, error) {
+
+	// ---------------- PARSE IDS ----------------
 
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -226,35 +252,62 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		return nil, err
 	}
 
+	// ---------------- LOAD USER ----------------
+
 	user, err := s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
 		return nil, err
 	}
+
+	// ---------------- LOAD SERVICE ----------------
 
 	r, err := s.acceptedRepo.GetByID(ctx, serviceObjID)
 	if err != nil {
 		return nil, err
 	}
 
-	provider, err := s.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(r.Provider.Hex()),
-	)
-	if err != nil {
-		return nil, err
+	// ---------------- LOAD PROVIDER (OPTIONAL) ----------------
+
+	var providerName string
+
+	if r.Provider != primitive.NilObjectID {
+		provider, err := s.providerRepo.FindByID(
+			ctx,
+			domain.ProviderID(r.Provider.Hex()),
+		)
+		if err != nil {
+			return nil, err
+		}
+		providerName = provider.Name
 	}
 
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+	// ---------------- LOAD COMPLAINT ----------------
+
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(
+		ctx,
+		serviceObjID,
+	)
 	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
 
+	// ---------------- BUILD COMPLAINT DTO (SAFE) ----------------
+
 	var complaintDTO *dto.ComplaintDTO
+
 	if complaint != nil {
+
+		var remark string
+		if complaint.Assessment != nil {
+			remark = complaint.Assessment.RemarkForUser
+		}
+
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
+			Timeline:        complaint.Timeline,
+			Remark:          remark,
 			CreatedAt:       complaint.CreatedAt,
 			UpdatedAt:       complaint.UpdatedAt,
 		}
@@ -268,11 +321,43 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		}
 	}
 
+
+
+	// ---------------- BILLING ----------------
+
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
 	gstAmount := (serviceCharge * gstPercent) / 100
 	totalPayable := serviceCharge + gstAmount
+
+	// ---------------- SAFE LOCATIONS ----------------
+
+	var userLoc dto.UserLocation
+	if r.UserLocation != nil {
+		userLoc = dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		}
+	}
+
+	var providerLoc dto.ProviderLocation
+	if r.ProviderLocation != nil {
+		providerLoc = dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
+		}
+	}
+
+	var cancelled *domain.CancelInfo
+	var cancelledAt *time.Time
+
+	if r.Cancelled != nil && r.CancelledAt != nil {
+		cancelled = r.Cancelled
+		cancelledAt = r.CancelledAt
+	}
+
+	// ---------------- FINAL DTO ----------------
 
 	return &dto.UserBookingDetailDTO{
 		ID:            r.ID,
@@ -280,6 +365,7 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
+
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,
@@ -287,9 +373,12 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 		FuelType:      r.FuelType,
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
-		Timestamps:    r.Timestamps,
-		UserName:      user.Name,
-		ProviderName:  provider.Name,
+
+		Timestamps: r.Timestamps,
+
+		UserName:     user.Name,
+		ProviderName: providerName,
+
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -297,20 +386,19 @@ func (s *BookingService) GetUserBookingDetails(ctx context.Context, userID, serv
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
+
+		Cancelled:   cancelled,
+		CancelledAt: cancelledAt,
 		Complaint: complaintDTO,
-		UserLocation: dto.UserLocation{
-			Lat:  r.UserLocation.Lat,
-			Long: r.UserLocation.Long,
-		},
-		ProviderLocation: dto.ProviderLocation{
-			Lat:  r.ProviderLocation.Lat,
-			Long: r.ProviderLocation.Long,
-		},
+
+		UserLocation:     userLoc,
+		ProviderLocation: providerLoc,
+
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}, nil
-
 }
+
 
 func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
 	sStatus, err := mapStatus(status)
@@ -346,12 +434,26 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
-		result = append(result, dto.ProviderBookingDTO{
+		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+
+		var cancelled *domain.CancelInfo
+		var cancelledAt *time.Time
+
+		if r.Cancelled != nil && r.CancelledAt != nil {
+			cancelled = r.Cancelled
+			cancelledAt = r.CancelledAt
+		}
+
+		dtoItem := dto.ProviderBookingDTO{
 			ID:            r.ID,
 			ProviderID:    providerID,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
-			FinalPrice:    r.FinalPrice,
+			FinalPrice:    tx.Amount,
 			ProviderName:  provider.Name,
 			UserName:      user.Name,
 			VehicleNumber: r.VehicleNumber,
@@ -360,9 +462,16 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			ModelYear:     r.ModelYear,
 			VehicleType:   r.VehicleType,
 			Issues:        r.Issues,
+			Cancelled:   cancelled,
+			CancelledAt: cancelledAt,
 			CreatedAt:     r.CreatedAt,
 			UpdatedAt:     r.UpdatedAt,
-		})
+
+		}
+		
+		
+		result = append(result, dtoItem)
+		
 	}
 
 	response := &dto.ProviderBookingResponse{
@@ -385,7 +494,13 @@ func containsStatus(statuses []domain.ServiceStatus, target domain.ServiceStatus
 	return false
 }
 
-func (s *BookingService) GetProviderBookingDetails(ctx context.Context, providerID, serviceID string) (*dto.ProviderBookingDetailDTO, error) {
+func (s *BookingService) GetProviderBookingDetails(
+	ctx context.Context,
+	providerID,
+	serviceID string,
+) (*dto.ProviderBookingDetailDTO, error) {
+
+	// ---------------- ID PARSE ----------------
 
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
@@ -397,34 +512,59 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		return nil, err
 	}
 
-	provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
+	// ---------------- LOAD PROVIDER ----------------
+
+	provider, err := s.providerRepo.FindByID(
+		ctx,
+		domain.ProviderID(providerObjID.Hex()),
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	// ---------------- LOAD SERVICE ----------------
 
 	r, err := s.acceptedRepo.GetByID(ctx, serviceObjID)
 	if err != nil {
 		return nil, err
 	}
 
+	// ---------------- LOAD USER ----------------
+
 	user, err := s.userRepo.GetByID(ctx, r.User)
 	if err != nil {
 		return nil, err
 	}
 
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+	// ---------------- LOAD COMPLAINT ----------------
+
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(
+		ctx,
+		serviceObjID,
+	)
 	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
 
+	// ---------------- BUILD COMPLAINT DTO (SAFE) ----------------
+
 	var complaintDTO *dto.ComplaintDTO
+
 	if complaint != nil {
+
+		var remark string
+		if complaint.Assessment != nil {
+			remark = complaint.Assessment.RemarkForProvider
+		}
+
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
+			Timeline:        complaint.Timeline,
 			CreatedAt:       complaint.CreatedAt,
 			UpdatedAt:       complaint.UpdatedAt,
+			Remark:          remark,
 		}
 
 		if complaint.ProviderComplaint != nil {
@@ -436,13 +576,40 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		}
 	}
 
-	const (
-		gstPercent = 18.0
-	)
+	// ---------------- BILLING ----------------
+
+	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
 	gstOnCommission := (serviceCharge * gstPercent) / 100
 	providerPayout := serviceCharge + gstOnCommission
+
+	// ---------------- SAFE LOCATIONS ----------------
+
+	var userLoc dto.UserLocation
+	if r.UserLocation != nil {
+		userLoc = dto.UserLocation{
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
+		}
+	}
+
+	var providerLoc dto.ProviderLocation
+	if r.ProviderLocation != nil {
+		providerLoc = dto.ProviderLocation{
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
+		}
+	}
+	
+	var cancelled *domain.CancelInfo
+	var cancelledAt *time.Time
+
+	if r.Cancelled != nil && r.CancelledAt != nil {
+		cancelled = r.Cancelled
+		cancelledAt = r.CancelledAt
+	}
+	// ---------------- FINAL DTO ----------------
 
 	return &dto.ProviderBookingDetailDTO{
 		ID:            r.ID,
@@ -450,6 +617,7 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
+
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,
@@ -457,33 +625,32 @@ func (s *BookingService) GetProviderBookingDetails(ctx context.Context, provider
 		FuelType:      r.FuelType,
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
-		Timestamps:    r.Timestamps,
-		ProviderName:  provider.Name,
-		UserName:      user.Name,
-		Complaint:     complaintDTO,
+
+		Timestamps: r.Timestamps,
+
+		ProviderName: provider.Name,
+		UserName:     user.Name,
+
+		Complaint: complaintDTO,
+
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
-			// CommissionPercent: commissionPercent,
-			// CommissionAmount:  utils.RoundTo2(commissionAmount),
 			GSTPercent:     gstPercent,
 			GSTAmount:      utils.RoundTo2(gstOnCommission),
 			TotalPayable:   serviceCharge,
 			ProviderPayout: utils.RoundTo2(providerPayout),
 			PaymentStatus:  string(r.PaymentStatus),
 		},
-		UserLocation: dto.UserLocation{
-			Lat:  r.UserLocation.Lat,
-			Long: r.UserLocation.Long,
-		},
-		ProviderLocation: dto.ProviderLocation{
-			Lat:  r.ProviderLocation.Lat,
-			Long: r.ProviderLocation.Long,
-		},
+		Cancelled:   cancelled,
+		CancelledAt: cancelledAt,
+		UserLocation:     userLoc,
+		ProviderLocation: providerLoc,
+
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}, nil
-
 }
+
 
 func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]dto.UserExpenseDTO, float64, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)

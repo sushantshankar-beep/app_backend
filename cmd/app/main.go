@@ -62,7 +62,7 @@ func main() {
 	//redis
 	rdb := redis.NewRedis()
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatal("Redis connection failed:", err)
+		log.Println("Redis connection failed:", err)
 	}
 	log.Println("Redis connected")
 
@@ -161,6 +161,7 @@ func main() {
 		otpQueue,
 		acceptedServiceRepo,
 		providerRepo,
+		kycRepo,
 	)
 	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo,paymentRepo)
 	locationSvc := service.NewLocationService(locationRepo)
@@ -189,7 +190,7 @@ func main() {
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
 	
-	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb)
+	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb,complaintRepo)
 	imageUploadS3 := service.NewImageUploadS3Service()
 	ratingService := service.NewRatingService(ratingRepo,userRepo,providerRepo,acceptedServiceRepo)
 	//HANDLERS

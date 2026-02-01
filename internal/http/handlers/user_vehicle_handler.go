@@ -114,3 +114,66 @@ func (h *UserVehicleHandler) GetMyVehicles(c *gin.Context) {
 
 	c.JSON(200, data)
 }
+
+func (h *UserVehicleHandler) UpdateVehicle(c *gin.Context) {
+	userOID := c.MustGet(
+		middleware.ContextKeyUserObjectID,
+	).(primitive.ObjectID)
+
+	vehicleIDStr := c.Param("vehicleId")
+	vehicleID, err := primitive.ObjectIDFromHex(vehicleIDStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid vehicle id"})
+		return
+	}
+
+	var req map[string]string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+
+	v, err := h.svc.UpdateVehicle(
+		c.Request.Context(),
+		userOID,
+		vehicleID,
+		req,
+	)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"updated": true,
+		"vehicle": v,
+	})
+}
+
+func (h *UserVehicleHandler) DeleteVehicle(c *gin.Context) {
+	userOID := c.MustGet(
+		middleware.ContextKeyUserObjectID,
+	).(primitive.ObjectID)
+
+	vehicleIDStr := c.Param("vehicleId")
+	vehicleID, err := primitive.ObjectIDFromHex(vehicleIDStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid vehicle id"})
+		return
+	}
+
+	err = h.svc.DeleteVehicle(
+		c.Request.Context(),
+		userOID,
+		vehicleID,
+	)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"deleted": true,
+		"message": "vehicle deleted successfully",
+	})
+}

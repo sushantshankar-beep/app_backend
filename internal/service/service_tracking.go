@@ -11,7 +11,6 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"log"
 	"math"
 	"app_backend/internal/ports"
 	"github.com/redis/go-redis/v9"
@@ -24,6 +23,7 @@ type ServiceTrackingService struct {
 	socket       *socket.Emitter
 	notify        ports.NotificationService
 	rdb          *redis.Client
+	complaintRepo *repository.ComplaintRepo
 }
 
 func NewServiceTrackingService(
@@ -31,18 +31,22 @@ func NewServiceTrackingService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	socket *socket.Emitter,
-	notify ports.NotificationService, 
-	rdb          *redis.Client, 
+	notify ports.NotificationService,
+	rdb *redis.Client,
+	complaintRepo *repository.ComplaintRepo,
 ) *ServiceTrackingService {
+
 	return &ServiceTrackingService{
-		acceptedRepo: acceptedRepo,
-		userRepo:     userRepo,
-		providerRepo: providerRepo,
-		socket:       socket,
-		notify:    notify,
-		rdb   : rdb,
+		acceptedRepo:  acceptedRepo,
+		userRepo:      userRepo,
+		providerRepo:  providerRepo,
+		socket:        socket,
+		notify:        notify,
+		rdb:           rdb,
+		complaintRepo: complaintRepo,
 	}
 }
+
 
 /* ============================================================
                      TRACKING SCREENS
@@ -88,8 +92,9 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
 
 	// ----------------------------------
-	// 🧮 Calculate Distance & ETA
+	// 🧮 Distance & ETA
 	// ----------------------------------
+
 	var distanceKm float64
 	var etaMinutes int64
 
@@ -111,13 +116,44 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	// ----------------------------------
 	// 💰 Billing
 	// ----------------------------------
+
 	gstMain := "18%"
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
 	// ----------------------------------
+	// 📄 Complaint (if any)
+	// ----------------------------------
+
+	var complaint any
+	if svc.ComplaintProvider != nil &&
+		*svc.ComplaintProvider != primitive.NilObjectID {
+
+		list, err := s.complaintRepo.FindByProvider(ctx, *svc.ComplaintProvider)
+		if err == nil && len(list) > 0 {
+
+			cmp := list[0]
+
+			var problem string
+
+			if cmp.ProviderComplaint != nil {
+				problem = cmp.ProviderComplaint.Problem
+			}
+
+			complaint = map[string]any{
+				"id":        cmp.ID,
+				"status":    cmp.Status,
+				"problem":   problem,
+				"createdAt": cmp.CreatedAt,
+			}
+		}
+	}
+
+
+	// ----------------------------------
 	// 📦 Response
 	// ----------------------------------
+
 	return map[string]any{
 		"screen": "SERVICE_TRACKING",
 		"status": svc.Status,
@@ -129,8 +165,10 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"rating":     provider.Rating,
 			"etaMinutes": etaMinutes,
 			"distanceKm": distanceKm,
-			"phoneNo" : provider.Phone,
+			"phoneNo":    provider.Phone,
+			"profileUrl": provider.ProfileURL,
 		},
+
 		"booking": map[string]any{
 			"bookingId": svc.ServiceNumber,
 			"status":    "BID_ACCEPTED",
@@ -165,9 +203,12 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"currency":      "INR",
 		},
 
+		"complaint": complaint,
+
 		"timestamps": svc.Timestamps,
 	}, nil
 }
+
 
 
 func (s *ServiceTrackingService) ProviderTrackingScreen(
@@ -189,18 +230,51 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 
+	// ----------------------------------
+	// 📄 Complaint (if exists)
+	// ----------------------------------
+
+	var complaint any
+	if svc.ComplaintUser != nil &&
+		*svc.ComplaintUser != primitive.NilObjectID {
+
+		list, err := s.complaintRepo.FindByUser(ctx, *svc.ComplaintUser)
+		if err == nil && len(list) > 0 {
+
+			cmp := list[0]
+
+			var problem string
+
+			if cmp.UserComplaint != nil {
+				problem = cmp.UserComplaint.Problem
+			}
+
+			complaint = map[string]any{
+				"id":        cmp.ID,
+				"status":    cmp.Status,
+				"problem":   problem,
+				"createdAt": cmp.CreatedAt,
+			}
+		}
+	}
 	return map[string]any{
 		"screen": "PROVIDER_TRACKING",
+
 		"user": map[string]any{
 			"name":  user.Name,
 			"phone": user.Phone,
 			"otp":   user.ServiceOTP,
 		},
+
 		"service": svc.ServiceType,
 		"status":  svc.Status,
+
+		"complaint": complaint,
+
 		"timestamps": svc.Timestamps,
 	}, nil
 }
+
 
 /* ============================================================
                      STATUS ENGINE
@@ -226,14 +300,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		return nil, errors.New("service not found")
 	}
 
-	prevStatus := svc.Status // 👈 capture BEFORE update
-
-	log.Printf(
-		"STATE CHANGE REQUEST service=%s from=%s to=%s\n",
-		serviceID,
-		prevStatus,
-		newStatus,
-	)
+	prevStatus := svc.Status
 
 	if !domain.CanTransition(prevStatus, newStatus) {
 		return nil, errors.New("invalid service state transition")
@@ -254,150 +321,117 @@ func (s *ServiceTrackingService) UpdateStatus(
 		}
 	}
 
-	ts := bson.M{}
-
 	switch newStatus {
+
 	case domain.StatusStarted:
 		update["timestamps.startedAt"] = now
+
 	case domain.StatusReachedLocation:
 		update["timestamps.reachedAt"] = now
+
 	case domain.StatusOTPVerified:
 		update["timestamps.OtpVerified"] = now
+
 	case domain.StatusInProgress:
-		update["timestamps.inProgressAt"]= now
+		update["timestamps.inProgressAt"] = now
+
 	case domain.StatusCompleted:
+
 		update["timestamps.CompletedAt"] = now
-	    serviceHex := svc.ID.Hex()
-	    providerHex := svc.Provider.Hex()
 
-	    // ===============================
-	    // 🔓 UNLOCK SERVICE
-	    // ===============================
-	    s.rdb.Del(ctx, "service:locked:"+serviceHex)
-	    s.rdb.Del(ctx, "service:stop:"+serviceHex)
+		serviceHex := svc.ID.Hex()
+		providerHex := svc.Provider.Hex()
 
-	    // ===============================
-	    // 🧹 CLEAR PROVIDER BUSY FLAG
-	    // ===============================
-	    s.rdb.Del(ctx, "provider:busy:"+providerHex)
+		// 🔐 free provider ONLY if owned by this service
+		busyKey := "provider:busy:" + providerHex
 
-	    // ===============================
-	    // 🧹 CLEAR SERVICE PROVIDER KEYS
-	    // ===============================
-	    patterns := []string{
-	        "service:cooldown:" + serviceHex + ":*",
-	        "service:sendcount:" + serviceHex + ":*",
-	        "service:activeProvider:" + serviceHex + ":*",
-	        "service:providerBidLock:" + serviceHex + ":*",
-	        "service:dist:" + serviceHex + ":*",
-	    }
+		val, _ := s.rdb.Get(ctx, busyKey).Result()
+		if val == serviceHex {
+			s.rdb.Del(ctx, busyKey)
+		}
 
-	    for _, p := range patterns {
-	        iter := s.rdb.Scan(ctx, 0, p, 500).Iterator()
-	        for iter.Next(ctx) {
-	            s.rdb.Del(ctx, iter.Val())
-	        }
-	    }
+		// unlock service
+		s.rdb.Del(ctx, "service:locked:"+serviceHex)
+		s.rdb.Del(ctx, "service:stop:"+serviceHex)
 
-	    // ===============================
-	    // 🟢 MARK PROVIDER ONLINE AGAIN
-	    // ===============================
-	    s.rdb.Set(ctx, "provider:online:"+providerHex, "1", 0)
+		// re-add geo
+		if svc.ProviderLocation != nil {
+			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+				Name:      providerHex,
+				Longitude: svc.ProviderLocation.Long,
+				Latitude:  svc.ProviderLocation.Lat,
+			})
+		}
 
-	    // ===============================
-	    // 🌍 RE-ADD PROVIDER TO GEO
-	    // ===============================
-	    if svc.ProviderLocation != nil {
-	        s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
-	            Name:      providerHex,
-	            Longitude: svc.ProviderLocation.Long,
-	            Latitude:  svc.ProviderLocation.Lat,
-	        })
-	    }
-
-	    // ===============================
-	    // 📦 ARCHIVE BOOKING
-	    // ===============================
-	    _, _ = s.acceptedRepo.Col().UpdateByID(
-	        ctx,
-	        objID,
-	        bson.M{
-	            "$set": bson.M{
-	                "archived":  true,
-	                "closedAt": time.Now(),
-	            },
-	        },
-	    )
-
-	    // ===============================
-	    // 🔔 NOTIFICATIONS
-	    // ===============================
-	    go s.notify.SendToUser(ctx,
-	        providerHex,
-	        "Service Completed",
-	        "Your booking is complete.",
-	        map[string]string{"serviceId": serviceHex},
-	    )
-
-	    go s.notify.SendToProvider(ctx,
-	        providerHex,
-	        "Job Completed",
-	        "You are now available for new jobs",
-	        map[string]string{"serviceId": serviceHex},
-	    )
-
-	    // ===============================
-	    // 📡 FINAL SOCKET EVENTS
-	    // ===============================
-	    userRoom := "user:" + serviceHex
-	    providerRoom := "provider:" + providerHex
-
-	    s.socket.Emit(userRoom, "service:closed", nil)
-	    s.socket.Emit(providerRoom, "service:closed", nil)
-
-	    go func() {
-	        time.Sleep(400 * time.Millisecond)
-	        s.socket.CloseRoom(userRoom)
-	        s.socket.CloseRoom(providerRoom)
-	    }()
-
+		// archive booking
+		_, _ = s.acceptedRepo.Col().UpdateByID(
+			ctx,
+			objID,
+			bson.M{
+				"$set": bson.M{
+					"archived": true,
+					"closedAt": now,
+				},
+			},
+		)
 	}
 
-	if len(ts) > 0 {
-		update["timestamps"] = ts
-	}
+	// ================= SAVE STATUS =================
 
 	if _, err := s.acceptedRepo.Col().
 		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
 		return nil, err
 	}
-	gst := svc.FinalPrice * 18 / 100
-	totalAmount := gst + svc.FinalPrice
-	// 👇 Fetch user
+
+	// 🔄 RELOAD UPDATED SERVICE (IMPORTANT FIX)
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": objID}).
+		Decode(&svc); err != nil {
+		return nil, errors.New("failed to reload service after update")
+	}
+
+	// ================= BUILD PAYLOAD =================
+
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
+	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
+
 	userLat := svc.UserLocation.Lat
 	userLong := svc.UserLocation.Long
-	distance := distanceKmHaversine(lat,long,userLat,userLong)
-	eta      := estimateETA(distance)
 
-	// 🔥 build payload
+	var distanceKm float64
+	var eta int
+
+	if lat != 0 && long != 0 {
+		distanceKm = distanceKmHaversine(lat, long, userLat, userLong)
+		eta = int(estimateETA(distanceKm))
+	}
+
+	gst := svc.FinalPrice * 18 / 100
+	totalAmount := gst + svc.FinalPrice
+
 	payload := map[string]any{
-		"serviceId":    svc.ServiceNumber,
-		"serviceIdMain": serviceID,
-		"oldStatus":    prevStatus,
-		"newStatus":    newStatus,
-		"date": svc.CreatedAt.Format("2006-01-02"),
+		"serviceId":     svc.ServiceNumber,
+		"serviceIdMain": svc.ID.Hex(),
+		"oldStatus":     prevStatus,
+		"newStatus":     newStatus,
+		"date":          svc.CreatedAt.Format("2006-01-02"),
+
 		"user": map[string]any{
 			"id":    svc.User.Hex(),
 			"name":  user.Name,
 			"phone": user.Phone,
-			"lat" : userLat,
-			"lon" : userLong,
+			"lat":   userLat,
+			"lon":   userLong,
 		},
-		"providerID":svc.Provider.Hex(),
-		"finalAmount": svc.FinalPrice,
-		"gst"    : gst,
-		"issues" : svc.Issues,
+
+		"provider": map[string]any{
+			"id":     provider.ID,
+			"name":   provider.Name,
+			"rating": provider.Rating,
+			"phone":  provider.Phone,
+			"profileUrl" : provider.ProfileURL,
+		},
+
 		"vehicle": map[string]any{
 			"fuelType":      svc.FuelType,
 			"vehicleType":   svc.VehicleType,
@@ -406,10 +440,17 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"modelYear":     svc.ModelYear,
 			"model":         svc.Model,
 		},
-		"distanceKm" : distance,
-		"eta"      : eta,
+
+		"issues": svc.Issues,
+
+		"billing": map[string]any{
+			"serviceAmount": svc.FinalPrice,
+			"gst":           gst,
+			"totalAmount":   totalAmount,
+			"currency":      "INR",
+		},
+
 		"timestamps": svc.Timestamps,
-		"totalAmount": totalAmount,
 	}
 
 	if lat != 0 && long != 0 {
@@ -417,110 +458,39 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"lat":  lat,
 			"long": long,
 		}
-	}
-	payloadSocket := map[string]any{ "serviceId": svc.ID.Hex(), "status": newStatus, "timestamps": ts, }
 
-	// SOCKET
+		payload["distanceKm"] = distanceKm
+		payload["eta"] = eta
+	}
+
+	// ================= SOCKET =================
+
 	userRoom := "user:" + svc.ID.Hex()
 	providerRoom := "provider:" + svc.Provider.Hex()
 
-	s.socket.EmitWithRetry(userRoom, "service:status_update", payloadSocket, 1)
-	s.socket.EmitWithRetry(providerRoom, "service:status_update", payloadSocket, 1)
-	switch newStatus {
-
-	case domain.StatusStarted:
-		go s.notify.SendToUser(ctx,
-			svc.User.Hex(),
-			"Provider Started",
-			"Provider is on the way 🚗",
-			map[string]string{"serviceId": svc.ID.Hex()},
-		)
-
-	case domain.StatusReachedLocation:
-		go s.notify.SendToUser(ctx,
-			svc.User.Hex(),
-			"Provider Arrived",
-			"Provider reached your location",
-			map[string]string{"serviceId": svc.ID.Hex()},
-		)
-
-	case domain.StatusCompleted:
-
-	// ===============================
-	// 🔓 UNLOCK SERVICE
-	// ===============================
-	lockKey := "service:locked:" + svc.ID.Hex()
-	s.rdb.Del(ctx, lockKey)
-
-	// ===============================
-	// 🧹 CLEAR PROVIDER BUSY FLAG
-	// ===============================
-	s.rdb.Del(ctx, "provider:busy:"+svc.Provider.Hex())
-
-	// ===============================
-	// 🌍 RE-ADD PROVIDER TO GEO
-	// ===============================
-	if svc.ProviderLocation != nil {
-
-		s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
-			Name:      svc.Provider.Hex(),
-			Longitude: svc.ProviderLocation.Long,
-			Latitude:  svc.ProviderLocation.Lat,
-		})
+	socketPayload := map[string]any{
+		"serviceId": svc.ID.Hex(),
+		"status":    newStatus,
 	}
 
-	// ===============================
-	// 📦 ARCHIVE BOOKING
-	// ===============================
-	_, _ = s.acceptedRepo.Col().UpdateByID(
-		ctx,
-		objID,
-		bson.M{
-			"$set": bson.M{
-				"archived":  true,
-				"closedAt": time.Now(),
-			},
-		},
-	)
+	s.socket.EmitWithRetry(userRoom, "service:status_update", socketPayload, 1)
+	s.socket.EmitWithRetry(providerRoom, "service:status_update", socketPayload, 1)
 
-	// ===============================
-	// 🔔 NOTIFICATIONS
-	// ===============================
-	go s.notify.SendToUser(ctx,
-		svc.User.Hex(),
-		"Service Completed",
-		"Your booking is complete.",
-		map[string]string{"serviceId": svc.ID.Hex()},
-	)
+	if newStatus == domain.StatusCompleted {
 
-	go s.notify.SendToProvider(ctx,
-		svc.Provider.Hex(),
-		"Job Completed",
-		"Booking closed successfully",
-		map[string]string{"serviceId": svc.ID.Hex()},
-	)
+		s.socket.Emit(userRoom, "service:closed", nil)
+		s.socket.Emit(providerRoom, "service:closed", nil)
 
-	// ===============================
-	// 📡 FINAL SOCKET EVENTS
-	// ===============================
-	userRoom := "user:" + svc.ID.Hex()
-	providerRoom := "provider:" + svc.Provider.Hex()
-
-	s.socket.Emit(userRoom, "service:closed", nil)
-	s.socket.Emit(providerRoom, "service:closed", nil)
-
-	// ===============================
-	// 🚪 CLOSE ROOMS AFTER FLUSH
-	// ===============================
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-
-		s.socket.CloseRoom(userRoom)
-		s.socket.CloseRoom(providerRoom)
-	}()
+		go func() {
+			time.Sleep(400 * time.Millisecond)
+			s.socket.CloseRoom(userRoom)
+			s.socket.CloseRoom(providerRoom)
+		}()
 	}
+
 	return payload, nil
 }
+
 
 
 func (s *ServiceTrackingService) VerifyOTP(

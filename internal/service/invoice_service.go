@@ -1,14 +1,15 @@
 package service
 
 import (
+	"app_backend/internal/domain"
+	"app_backend/internal/repository"
+	"app_backend/internal/utils"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
-	"log"
-	"app_backend/internal/domain"
-	"app_backend/internal/repository"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -103,9 +104,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 			PaymentStatus: service.PaymentStatus,
 		},
 		PricingDeatils: domain.PricingInfo{
-			ServiceCharge: finalPrice,
-			GST:           gst,
-			Total:         finalPrice + gst,
+			ServiceCharge: utils.RoundTo2(finalPrice),
+			GST:           utils.RoundTo2(gst),
+			Total:         utils.RoundTo2(finalPrice + gst),
 		},
 		Transaction:domain.Transaction{
 			PaymentMode: transaction.Method,

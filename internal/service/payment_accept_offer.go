@@ -18,7 +18,7 @@ func (s *BiddingService) AcceptOffer(
 	providerID string,
 ) error {
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 
 	// ---------------- PARSE IDS ----------------
@@ -32,21 +32,8 @@ func (s *BiddingService) AcceptOffer(
 	if err != nil {
 		return err
 	}
-	s.stopAllDiscovery(ctx, serviceID)
 
-	// ---------------- LOAD SERVICE ----------------
-
-	svc, err := s.acceptedRepo.GetByID(ctx, serviceOID)
-	if err != nil {
-		return err
-	}
-
-	// 🔐 Prevent double confirmation
-	if svc.Status == domain.StatusConfirmed {
-		return errors.New("service already confirmed")
-	}
-
-	// ---------------- UPDATE PROVIDER + STATUS ----------------
+	// ---------------- ATOMIC CONFIRM ----------------
 
 	update := bson.M{
 		"provider":               providerOID,
@@ -55,16 +42,31 @@ func (s *BiddingService) AcceptOffer(
 		"updatedAt":              time.Now(),
 	}
 
-	if err := s.acceptedRepo.UpdateByID(
+	res, err := s.acceptedRepo.Col().UpdateOne(
 		ctx,
-		serviceOID,
-		bson.M{"$set": update},
-	); err != nil {
+		bson.M{
+			"_id":    serviceOID,
+			"status": "searching_after_cancel", // 👈 only 1 wins
+		},
+		bson.M{
+			"$set": update,
+		},
+	)
+
+	if err != nil {
 		return err
 	}
 
-	// reload fresh copy
-	svc, err = s.acceptedRepo.GetByID(ctx, serviceOID)
+	if res.MatchedCount == 0 {
+		return errors.New("service already assigned to another provider")
+	}
+
+	// 🛑 winner freezes discovery + notifies others
+	go s.stopAllDiscovery(ctx, serviceID)
+
+	// ---------------- LOAD SERVICE ----------------
+
+	svc, err := s.acceptedRepo.GetByID(ctx, serviceOID)
 	if err != nil {
 		return err
 	}
@@ -78,10 +80,9 @@ func (s *BiddingService) AcceptOffer(
 
 	// ---------------- DISTANCE + ETA ----------------
 
-	var distance float64
-
 	key := "service:dist:" + svc.ID.Hex() + ":" + providerID
-	distance, _ = s.rdb.Get(ctx, key).Float64()
+
+	distance, _ := s.rdb.Get(ctx, key).Float64()
 
 	eta := estimateETA(distance)
 
@@ -134,10 +135,11 @@ func (s *BiddingService) AcceptOffer(
 		},
 	)
 
-	log.Println("✅ AcceptOffer reassigned provider:", providerID)
+	log.Println("✅ AcceptOffer winner provider:", providerID)
 
 	return nil
 }
+
 func (s *BiddingService) stopAllDiscovery(ctx context.Context, serviceID string) {
 
 	stopKey := "service:stop:" + serviceID

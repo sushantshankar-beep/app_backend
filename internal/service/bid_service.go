@@ -820,7 +820,7 @@ func (s *BiddingService) ProviderCancelService(
 		serviceOID,
 		bson.M{
 			"$set": bson.M{
-				"status":        domain.StatusSearching,
+				"status":        "searching_after_cancel",
 				"timestamps.cancelledAt":now,
 				"cancelled.by": "provider",
 				"cancelled.reason": reason,
@@ -843,6 +843,7 @@ func (s *BiddingService) ProviderCancelService(
 		map[string]any{
 			"serviceId": serviceID,
 			"price":     fixedPrice,
+			"status": "searching_after_cancel",
 		},
 	)
 

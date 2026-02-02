@@ -302,6 +302,9 @@ func (s *ServiceTrackingService) UpdateStatus(
 	}
 
 	prevStatus := svc.Status
+	if prevStatus == "cancelled"{
+		return nil,errors.New("Service already Cancelled")
+	}
 
 	if !domain.CanTransition(prevStatus, newStatus) {
 		return nil, errors.New("invalid service state transition")

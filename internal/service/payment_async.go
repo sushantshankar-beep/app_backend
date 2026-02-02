@@ -11,8 +11,8 @@ import (
 	"log"
 	"go.mongodb.org/mongo-driver/bson"
 	"encoding/json"
-	"strconv"
-	"fmt"
+	// "strconv"
+	// "fmt"
 )
 
 /*
@@ -109,6 +109,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"etaMin":     eta,
 		},
 	}
+	providerBytes,_ := json.Marshal(providerPayload)
 
 	// ---------------- SOCKET + NOTIFICATION ----------------
 
@@ -125,42 +126,18 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 
 		// 🔔 PUSH NOTIFICATION
 
-		flat := make(map[string]string)
-
-		flat["serviceId"] = svc.ID.Hex()
-		flat["serviceNo"] = svc.ServiceNumber
-		flat["paymentStatus"] = "paid"
-		flat["paymentAmount"] = strconv.FormatFloat(
-			svc.FinalPrice,
-			'f',
-			0,
-			64,
-		)
-
-		flat["distanceKm"] = fmt.Sprintf("%.2f", distance)
-		flat["etaMin"] = strconv.Itoa(eta)
-
-		flat["userId"] = string(user.ID)
-		flat["userName"] = user.Name
-
-		if b, _ := json.Marshal(providerPayload["vehicle"]); b != nil {
-			flat["vehicle"] = string(b)
-		}
-
-		if b, _ := json.Marshal(providerPayload["issues"]); b != nil {
-			flat["issues"] = string(b)
-		}
-
-		if b, _ := json.Marshal(providerPayload["tracking"]); b != nil {
-			flat["tracking"] = string(b)
-		}
+		
 
 		go s.notify.SendToProvider(
 			context.Background(),
 			providerID,
 			"Payment Successful 💰",
 			"User payment completed. Open app.",
-			flat,
+			map[string]string{
+				"type":      "payment_success",
+				"serviceId": svc.ID.Hex(),
+				"payload":   string(providerBytes),
+			},
 		)
 	}
 
@@ -259,6 +236,27 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 			svc.Provider.Hex(),
 		)
 	}
+	userPayload := map[string]any{
+		"serviceId": svc.ID.Hex(),
+		"ttl":       ttl,
+		"message":   msg,
+		"reason":    reason,
+	}
+
+	userBytes, _ := json.Marshal(userPayload)
+
+	go s.notify.SendToUser(
+		context.Background(),
+		txn.UserID,
+		"Payment Failed ❌",
+		msg,
+		map[string]string{
+			"type":      "payment_failed",
+			"serviceId": svc.ID.Hex(),
+			"payload":   string(userBytes), // ✅ SAME AS SOCKET
+		},
+	)
+
 }
 
 

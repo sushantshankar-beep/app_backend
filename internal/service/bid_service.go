@@ -16,7 +16,7 @@ import (
 	// "sync"
 	"app_backend/internal/ports"
 	"strconv"
-	"strings"
+	// "strings"
 	"encoding/json" 
 	"math"
 )
@@ -467,14 +467,31 @@ func (s *BiddingService) PlaceBid(
 			},
 		},
 	)
+	payload := map[string]any{
+		"bidId": bidOID.Hex(),
+		"serviceId": serviceID,
+		"price": price,
+		"provider": map[string]any{
+			"id":         providerID,
+			"distanceKm": distance,
+			"name":       provider.Name,
+			"etaMin":     eta,
+			"profileUrl": provider.ProfileURL,
+			"rating":     provider.Rating,
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
 	svc, _ := s.acceptedRepo.FindByID(ctx, serviceID)
 	go s.notify.SendToUser(
 		context.Background(),
 		svc.User.Hex(),
 		"New Bid Received",
-		"A provider placed a bid.",
+		fmt.Sprintf("%s placed a bid of ₹%d", provider.Name, price),
 		map[string]string{
+			"type": "NEW_BID",
 			"serviceId": serviceID,
+			"payload": string(payloadBytes), 
 		},
 	)
 
@@ -624,6 +641,13 @@ func (s *BiddingService) AcceptBid(
 				"price":      price,
 			},
 		)
+		providerPayload := map[string]any{
+			"serviceId": serviceID,
+			"price":     price,
+			"profileUrl": provider.ProfileURL,
+		}
+		provBytes, _ := json.Marshal(providerPayload)
+
 
 		// =====================================================
 		// 🔔 PUSH NOTIFICATION
@@ -637,6 +661,7 @@ func (s *BiddingService) AcceptBid(
 			map[string]string{
 				"serviceId": serviceID,
 				"type":      "bid_accepted",
+				"payload":   string(provBytes),
 			},
 		)
 
@@ -757,16 +782,43 @@ func (s *BiddingService) RejectBid(
 	// 🔔 PUSH NOTIFICATION
 	// =====================================================
 
+	payload := map[string]any{
+		"user": map[string]any{
+			"name":      user.Name,
+			"profileUrl": user.ImageUrl,
+		},
+		"serviceId": serviceID,
+		"price":     price,
+		"vehicle": map[string]any{
+			"type":   svc.VehicleType,
+			"number": svc.VehicleNumber,
+			"brand":  svc.Brand,
+			"year":   svc.ModelYear,
+			"fuel":   svc.FuelType,
+			"model":  svc.Model,
+		},
+		"serviceType": svc.ServiceType,
+		"issues":      svc.Issues,
+		"distanceKm":  dist,
+		"etaMin":      estimateETA(dist),
+		"rebid":       true,
+		"expiresIn":   60,
+	}
+
+	payloadBytes, _ := json.Marshal(payload)
+
 	go s.notify.SendToProvider(
 		context.Background(),
 		providerID,
 		"Bid Rejected",
 		"Customer rejected your bid. You can offer a new price.",
 		map[string]string{
-			"serviceId": serviceID,
 			"type":      "bid_rejected",
+			"serviceId": serviceID,
+			"payload":   string(payloadBytes), // ✅ SAME AS SOCKET
 		},
 	)
+
 
 	return nil
 }
@@ -1107,21 +1159,39 @@ func (s *BiddingService) findProvidersFixedPrice(
 						"expiresIn":   60,
 					},
 				)
+			payload := map[string]any{
+				"user": map[string]any{
+					"name":       user.Name,
+					"profileUrl": user.ImageUrl,
+				},
+				"serviceId":   serviceID,
+				"fixedPrice":  fixedPriceGst,
+				"serviceType": "fixedPrice",
+				"vehicle": map[string]any{
+					"type":   vehicleType,
+					"number": vehicleNumber,
+					"brand":  brand,
+					"year":   modelYear,
+					"fuel":   fuelType,
+					"model":  model,
+				},
+				"issues":     issues,
+				"distanceKm": distKm,
+				"etaMin":     eta,
+				"expiresIn":  60,
+			}
+
+			payloadBytes, _ := json.Marshal(payload)
+
 			go s.notify.SendToProvider(
 				context.Background(),
 				pid,
 				"Service available",
-				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPrice),
+				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPriceGst),
 				map[string]string{
-					"serviceId":  serviceID,
-					"fixedPrice": strconv.FormatFloat(fixedPrice, 'f', 0, 64),
-					"vehicleType": vehicleType,
-					"vehicleNumber": vehicleNumber,
-					"brand": brand,
-					"modelYear": strconv.Itoa(modelYear),
-					"fuelType": fuelType,
-					"model": model,
-					"issues": strings.Join(issues, ","),
+					"type":      "fixed_price_request",
+					"serviceId": serviceID,
+					"payload":   string(payloadBytes), // ✅ SAME AS SOCKET
 				},
 			)
 		}

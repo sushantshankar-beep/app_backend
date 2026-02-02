@@ -7,7 +7,7 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/worker"
-
+	"app_backend/internal/dto"
 	"app_backend/internal/repository"
 	"errors"
 	"fmt"
@@ -26,9 +26,11 @@ type ProviderService struct {
 	acceptedServiceRepo ports.AcceptedServiceRepository
 	providerRepo  *repository.ProviderRepo
 	kycRepo *repository.KYCRepo
+	userRepo *repository.UserRepo
+	ratingsRepo *repository.RatingRepo
 }
 
-func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo,	kycRepo *repository.KYCRepo) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo,	kycRepo *repository.KYCRepo,userRepo *repository.UserRepo,ratingsRepo *repository.RatingRepo) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
 		counterRepo:		counterRepo,
@@ -38,6 +40,8 @@ func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.Co
 		acceptedServiceRepo: acceptedRepo,
 		providerRepo: providerRepo,
 		kycRepo: kycRepo,
+		userRepo: userRepo,
+		ratingsRepo: ratingsRepo,
 	}
 }
 func isProviderProfileCompleted(p *domain.Provider) bool {
@@ -426,4 +430,82 @@ func (s *ProviderService) DeleteProviderAccount(ctx context.Context, id domain.P
 	provider.UpdatedAt = time.Now()
 
 	return s.repo.Update(ctx, provider)
+}
+
+func (s *ProviderService) GetProviderServicesAndReviews(ctx context.Context, providerID string) (*dto.ProviderServicesAndReviewsResponse, error) {
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, errors.New("invalid provider ID")
+	}
+
+	provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerID))
+	if err != nil {
+		return nil, errors.New("provider not found")
+	}
+
+	ratings, err := s.ratingsRepo.GetRatingsByRatee(ctx, providerObjID, domain.RATING_PROVIDER)
+	if err != nil {
+		return nil, err
+	}
+
+	uniqueRatings := s.getUniqueRatings(ratings)
+
+	var total int
+	for _, r := range uniqueRatings {
+		total += int(r.Stars)
+	}
+
+	avg := 0.0
+	if len(uniqueRatings) > 0 {
+		avg = float64(total) / float64(len(uniqueRatings))
+	}
+
+	topRatings := uniqueRatings
+	if len(uniqueRatings) > 5 {
+		topRatings = uniqueRatings[:5]
+	}
+
+	topReviews := make([]dto.RatingResponse, 0, len(topRatings))
+	for _, r := range topRatings {
+		var raterName string
+		if user, err := s.userRepo.GetByID(ctx, r.RaterID); err == nil && user != nil {
+			raterName = user.Name
+		}
+
+		topReviews = append(topReviews, dto.RatingResponse{
+			ID:          r.ID.Hex(),
+			BookingID:   r.BookingID.Hex(),
+			RaterID:     r.RaterID.Hex(),
+			RaterName:   raterName,
+			RateeID:     r.RateeID.Hex(),
+			RateeName:   provider.Name,
+			RatingType:  string(r.RatingType),
+			Stars:       r.Stars,
+			Review:      r.Review,
+			Recommended: *r.Recommended,
+			CreatedAt:   r.CreatedAt,
+		})
+	}
+
+	return &dto.ProviderServicesAndReviewsResponse{
+		Services:      provider.ProviderServices,
+		AverageRating: avg,
+		TotalRatings:  len(uniqueRatings),
+		TopReviews:    topReviews,
+	}, nil
+}
+
+func (s *ProviderService) getUniqueRatings(ratings []domain.Rating) []domain.Rating {
+	seen := make(map[string]bool)
+	unique := make([]domain.Rating, 0)
+
+	for _, r := range ratings {
+		raterID := r.RaterID.Hex()
+		if !seen[raterID] {
+			seen[raterID] = true
+			unique = append(unique, r)
+		}
+	}
+
+	return unique
 }

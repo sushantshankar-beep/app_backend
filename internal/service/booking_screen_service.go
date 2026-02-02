@@ -270,6 +270,7 @@ func (s *BookingService) GetUserBookingDetails(
 	// ---------------- LOAD PROVIDER (OPTIONAL) ----------------
 
 	var providerName string
+	var providerID domain.ProviderID
 
 	if r.Provider != primitive.NilObjectID {
 		provider, err := s.providerRepo.FindByID(
@@ -280,6 +281,7 @@ func (s *BookingService) GetUserBookingDetails(
 			return nil, err
 		}
 		providerName = provider.Name
+		providerID = provider.ID
 	}
 
 	// ---------------- LOAD COMPLAINT ----------------
@@ -376,8 +378,9 @@ func (s *BookingService) GetUserBookingDetails(
 		Issues:        r.Issues,
 
 		Timestamps: r.Timestamps,
-
+        
 		UserName:     user.Name,
+		ProviderID:   providerID,
 		ProviderName: providerName,
 
 		Billing: dto.BillingDetailsDTO{

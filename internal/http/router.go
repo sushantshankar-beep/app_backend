@@ -50,6 +50,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/ratings/:userID", ratingHandler.GetUserRatings)
 		user.GET("/expenses/:userID", bookingHandler.GetUserExpenses)
 		user.GET("/services/:serviceID/notifications",userAuth,notificationHandler.ListUserByService)
+		user.GET("/provider-services-reviews/:providerID", providerHandler.GetProviderServicesAndReviews)
 
 	}
 	device := r.Group("/devices", userAuth)

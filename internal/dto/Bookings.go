@@ -27,6 +27,7 @@ type UserBookingDTO struct {
 type UserBookingDetailDTO struct {
 	ID               primitive.ObjectID `json:"id"`
 	UserID           string             `json:"userId"`
+	ProviderID        domain.ProviderID             `json:"providerId"`
 	ServiceNumber    string             `json:"serviceNumber"`
 	ProfileURL    string      `json:"profileUrl"`
 	Status           string             `json:"status"`

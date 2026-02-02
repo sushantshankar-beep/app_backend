@@ -165,6 +165,8 @@ func main() {
 		acceptedServiceRepo,
 		providerRepo,
 		kycRepo,
+		userRepo,
+		ratingRepo,
 	)
 	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo,paymentRepo)
 	locationSvc := service.NewLocationService(locationRepo)

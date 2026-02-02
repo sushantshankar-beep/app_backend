@@ -279,3 +279,19 @@ func (h *ProviderHandler) DeleteAccount(c *gin.Context) {
 		"message": "Provider account deleted successfully",
 	})
 }
+
+func (h *ProviderHandler) GetProviderServicesAndReviews(c *gin.Context) {
+	providerID := c.Param("providerID")
+	if providerID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "providerID is required"})
+		return
+	}
+
+	data, err := h.svc.GetProviderServicesAndReviews(c.Request.Context(), providerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, data)
+}

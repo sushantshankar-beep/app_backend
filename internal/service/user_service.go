@@ -195,3 +195,4 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 	_, err = s.users.UpdateByID(ctx, userID, update)
 	return err
 }
+

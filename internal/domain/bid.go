@@ -36,3 +36,5 @@ type BidLog struct {
     Price       int            `bson:"price"`
     CreatedAt   time.Time          `bson:"createdAt"`
 }
+
+

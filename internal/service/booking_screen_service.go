@@ -187,6 +187,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		dtoItem := dto.UserBookingDTO{
 			ID:            r.ID,
 			UserID:        string(user.ID),
+			ProfileURL:    user.ImageUrl,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    tx.Amount,
@@ -269,6 +270,7 @@ func (s *BookingService) GetUserBookingDetails(
 	// ---------------- LOAD PROVIDER (OPTIONAL) ----------------
 
 	var providerName string
+	var providerID domain.ProviderID
 
 	if r.Provider != primitive.NilObjectID {
 		provider, err := s.providerRepo.FindByID(
@@ -279,6 +281,7 @@ func (s *BookingService) GetUserBookingDetails(
 			return nil, err
 		}
 		providerName = provider.Name
+		providerID = provider.ID
 	}
 
 	// ---------------- LOAD COMPLAINT ----------------
@@ -365,7 +368,7 @@ func (s *BookingService) GetUserBookingDetails(
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,
-
+		ProfileURL:    user.ImageUrl,
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,
@@ -375,8 +378,9 @@ func (s *BookingService) GetUserBookingDetails(
 		Issues:        r.Issues,
 
 		Timestamps: r.Timestamps,
-
+        
 		UserName:     user.Name,
+		ProviderID:   providerID,
 		ProviderName: providerName,
 
 		Billing: dto.BillingDetailsDTO{
@@ -451,6 +455,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		dtoItem := dto.ProviderBookingDTO{
 			ID:            r.ID,
 			ProviderID:    providerID,
+			ProfileURL:    provider.ProfileURL,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    tx.Amount,
@@ -614,6 +619,7 @@ func (s *BookingService) GetProviderBookingDetails(
 	return &dto.ProviderBookingDetailDTO{
 		ID:            r.ID,
 		ProviderID:    string(provider.ID),
+		ProfileURL:    provider.ProfileURL,
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
 		FinalPrice:    r.FinalPrice,

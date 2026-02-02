@@ -212,3 +212,88 @@ func validateImages(raw any) ([]string, error) {
 func (s *ComplaintService) GetNextComplaintSequence(ctx context.Context) (int64, error) {
     return s.repo.GetNextSequence(ctx, "complaint")
 }
+
+func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context, acceptedServiceID string) (map[string]any, error) {
+	objID, err := primitive.ObjectIDFromHex(acceptedServiceID)
+	if err != nil {
+		return nil, errors.New("invalid acceptedService ID")
+	}
+
+	complaintDoc, err := s.repo.FindByAcceptedServiceId(ctx, objID)
+	if err != nil {
+		return nil, err
+	}
+
+	if complaintDoc == nil {
+		return nil, errors.New("no complaint found for this booking")
+	}
+
+	var remark string
+	if complaintDoc.Assessment != nil {
+		remark = complaintDoc.Assessment.RemarkForUser
+	}
+
+	complaintMap := map[string]any{
+		"_id":             complaintDoc.ID.Hex(),
+		"acceptedService": complaintDoc.AcceptedService,
+		"complaintNumber": complaintDoc.ComplaintNumber,
+		"status":          string(complaintDoc.Status),
+		"timeline":        complaintDoc.Timeline,
+		"Remark":          remark,
+		"createdAt":       complaintDoc.CreatedAt,
+		"updatedAt":       complaintDoc.UpdatedAt,
+	}
+
+	if complaintDoc.UserComplaint != nil {
+		complaintMap["userComplaint"] = map[string]any{
+			"problem":  complaintDoc.UserComplaint.Problem,
+			"photos":   complaintDoc.UserComplaint.Photos,
+			"raisedAt": complaintDoc.UserComplaint.RaisedAt,
+		}
+	}
+
+	return complaintMap, nil
+}
+
+
+func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Context, acceptedServiceID string) (map[string]any, error) {
+	objID, err := primitive.ObjectIDFromHex(acceptedServiceID)
+	if err != nil {
+		return nil, errors.New("invalid acceptedService ID")
+	}
+
+	complaintDoc, err := s.repo.FindByAcceptedServiceId(ctx, objID)
+	if err != nil {
+		return nil, err
+	}
+
+	if complaintDoc == nil {
+		return nil, errors.New("no complaint found for this booking")
+	}
+
+	var remark string
+	if complaintDoc.Assessment != nil {
+		remark = complaintDoc.Assessment.RemarkForProvider
+	}
+
+	complaintMap := map[string]any{
+		"_id":             complaintDoc.ID.Hex(),
+		"acceptedService": complaintDoc.AcceptedService,
+		"complaintNumber": complaintDoc.ComplaintNumber,
+		"status":          string(complaintDoc.Status),
+		"timeline":        complaintDoc.Timeline,
+		"Remark":          remark,
+		"createdAt":       complaintDoc.CreatedAt,
+		"updatedAt":       complaintDoc.UpdatedAt,
+	}
+
+	if complaintDoc.ProviderComplaint != nil {
+		complaintMap["providerComplaint"] = map[string]any{
+			"problem":  complaintDoc.ProviderComplaint.Problem,
+			"photos":   complaintDoc.ProviderComplaint.Photos,
+			"raisedAt": complaintDoc.ProviderComplaint.RaisedAt,
+		}
+	}
+
+	return complaintMap, nil
+}

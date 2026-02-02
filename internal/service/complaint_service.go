@@ -213,10 +213,16 @@ func (s *ComplaintService) GetNextComplaintSequence(ctx context.Context) (int64,
     return s.repo.GetNextSequence(ctx, "complaint")
 }
 
-func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context, acceptedServiceID string) (map[string]any, error) {
+
+func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context, acceptedServiceID string, userID string) (map[string]any, error) {
 	objID, err := primitive.ObjectIDFromHex(acceptedServiceID)
 	if err != nil {
 		return nil, errors.New("invalid acceptedService ID")
+	}
+
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID")
 	}
 
 	complaintDoc, err := s.repo.FindByAcceptedServiceId(ctx, objID)
@@ -227,6 +233,10 @@ func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context
 	if complaintDoc == nil {
 		return nil, errors.New("no complaint found for this booking")
 	}
+	
+	if complaintDoc.UserID != userObjID {
+		return nil, errors.New("unauthorized: you can only view your own complaints")
+	}
 
 	var remark string
 	if complaintDoc.Assessment != nil {
@@ -235,11 +245,11 @@ func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context
 
 	complaintMap := map[string]any{
 		"_id":             complaintDoc.ID.Hex(),
-		"acceptedService": complaintDoc.AcceptedService,
+		"acceptedService": complaintDoc.AcceptedService.Hex(),
 		"complaintNumber": complaintDoc.ComplaintNumber,
 		"status":          string(complaintDoc.Status),
 		"timeline":        complaintDoc.Timeline,
-		"Remark":          remark,
+		"remark":          remark,
 		"createdAt":       complaintDoc.CreatedAt,
 		"updatedAt":       complaintDoc.UpdatedAt,
 	}
@@ -255,11 +265,15 @@ func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context
 	return complaintMap, nil
 }
 
-
-func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Context, acceptedServiceID string) (map[string]any, error) {
+func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Context, acceptedServiceID string, providerID string) (map[string]any, error) {
 	objID, err := primitive.ObjectIDFromHex(acceptedServiceID)
 	if err != nil {
 		return nil, errors.New("invalid acceptedService ID")
+	}
+
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, errors.New("invalid provider ID")
 	}
 
 	complaintDoc, err := s.repo.FindByAcceptedServiceId(ctx, objID)
@@ -271,6 +285,10 @@ func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Con
 		return nil, errors.New("no complaint found for this booking")
 	}
 
+	if complaintDoc.ProviderID != providerObjID {
+		return nil, errors.New("unauthorized: you can only view your own complaints")
+	}
+
 	var remark string
 	if complaintDoc.Assessment != nil {
 		remark = complaintDoc.Assessment.RemarkForProvider
@@ -278,7 +296,7 @@ func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Con
 
 	complaintMap := map[string]any{
 		"_id":             complaintDoc.ID.Hex(),
-		"acceptedService": complaintDoc.AcceptedService,
+		"acceptedService": complaintDoc.AcceptedService.Hex(),
 		"complaintNumber": complaintDoc.ComplaintNumber,
 		"status":          string(complaintDoc.Status),
 		"timeline":        complaintDoc.Timeline,

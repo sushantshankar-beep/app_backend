@@ -264,6 +264,7 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 			"name":  user.Name,
 			"phone": user.Phone,
 			"otp":   user.ServiceOTP,
+			"profileUrl": user.ImageUrl,
 		},
 
 		"service": svc.ServiceType,
@@ -422,6 +423,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 			"phone": user.Phone,
 			"lat":   userLat,
 			"lon":   userLong,
+			"profileUrl": user.ImageUrl,
 		},
 
 		"provider": map[string]any{

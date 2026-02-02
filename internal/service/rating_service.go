@@ -85,7 +85,7 @@ func (s *RatingService) CreateUserRating(ctx context.Context, userID string, req
 		RatingType:    string(rating.RatingType),
 		Stars:         rating.Stars,
 		Review:        rating.Review,
-		Recommended:   rating.Recommended,
+		Recommended:   *rating.Recommended,
 		CreatedAt:     rating.CreatedAt,
 	}, nil
 }
@@ -144,7 +144,7 @@ func (s *RatingService) CreateProviderRating(ctx context.Context, userID string,
 		RatingType:    string(rating.RatingType),
 		Stars:         rating.Stars,
 		Review:        rating.Review,
-		Recommended:   rating.Recommended,
+		Recommended:   *rating.Recommended,
 		CreatedAt:     rating.CreatedAt,
 	}, nil
 }
@@ -259,7 +259,7 @@ func (s *RatingService) mapRatingsToResponse(ctx context.Context, ratings []doma
 			RatingType:  string(r.RatingType),
 			Stars:       r.Stars,
 			Review:      r.Review,
-			Recommended: r.Recommended,
+			Recommended: *r.Recommended,
 			CreatedAt:   r.CreatedAt,
 		})
 	}

@@ -6,7 +6,7 @@ type CreateRatingRequest struct {
 	BookingID   string `json:"bookingId"`
 	Stars       int    `json:"stars"`
 	Review      string `json:"review"`
-	Recommended bool   `json:"recommended"`
+	Recommended *bool   `json:"recommended"`
 }
 
 type RatingResponse struct {

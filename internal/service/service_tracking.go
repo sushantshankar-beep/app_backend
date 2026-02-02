@@ -348,9 +348,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		update["timestamps.inProgressAt"] = now
 
 	case domain.StatusCompleted:
-
-		update["timestamps.CompletedAt"] = now
-
+		update["timestamps.completedAt"] = now
 		serviceHex := svc.ID.Hex()
 		providerHex := svc.Provider.Hex()
 

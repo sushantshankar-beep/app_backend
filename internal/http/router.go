@@ -50,7 +50,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.POST("/rating/:userID", ratingHandler.CreateProviderRating)
 		user.GET("/ratings/:userID", ratingHandler.GetUserRatings)
 		user.GET("/expenses/:userID", bookingHandler.GetUserExpenses)
-		user.GET("/services/:serviceID/notifications",userAuth,notificationHandler.ListUserByService)
+		user.GET("/notifications/latest-service",userAuth,notificationHandler.ListUserLatestService)
 		user.GET("/provider-services-reviews/:providerID", providerHandler.GetProviderServicesAndReviews)
 
 	}
@@ -149,7 +149,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
 		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
         provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
-        provider.GET("/services/:serviceID/notifications",providerAuth,notificationHandler.ListProviderByService)
+        provider.GET("/notifications/latest-service",providerAuth,notificationHandler.ListProviderLatestService)
+
 
 	}
 	meta := r.Group("/meta")

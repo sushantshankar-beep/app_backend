@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"app_backend/internal/domain"
 	"app_backend/internal/dto"
+	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -22,38 +22,42 @@ func NewNotificationQueryService(
 }
 
 /* ============================================================
-   LIST BY SERVICE
+   LATEST SERVICE NOTIFICATIONS ✅ NEW
 ============================================================ */
 
-func (s *NotificationQueryService) ListByService(
+func (s *NotificationQueryService) ListLatestServiceNotifications(
 	ctx context.Context,
 	ownerID string,
 	ownerType string,
-	serviceID string,
 	limit int64,
 	skip int64,
-) ([]dto.NotificationResponse, error) {
+) (primitive.ObjectID, []dto.NotificationResponse, error) {
 
 	oid, err := primitive.ObjectIDFromHex(ownerID)
 	if err != nil {
-		return nil, errors.New("invalid owner id")
+		return primitive.NilObjectID, nil, errors.New("invalid owner id")
 	}
 
-	sid, err := primitive.ObjectIDFromHex(serviceID)
+	serviceID, err := s.repo.FindLatestServiceForOwner(
+		ctx,
+		oid,
+		ownerType,
+	)
 	if err != nil {
-		return nil, errors.New("invalid service id")
+		return primitive.NilObjectID, nil, err
 	}
 
 	items, err := s.repo.FindByService(
 		ctx,
 		oid,
 		ownerType,
-		sid,
+		serviceID,
 		limit,
 		skip,
 	)
+
 	if err != nil {
-		return nil, err
+		return primitive.NilObjectID, nil, err
 	}
 
 	out := make([]dto.NotificationResponse, 0, len(items))
@@ -62,7 +66,7 @@ func (s *NotificationQueryService) ListByService(
 		out = append(out, mapNotification(n))
 	}
 
-	return out, nil
+	return serviceID, out, nil
 }
 
 /* ============================================================
@@ -71,7 +75,7 @@ func (s *NotificationQueryService) ListByService(
 
 func mapNotification(n domain.Notification) dto.NotificationResponse {
 
-	resp := dto.NotificationResponse{
+	return dto.NotificationResponse{
 		ID:        n.ID.Hex(),
 		OwnerID:  n.OwnerID.Hex(),
 		OwnerType: n.OwnerType,
@@ -86,6 +90,4 @@ func mapNotification(n domain.Notification) dto.NotificationResponse {
 
 		CreatedAt: n.CreatedAt,
 	}
-
-	return resp
 }

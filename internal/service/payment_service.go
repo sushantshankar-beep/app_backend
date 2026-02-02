@@ -251,6 +251,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		go s.notify.SendToUser(
 			context.Background(),
 			svc.User.Hex(),
+			svc.ID.Hex(),
 			"Payment Successful",
 			"Your payment was successful. Tracking started.",
 			map[string]string{
@@ -262,6 +263,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 			go s.notify.SendToProvider(
 				context.Background(),
 				svc.Provider.Hex(),
+				svc.ID.Hex(),
 				"Payment Completed",
 				"User completed payment. Start the job.",
 				map[string]string{
@@ -280,6 +282,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		go s.notify.SendToUser(
 			context.Background(),
 			svc.User.Hex(),
+			svc.ID.Hex(),
 			"Payment Failed",
 			"Payment failed. Please retry.",
 			map[string]string{
@@ -291,6 +294,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 			go s.notify.SendToProvider(
 				context.Background(),
 				svc.Provider.Hex(),
+				svc.ID.Hex(),
 				"Payment Failed",
 				"User payment failed.",
 				map[string]string{

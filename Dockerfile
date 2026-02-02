@@ -7,22 +7,27 @@ RUN go mod download
 
 COPY . .
 
-# 👇 build CRON binary instead of API server
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -o cron ./cmd/cron/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd/app/main.go
 
-
-# ============================
-# RUNTIME
-# ============================
 
 FROM alpine:3.19
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont \
+    fontconfig
 
-# 👇 copy cron binary only
-COPY --from=builder /app/cron .
+# 👇 copy binary
+COPY --from=builder /app/server .
 
-CMD ["./cron"]
+# 👇 copy templates + storage folders
+COPY --from=builder /app/internal/template ./internal/template
+COPY --from=builder /app/internal/storage ./internal/storage
+
+EXPOSE 8080
+CMD ["./server"]

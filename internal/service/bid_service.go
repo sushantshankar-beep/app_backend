@@ -337,6 +337,7 @@ func (s *BiddingService) findProviders(
 					go s.notify.SendToProvider(
 						context.Background(),
 						providerID,
+						serviceID,
 						"New Service Request",
 						"Nearby user needs help. Open app to bid.",
 						map[string]string{
@@ -486,6 +487,7 @@ func (s *BiddingService) PlaceBid(
 	go s.notify.SendToUser(
 		context.Background(),
 		svc.User.Hex(),
+		serviceID,
 		"New Bid Received",
 		fmt.Sprintf("%s placed a bid of ₹%d", provider.Name, price),
 		map[string]string{
@@ -656,6 +658,7 @@ func (s *BiddingService) AcceptBid(
 		go s.notify.SendToProvider(
 			context.Background(),
 			providerID,
+			serviceID,
 			"Bid Accepted 🎉",
 			"User accepted your bid.",
 			map[string]string{
@@ -810,6 +813,7 @@ func (s *BiddingService) RejectBid(
 	go s.notify.SendToProvider(
 		context.Background(),
 		providerID,
+		serviceID,
 		"Bid Rejected",
 		"Customer rejected your bid. You can offer a new price.",
 		map[string]string{
@@ -913,6 +917,7 @@ func (s *BiddingService) ProviderCancelService(
 	go s.notify.SendToUser(
 		context.Background(),
 		svc.User.Hex(),
+		serviceID,
 		"Provider cancelled",
 		"Searching new provider at same price.",
 		map[string]string{
@@ -1186,6 +1191,7 @@ func (s *BiddingService) findProvidersFixedPrice(
 			go s.notify.SendToProvider(
 				context.Background(),
 				pid,
+				serviceID,
 				"Service available",
 				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPriceGst),
 				map[string]string{
@@ -1276,6 +1282,7 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 		go s.notify.SendToProvider(
 			context.Background(),
 			pid,
+			serviceID,
 			"Service Cancelled By User",
 			"User cancelled the service",
 			map[string]string{
@@ -1516,6 +1523,7 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 				go s.notify.SendToProvider(
 					context.Background(),
 					providerID,
+					serviceID,
 					"Service Cancelled",
 					"User cancelled the request.",
 					map[string]string{

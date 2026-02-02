@@ -131,6 +131,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		go s.notify.SendToProvider(
 			context.Background(),
 			providerID,
+			svc.ID.Hex(),
 			"Payment Successful 💰",
 			"User payment completed. Open app.",
 			map[string]string{
@@ -248,6 +249,7 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 	go s.notify.SendToUser(
 		context.Background(),
 		txn.UserID,
+		svc.ID.Hex(),
 		"Payment Failed ❌",
 		msg,
 		map[string]string{

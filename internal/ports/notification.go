@@ -6,6 +6,7 @@ type NotificationService interface {
 	SendToProvider(
 		ctx context.Context,
 		providerID string,
+		serviceID string,
 		title string,
 		body string,
 		data map[string]string,
@@ -14,6 +15,7 @@ type NotificationService interface {
 	SendToUser(
 		ctx context.Context,
 		userID string,
+		serviceID string,
 		title string,
 		body string,
 		data map[string]string,

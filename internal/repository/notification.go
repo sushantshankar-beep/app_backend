@@ -47,40 +47,53 @@ func (r *NotificationRepo) Create(
 }
 
 /* ============================================================
-   FIND BY OWNER (USER / PROVIDER)
+   FIND LATEST SERVICE FOR OWNER  ✅ NEW
 ============================================================ */
 
-func (r *NotificationRepo) FindByOwner(
+func (r *NotificationRepo) FindLatestServiceForOwner(
 	ctx context.Context,
 	ownerID primitive.ObjectID,
 	ownerType string,
-	limit int64,
-	skip int64,
-) ([]domain.Notification, error) {
+) (primitive.ObjectID, error) {
 
-	filter := bson.M{
-		"ownerId":   ownerID,
-		"ownerType": ownerType,
+	pipeline := mongo.Pipeline{
+
+		{{"$match", bson.M{
+			"ownerId":   ownerID,
+			"ownerType": ownerType,
+		}}},
+
+		{{"$sort", bson.M{"createdAt": -1}}},
+
+		{{"$group", bson.M{
+			"_id": "$serviceId",
+			"latest": bson.M{"$first": "$createdAt"},
+		}}},
+
+		{{"$sort", bson.M{"latest": -1}}},
+
+		{{"$limit", 1}},
 	}
 
-	opts := options.Find().
-		SetSort(bson.M{"createdAt": -1}).
-		SetLimit(limit).
-		SetSkip(skip)
-
-	cur, err := r.col.Find(ctx, filter, opts)
+	cur, err := r.col.Aggregate(ctx, pipeline)
 	if err != nil {
-		return nil, err
+		return primitive.NilObjectID, err
 	}
 	defer cur.Close(ctx)
 
-	var res []domain.Notification
-
-	if err := cur.All(ctx, &res); err != nil {
-		return nil, err
+	var out []struct {
+		ID primitive.ObjectID `bson:"_id"`
 	}
 
-	return res, nil
+	if err := cur.All(ctx, &out); err != nil {
+		return primitive.NilObjectID, err
+	}
+
+	if len(out) == 0 {
+		return primitive.NilObjectID, mongo.ErrNoDocuments
+	}
+
+	return out[0].ID, nil
 }
 
 /* ============================================================
@@ -120,101 +133,4 @@ func (r *NotificationRepo) FindByService(
 	}
 
 	return res, nil
-}
-
-/* ============================================================
-   COUNT UNREAD
-============================================================ */
-
-func (r *NotificationRepo) CountUnread(
-	ctx context.Context,
-	ownerID primitive.ObjectID,
-	ownerType string,
-) (int64, error) {
-
-	return r.col.CountDocuments(ctx, bson.M{
-		"ownerId":   ownerID,
-		"ownerType": ownerType,
-		"read":      false,
-	})
-}
-
-/* ============================================================
-   MARK SINGLE READ
-============================================================ */
-
-func (r *NotificationRepo) MarkRead(
-	ctx context.Context,
-	id primitive.ObjectID,
-	ownerID primitive.ObjectID,
-) error {
-
-	res, err := r.col.UpdateOne(
-		ctx,
-		bson.M{
-			"_id":     id,
-			"ownerId": ownerID,
-		},
-		bson.M{
-			"$set": bson.M{
-				"read": true,
-			},
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	if res.MatchedCount == 0 {
-		return mongo.ErrNoDocuments
-	}
-
-	return nil
-}
-
-/* ============================================================
-   MARK ALL READ
-============================================================ */
-
-func (r *NotificationRepo) MarkAllRead(
-	ctx context.Context,
-	ownerID primitive.ObjectID,
-	ownerType string,
-) error {
-
-	_, err := r.col.UpdateMany(
-		ctx,
-		bson.M{
-			"ownerId":   ownerID,
-			"ownerType": ownerType,
-			"read":      false,
-		},
-		bson.M{
-			"$set": bson.M{
-				"read": true,
-			},
-		},
-	)
-
-	return err
-}
-
-/* ============================================================
-   UPDATE STATUS
-============================================================ */
-
-func (r *NotificationRepo) UpdateStatus(
-	ctx context.Context,
-	id primitive.ObjectID,
-	status string,
-) error {
-
-	_, err := r.col.UpdateByID(ctx, id, bson.M{
-		"$set": bson.M{
-			"status": status,
-		},
-	})
-
-	return err
 }

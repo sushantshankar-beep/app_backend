@@ -20,10 +20,10 @@ func NewNotificationHandler(
 }
 
 /* ============================================================
-   USER PER SERVICE
+   USER – LATEST SERVICE
 ============================================================ */
 
-func (h *NotificationHandler) ListUserByService(c *gin.Context) {
+func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 
 	userID := c.GetString("userID")
 	if userID == "" {
@@ -31,15 +31,12 @@ func (h *NotificationHandler) ListUserByService(c *gin.Context) {
 		return
 	}
 
-	serviceID := c.Param("serviceID")
-
 	limit, skip := parsePagination(c)
 
-	res, err := h.svc.ListByService(
+	serviceID, res, err := h.svc.ListLatestServiceNotifications(
 		c.Request.Context(),
 		userID,
 		"user",
-		serviceID,
 		limit,
 		skip,
 	)
@@ -49,10 +46,17 @@ func (h *NotificationHandler) ListUserByService(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"notifications": res})
+	c.JSON(http.StatusOK, gin.H{
+		"serviceId":     serviceID.Hex(),
+		"notifications": res,
+	})
 }
 
-func (h *NotificationHandler) ListProviderByService(c *gin.Context) {
+/* ============================================================
+   PROVIDER – LATEST SERVICE
+============================================================ */
+
+func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 
 	providerID := c.GetString("providerID")
 	if providerID == "" {
@@ -60,15 +64,12 @@ func (h *NotificationHandler) ListProviderByService(c *gin.Context) {
 		return
 	}
 
-	serviceID := c.Param("serviceID")
-
 	limit, skip := parsePagination(c)
 
-	res, err := h.svc.ListByService(
+	serviceID, res, err := h.svc.ListLatestServiceNotifications(
 		c.Request.Context(),
 		providerID,
 		"provider",
-		serviceID,
 		limit,
 		skip,
 	)
@@ -78,7 +79,10 @@ func (h *NotificationHandler) ListProviderByService(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"notifications": res})
+	c.JSON(http.StatusOK, gin.H{
+		"serviceId":     serviceID.Hex(),
+		"notifications": res,
+	})
 }
 
 /* ============================================================

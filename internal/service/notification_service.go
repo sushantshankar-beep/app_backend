@@ -36,7 +36,7 @@ var ErrMissingFirebaseCred = errors.New(
 )
 
 /* ============================================================
-   DEVICE TOKEN REPO PORT  ✅ FIXED
+   DEVICE TOKEN REPO PORT
 ============================================================ */
 
 type DeviceTokenRepository interface {
@@ -89,7 +89,7 @@ func InitFirebaseClient() (*messaging.Client, error) {
 		return nil, err
 	}
 
-	log.Println("🔥 Firebase FCM initialized (GO)")
+	log.Println("🔥 Firebase FCM initialized")
 
 	return client, nil
 }
@@ -101,12 +101,21 @@ func InitFirebaseClient() (*messaging.Client, error) {
 func (f *FirebaseNotificationService) SendToProvider(
 	ctx context.Context,
 	providerID string,
+	serviceID string,
 	title string,
 	body string,
 	data map[string]string,
 ) error {
 
-	return f.send(ctx, providerID, "provider", title, body, data)
+	return f.send(
+		ctx,
+		providerID,
+		"provider",
+		serviceID,
+		title,
+		body,
+		data,
+	)
 }
 
 /* ============================================================
@@ -116,12 +125,21 @@ func (f *FirebaseNotificationService) SendToProvider(
 func (f *FirebaseNotificationService) SendToUser(
 	ctx context.Context,
 	userID string,
+	serviceID string,
 	title string,
 	body string,
 	data map[string]string,
 ) error {
 
-	return f.send(ctx, userID, "user", title, body, data)
+	return f.send(
+		ctx,
+		userID,
+		"user",
+		serviceID,
+		title,
+		body,
+		data,
+	)
 }
 
 /* ============================================================
@@ -132,12 +150,16 @@ func (f *FirebaseNotificationService) send(
 	ctx context.Context,
 	ownerID string,
 	ownerType string,
+	serviceID string,
 	title string,
 	body string,
 	data map[string]string,
 ) error {
 
-	// never use cancelled ctx
+	// -------------------------------------------------
+	// SAFE CONTEXT
+	// -------------------------------------------------
+
 	ctx2 := ctx
 	if ctx == nil || ctx.Err() != nil {
 		ctx2 = context.Background()
@@ -146,25 +168,47 @@ func (f *FirebaseNotificationService) send(
 	ctx2, cancel := context.WithTimeout(ctx2, 6*time.Second)
 	defer cancel()
 
-	// ------------------------------
-	// 🔎 PARSE OWNER ID
-	// ------------------------------
+	// -------------------------------------------------
+	// PARSE OWNER ID
+	// -------------------------------------------------
+
 	ownerOID, err := primitive.ObjectIDFromHex(ownerID)
 	if err != nil {
 		return err
 	}
 
-	// ------------------------------
-	// 📦 SERVICE ID (optional)
-	// ------------------------------
-	var serviceOID primitive.ObjectID
-	if sid, ok := data["serviceId"]; ok && sid != "" {
-		serviceOID, _ = primitive.ObjectIDFromHex(sid)
+	// -------------------------------------------------
+	// PARSE SERVICE ID
+	// -------------------------------------------------
+
+	serviceOID := primitive.NilObjectID
+
+	if serviceID != "" {
+
+		serviceOID, err = primitive.ObjectIDFromHex(serviceID)
+		if err != nil {
+			return err
+		}
 	}
 
-	// ------------------------------
-	// 💾 SAVE TO DB FIRST
-	// ------------------------------
+	// -------------------------------------------------
+	// COPY PAYLOAD + FORCE serviceId
+	// -------------------------------------------------
+
+	payload := make(map[string]string)
+
+	for k, v := range data {
+		payload[k] = v
+	}
+
+	if serviceID != "" {
+		payload["serviceId"] = serviceID
+	}
+
+	// -------------------------------------------------
+	// SAVE NOTIFICATION
+	// -------------------------------------------------
+
 	notif := &domain.Notification{
 		OwnerID:   ownerOID,
 		OwnerType: ownerType,
@@ -172,7 +216,7 @@ func (f *FirebaseNotificationService) send(
 
 		Title: title,
 		Body:  body,
-		Data:  data,
+		Data:  payload,
 
 		Read:   false,
 		Status: "sent",
@@ -181,27 +225,32 @@ func (f *FirebaseNotificationService) send(
 	}
 
 	if err := f.notifRepo.Create(ctx2, notif); err != nil {
-		log.Println("❌ Notification DB insert failed:", err)
+		log.Println("❌ Notification insert failed:", err)
 	}
 
-	// ------------------------------
-	// 🔎 FETCH TOKENS  ✅ FIXED
-	// ------------------------------
-	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID, ownerType)
+	// -------------------------------------------------
+	// FETCH TOKENS  ✅ ownerType REMOVED
+	// -------------------------------------------------
+
+	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID,ownerType)
 	if err != nil {
-		log.Printf("❌ FCM token lookup failed owner=%s err=%v",
-			ownerID, err)
+		log.Printf(
+			"❌ token lookup failed owner=%s err=%v",
+			ownerID,
+			err,
+		)
 		return err
 	}
 
 	if len(tokens) == 0 {
-		log.Printf("⚠️ No FCM tokens owner=%s", ownerID)
+		log.Printf("⚠️ no tokens owner=%s", ownerID)
 		return nil
 	}
 
-	// ------------------------------
-	// ✅ SINGLE TOKEN
-	// ------------------------------
+	// -------------------------------------------------
+	// SINGLE TOKEN
+	// -------------------------------------------------
+
 	if len(tokens) == 1 {
 
 		msg := &messaging.Message{
@@ -210,51 +259,38 @@ func (f *FirebaseNotificationService) send(
 				Title: title,
 				Body:  body,
 			},
-			Data: data,
+			Data: payload,
 		}
 
-		resp, err := f.fcm.Send(ctx2, msg)
-
-		log.Println("🔥 FCM SEND SINGLE RESPONSE =", resp)
-		log.Println("🔥 FCM SEND SINGLE ERROR =", err)
-
+		_, err := f.fcm.Send(ctx2, msg)
 		return err
 	}
 
-	// ------------------------------
-	// ✅ MULTI TOKEN
-	// ------------------------------
+	// -------------------------------------------------
+	// MULTICAST
+	// -------------------------------------------------
+
 	mmsg := &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
 			Body:  body,
 		},
-		Data: data,
+		Data: payload,
 	}
 
 	resp, err := f.fcm.SendMulticast(ctx2, mmsg)
-
 	if err != nil {
-		log.Println("❌ FCM MULTICAST ERROR:", err)
+		log.Println("❌ FCM multicast error:", err)
 		return err
 	}
 
 	log.Printf(
-		"📲 FCM MULTI owner=%s success=%d fail=%d",
+		"📲 FCM multicast owner=%s success=%d fail=%d",
 		ownerID,
 		resp.SuccessCount,
 		resp.FailureCount,
 	)
-
-	for i, r := range resp.Responses {
-		if !r.Success {
-			log.Printf("❌ token=%s err=%v",
-				tokens[i],
-				r.Error,
-			)
-		}
-	}
 
 	return nil
 }

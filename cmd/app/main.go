@@ -73,7 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatal("firebase init:", err)
 	}
-	service.TestFCMSend(firebaseClient)
+	// service.TestFCMSend(firebaseClient)
 
 	//repository
 	paymentRepo := repository.NewPaymentRepository(db)
@@ -101,13 +101,16 @@ func main() {
 	providerAgreementRepo := repository.NewAgreementRepo(db)
 	settlementRepo := repository.NewSettlementHistoryRepository(db)
 	refundRepo := repository.NewRefundRepo(db)
+	notificationRepo := repository.NewNotificationRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
 	notificationSvc := service.NewFirebaseNotificationService(
 		firebaseClient,
 		deviceTokenRepo,
+		notificationRepo,
 	)
+	notificationQuerySvc := service.NewNotificationQueryService(notificationRepo) 
 
 	kycService := service.NewKYCService(kycRepo,providerRepo)
 	userVehicleService := service.NewUserVehicleService(
@@ -225,11 +228,13 @@ func main() {
 	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)
 	ratingHandler := handlers.NewRatingHandler(ratingService)
 	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)
+	notificationHandler := handlers.NewNotificationHandler(notificationQuerySvc)
+
 
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

@@ -7,10 +7,13 @@ import (
 	"os"
 	"time"
 
+	"app_backend/internal/domain"
 	"app_backend/internal/ports"
+	"app_backend/internal/repository"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"google.golang.org/api/option"
 )
 
@@ -21,6 +24,7 @@ import (
 type FirebaseNotificationService struct {
 	fcm       *messaging.Client
 	tokenRepo DeviceTokenRepository
+	notifRepo *repository.NotificationRepo
 }
 
 /* ============================================================
@@ -40,17 +44,19 @@ type DeviceTokenRepository interface {
 }
 
 /* ============================================================
-   CONSTRUCTOR
+   CONSTRUCTOR  ✅ UPDATED
 ============================================================ */
 
 func NewFirebaseNotificationService(
 	fcm *messaging.Client,
 	tokenRepo DeviceTokenRepository,
+	notifRepo *repository.NotificationRepo,
 ) ports.NotificationService {
 
 	return &FirebaseNotificationService{
 		fcm:       fcm,
 		tokenRepo: tokenRepo,
+		notifRepo: notifRepo,
 	}
 }
 
@@ -96,7 +102,7 @@ func (f *FirebaseNotificationService) SendToProvider(
 	data map[string]string,
 ) error {
 
-	return f.send(ctx, providerID, title, body, data)
+	return f.send(ctx, providerID, "provider", title, body, data)
 }
 
 /* ============================================================
@@ -111,16 +117,17 @@ func (f *FirebaseNotificationService) SendToUser(
 	data map[string]string,
 ) error {
 
-	return f.send(ctx, userID, title, body, data)
+	return f.send(ctx, userID, "user", title, body, data)
 }
 
 /* ============================================================
-   CORE SEND (FIXED)
+   CORE SEND + SAVE  ✅ FIXED
 ============================================================ */
 
 func (f *FirebaseNotificationService) send(
 	ctx context.Context,
 	ownerID string,
+	ownerType string,
 	title string,
 	body string,
 	data map[string]string,
@@ -132,9 +139,46 @@ func (f *FirebaseNotificationService) send(
 		ctx2 = context.Background()
 	}
 
-	// timeout for mongo + FCM
 	ctx2, cancel := context.WithTimeout(ctx2, 6*time.Second)
 	defer cancel()
+
+	// ------------------------------
+	// 🔎 PARSE OWNER ID
+	// ------------------------------
+	ownerOID, err := primitive.ObjectIDFromHex(ownerID)
+	if err != nil {
+		return err
+	}
+
+	// ------------------------------
+	// 📦 SERVICE ID (optional)
+	// ------------------------------
+	var serviceOID primitive.ObjectID
+	if sid, ok := data["serviceId"]; ok && sid != "" {
+		serviceOID, _ = primitive.ObjectIDFromHex(sid)
+	}
+
+	// ------------------------------
+	// 💾 SAVE TO DB FIRST
+	// ------------------------------
+	notif := &domain.Notification{
+		OwnerID:   ownerOID,
+		OwnerType: ownerType,
+		ServiceID: serviceOID,
+
+		Title: title,
+		Body:  body,
+		Data:  data,
+
+		Read:   false,
+		Status: "sent",
+
+		CreatedAt: time.Now(),
+	}
+
+	if err := f.notifRepo.Create(ctx2, notif); err != nil {
+		log.Println("❌ Notification DB insert failed:", err)
+	}
 
 	// ------------------------------
 	// 🔎 FETCH TOKENS
@@ -146,15 +190,13 @@ func (f *FirebaseNotificationService) send(
 		return err
 	}
 
-	log.Println("📲 FCM TOKENS =", tokens)
-
 	if len(tokens) == 0 {
 		log.Printf("⚠️ No FCM tokens owner=%s", ownerID)
 		return nil
 	}
 
 	// ------------------------------
-	// ✅ SINGLE TOKEN → Send()
+	// ✅ SINGLE TOKEN
 	// ------------------------------
 	if len(tokens) == 1 {
 
@@ -176,7 +218,7 @@ func (f *FirebaseNotificationService) send(
 	}
 
 	// ------------------------------
-	// ✅ MULTI TOKEN → SendMulticast()
+	// ✅ MULTI TOKEN
 	// ------------------------------
 	mmsg := &messaging.MulticastMessage{
 		Tokens: tokens,
@@ -211,31 +253,4 @@ func (f *FirebaseNotificationService) send(
 	}
 
 	return nil
-}
-
-/* ============================================================
-   TEST FUNCTION (OPTIONAL)
-============================================================ */
-
-func TestFCMSend(client *messaging.Client) {
-
-	ctx := context.Background()
-
-	token := "PASTE_REAL_TOKEN"
-
-	msg := &messaging.Message{
-		Token: token,
-		Notification: &messaging.Notification{
-			Title: "🔥 Test from Go backend",
-			Body:  "If you see this, FCM works!",
-		},
-		Data: map[string]string{
-			"type": "test",
-		},
-	}
-
-	resp, err := client.Send(ctx, msg)
-
-	log.Println("FCM TEST RESPONSE =", resp)
-	log.Println("FCM TEST ERROR =", err)
 }

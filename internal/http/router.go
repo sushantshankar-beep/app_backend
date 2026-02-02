@@ -1,3 +1,4 @@
+
 package http
 
 import (
@@ -9,7 +10,7 @@ import (
 	"app_backend/internal/socket"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler, providerAgreementHandler *handlers.AgreementHandler) *gin.Engine {
+func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.ProviderHandler,userAuth gin.HandlerFunc,providerAuth gin.HandlerFunc,locationHandler *handlers.LocationHandler,complaintHandler *handlers.ComplaintHandler,homepageHandler *handlers.HomepageHandler,paymentHandler *handlers.PaymentHandler,biddingHandler *handlers.BiddingHandler,amcValidationHandler *handlers.AMCValidationHandler,hub *socket.Hub,bookingHandler *handlers.BookingHandler,serviceTrackingHandler *handlers.ServiceTrackingHandler,kycHandler *handlers.KYCHandler,invoiceHandler *handlers.InvoiceHandler,userVehicleHandler *handlers.UserVehicleHandler,providerStatus *handlers.ProviderStatusHandler,metaHandler *handlers.MetaHandler,s3Uploader *s3.Uploader,imageUploadS3Handler *handlers.ImageUploadS3Handler,deviceHandler *handlers.DeviceHandler,ratingHandler *handlers.RatingHandler, providerAgreementHandler *handlers.AgreementHandler,notificationHandler *handlers.NotificationHandler) *gin.Engine {
 	r := gin.Default()
 	r.Static("/invoices", "./internal/storage/invoices")
 
@@ -48,6 +49,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.POST("/rating/:userID", ratingHandler.CreateProviderRating)
 		user.GET("/ratings/:userID", ratingHandler.GetUserRatings)
 		user.GET("/expenses/:userID", bookingHandler.GetUserExpenses)
+		user.GET("/services/:serviceID/notifications",userAuth,notificationHandler.ListUserByService)
 
 	}
 	device := r.Group("/devices", userAuth)
@@ -144,6 +146,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
 		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
         provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
+        provider.GET("/services/:serviceID/notifications",providerAuth,notificationHandler.ListProviderByService)
 
 	}
 	meta := r.Group("/meta")

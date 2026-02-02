@@ -1456,23 +1456,23 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	s.socket.CloseRoom(userRoom)
 
 	// =====================================================
-	// 📡 INFORM PROVIDERS — GEO BASED
+	// 📡 INFORM PROVIDERS — GEO BASED (DEDUPED)
 	// =====================================================
 
 	var svc domain.AcceptedService
-	svcLoaded := true
-
 	if err := s.acceptedRepo.Col().
 		FindOne(ctx, bson.M{"_id": serviceOID}).
 		Decode(&svc); err != nil {
 
 		log.Println("❌ cancel geo load service failed:", err)
-		svcLoaded = false
+		goto CLEANUP
 	}
 
-	if svcLoaded && svc.UserLocation != nil {
+	if svc.UserLocation != nil {
 
 		radiusSteps := []float64{10, 25, 50, 100}
+
+		sent := make(map[string]struct{})
 
 		for _, radius := range radiusSteps {
 
@@ -1495,9 +1495,15 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 			for _, loc := range res {
 
 				providerID := loc.Name
+
+				// ✅ prevent duplicates
+				if _, ok := sent[providerID]; ok {
+					continue
+				}
+				sent[providerID] = struct{}{}
+
 				room := "provider:" + providerID
 
-				// socket
 				s.socket.Emit(
 					room,
 					"service:cancelled",
@@ -1507,7 +1513,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 					},
 				)
 
-				// push
 				go s.notify.SendToProvider(
 					context.Background(),
 					providerID,
@@ -1520,6 +1525,8 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 			}
 		}
 	}
+
+CLEANUP:
 
 	// ===========================
 	// 🧹 BACKGROUND REDIS CLEANUP
@@ -1564,6 +1571,7 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 	return nil
 }
+
 
 
 

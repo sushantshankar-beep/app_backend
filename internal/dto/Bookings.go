@@ -11,6 +11,7 @@ type UserBookingDTO struct {
 	UserID        string             `json:"userId"`
 	ServiceNumber string             `json:"serviceNumber"`
 	ProfileURL    string      `json:"profileUrl"`
+	ProviderProfileUrl    string      `json:"providerProfileUrl"`
 	Status        string             `json:"status"`
 	FinalPrice    float64            `json:"finalPrice"`
 	Issues        []string           `json:"issues,omitempty"`
@@ -30,6 +31,7 @@ type UserBookingDetailDTO struct {
 	ProviderID        domain.ProviderID             `json:"providerId"`
 	ServiceNumber    string             `json:"serviceNumber"`
 	ProfileURL    string      `json:"profileUrl"`
+	ProviderProfileUrl    string      `json:"providerProfileUrl"`
 	Status           string             `json:"status"`
 	FinalPrice       float64            `json:"finalPrice"`
 	VehicleNumber    string             `json:"vehicleNumber"`
@@ -67,6 +69,7 @@ type ProviderBookingDTO struct {
 	ID            primitive.ObjectID `json:"id"`
 	ProviderID    string             `json:"providerId"`
 	ProfileURL    string      `json:"profileUrl"`
+	UserProfileUrl    string      `json:"userProfileUrl"`
 	ServiceNumber string             `json:"serviceNumber"`
 	Status        string             `json:"status"`
 	FinalPrice    float64            `json:"finalPrice"`
@@ -89,6 +92,7 @@ type ProviderBookingDetailDTO struct {
 	ID               primitive.ObjectID `json:"id"`
 	ProviderID       string             `json:"providerId"`
 	ProfileURL    string      `json:"profileUrl"`
+	UserProfileUrl    string      `json:"userProfileUrl"`
 	ServiceNumber    string             `json:"serviceNumber"`
 	Status           string             `json:"status"`
 	FinalPrice       float64            `json:"finalPrice"`

@@ -193,6 +193,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			FinalPrice:    tx.Amount,
 			UserName:      user.Name,
 			ProviderName:  provider.Name,
+			ProviderProfileUrl: provider.ProfileURL,
 			VehicleType:   r.VehicleType,
 			Ratings:       "",
 			Issues:        r.Issues,
@@ -271,6 +272,7 @@ func (s *BookingService) GetUserBookingDetails(
 
 	var providerName string
 	var providerID domain.ProviderID
+	var providerProfileUrl string
 
 	if r.Provider != primitive.NilObjectID {
 		provider, err := s.providerRepo.FindByID(
@@ -282,6 +284,7 @@ func (s *BookingService) GetUserBookingDetails(
 		}
 		providerName = provider.Name
 		providerID = provider.ID
+		providerProfileUrl =  provider.ProfileURL
 	}
 
 	// ---------------- LOAD COMPLAINT ----------------
@@ -376,12 +379,13 @@ func (s *BookingService) GetUserBookingDetails(
 		FuelType:      r.FuelType,
 		VehicleType:   r.VehicleType,
 		Issues:        r.Issues,
-
+  
 		Timestamps: r.Timestamps,
         
 		UserName:     user.Name,
 		ProviderID:   providerID,
 		ProviderName: providerName,
+		ProviderProfileUrl: providerProfileUrl,
 
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
@@ -461,6 +465,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			FinalPrice:    tx.Amount,
 			ProviderName:  provider.Name,
 			UserName:      user.Name,
+			UserProfileUrl: user.ImageUrl,
 			VehicleNumber: r.VehicleNumber,
 			Brand:         r.Brand,
 			Model:         r.Model,
@@ -636,6 +641,7 @@ func (s *BookingService) GetProviderBookingDetails(
 
 		ProviderName: provider.Name,
 		UserName:     user.Name,
+		UserProfileUrl: user.ImageUrl,
 
 		Complaint: complaintDTO,
 

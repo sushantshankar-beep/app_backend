@@ -101,7 +101,6 @@ func (h *ComplaintHandler) GetProviderComplaints(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
-
 func (h *ComplaintHandler) GetUserComplaintByBooking(c *gin.Context) {
 	acceptedServiceID := c.Param("acceptedServiceId")
 	
@@ -112,10 +111,24 @@ func (h *ComplaintHandler) GetUserComplaintByBooking(c *gin.Context) {
 		return
 	}
 
-	complaint, err := h.svc.GetUserComplaintByAcceptedService(c.Request.Context(), acceptedServiceID)
+	userID := c.GetString(middleware.ContextKeyUserID)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "unauthorized: user authentication required",
+		})
+		return
+	}
+
+	complaint, err := h.svc.GetUserComplaintByAcceptedService(c.Request.Context(), acceptedServiceID, userID)
 	if err != nil {
 		if err.Error() == "no complaint found for this booking" {
 			c.JSON(http.StatusNotFound, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		if err.Error() == "unauthorized: you can only view your own complaints" {
+			c.JSON(http.StatusForbidden, gin.H{
 				"error": err.Error(),
 			})
 			return
@@ -131,7 +144,6 @@ func (h *ComplaintHandler) GetUserComplaintByBooking(c *gin.Context) {
 	})
 }
 
-
 func (h *ComplaintHandler) GetProviderComplaintByBooking(c *gin.Context) {
 	acceptedServiceID := c.Param("acceptedServiceId")
 	
@@ -142,7 +154,15 @@ func (h *ComplaintHandler) GetProviderComplaintByBooking(c *gin.Context) {
 		return
 	}
 
-	complaint, err := h.svc.GetProviderComplaintByAcceptedService(c.Request.Context(), acceptedServiceID)
+	providerID := c.GetString(middleware.ContextKeyProviderID)
+	if providerID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "unauthorized: provider authentication required",
+		})
+		return
+	}
+
+	complaint, err := h.svc.GetProviderComplaintByAcceptedService(c.Request.Context(), acceptedServiceID, providerID)
 	if err != nil {
 		if err.Error() == "no complaint found for this booking" {
 			c.JSON(http.StatusNotFound, gin.H{

@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"fmt"
 )
 
 type BookingHandler struct {
@@ -86,8 +85,7 @@ func (h *BookingHandler) GetProviderBookings(c *gin.Context) {
 func (h *BookingHandler) GetProviderBookingDetail(c *gin.Context) {
 	providerID := c.Param("providerID")
 	bookingID := c.Param("serviceID")
-	fmt.Println("this is provider id",providerID)
-	fmt.Println("this is booking id",bookingID)
+
 
 	booking, err := h.svc.GetProviderBookingDetails( c.Request.Context(), providerID, bookingID)
 	if err != nil {

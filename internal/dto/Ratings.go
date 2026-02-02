@@ -19,6 +19,7 @@ type RatingResponse struct {
 	RatingType  string    `json:"ratingType"`
 	Stars       int       `json:"stars"`
 	Review      string    `json:"review"`
+	RaterProfileImage string    `json:"raterProfileImage"`
 	Recommended bool      `json:"recommended"`
 	CreatedAt   time.Time `json:"createdAt"`
 }

@@ -467,23 +467,24 @@ func (s *ProviderService) GetProviderServicesAndReviews(ctx context.Context, pro
 
 	topReviews := make([]dto.RatingResponse, 0, len(topRatings))
 	for _, r := range topRatings {
-		var raterName string
+		var raterName, raterProfileImage string
 		if user, err := s.userRepo.GetByID(ctx, r.RaterID); err == nil && user != nil {
 			raterName = user.Name
+			raterProfileImage = user.ImageUrl
 		}
 
 		topReviews = append(topReviews, dto.RatingResponse{
-			ID:          r.ID.Hex(),
-			BookingID:   r.BookingID.Hex(),
-			RaterID:     r.RaterID.Hex(),
-			RaterName:   raterName,
-			RateeID:     r.RateeID.Hex(),
-			RateeName:   provider.Name,
-			RatingType:  string(r.RatingType),
-			Stars:       r.Stars,
-			Review:      r.Review,
-			Recommended: *r.Recommended,
-			CreatedAt:   r.CreatedAt,
+			ID:                r.ID.Hex(),
+			RaterID:           r.RaterID.Hex(),
+			RaterName:         raterName,
+			RaterProfileImage: raterProfileImage,
+			RateeID:           r.RateeID.Hex(),
+			RateeName:         provider.Name,
+			RatingType:        string(r.RatingType),
+			Stars:             r.Stars,
+			Review:            r.Review,
+			Recommended:       *r.Recommended,
+			CreatedAt:         r.CreatedAt,
 		})
 	}
 

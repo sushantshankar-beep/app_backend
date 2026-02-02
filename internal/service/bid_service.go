@@ -1395,7 +1395,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 	lockKey := "service:locked:" + serviceID
 	stopKey := "service:stop:" + serviceID
-	providersKey := "service:providers:" + serviceID
 
 	// ===========================
 	// 🚀 FAST: Redis pipeline
@@ -1456,49 +1455,71 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 	s.socket.CloseRoom(userRoom)
 
-	// ===========================
-	// 📡 INFORM PROVIDERS
-	// ===========================
+	// =====================================================
+	// 📡 INFORM PROVIDERS — GEO BASED
+	// =====================================================
 
-	providerIDs, err := s.rdb.SMembers(ctx, providersKey).Result()
-	if err != nil {
-		log.Println("❌ redis fetch providers error:", err)
-	} else {
+	var svc domain.AcceptedService
+	svcLoaded := true
 
-		log.Println("📣 cancelling providers:", providerIDs)
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
 
-		for _, providerID := range providerIDs {
-
-			room := "provider:" + providerID
-
-			// socket
-			s.socket.Emit(
-				room,
-				"service:cancelled",
-				map[string]any{
-					"serviceId": serviceID,
-					"reason":    "cancelled_by_user",
-				},
-			)
-
-			// push
-			go s.notify.SendToProvider(
-				context.Background(),
-				providerID,
-				"Service Cancelled",
-				"User cancelled the request.",
-				map[string]string{
-					"serviceId": serviceID,
-				},
-			)
-		}
+		log.Println("❌ cancel geo load service failed:", err)
+		svcLoaded = false
 	}
 
-	// ===========================
-	// 🚪 Cleanup provider set
-	// ===========================
+	if svcLoaded && svc.UserLocation != nil {
 
-	s.rdb.Del(ctx, providersKey)
+		radiusSteps := []float64{10, 25, 50, 100}
+
+		for _, radius := range radiusSteps {
+
+			res, err := s.rdb.GeoRadius(
+				ctx,
+				"providers:geo",
+				svc.UserLocation.Long,
+				svc.UserLocation.Lat,
+				&redis.GeoRadiusQuery{
+					Radius: radius,
+					Unit:   "km",
+				},
+			).Result()
+
+			if err != nil {
+				log.Println("❌ cancel geo query error:", err)
+				continue
+			}
+
+			for _, loc := range res {
+
+				providerID := loc.Name
+				room := "provider:" + providerID
+
+				// socket
+				s.socket.Emit(
+					room,
+					"service:cancelled",
+					map[string]any{
+						"serviceId": serviceID,
+						"reason":    "cancelled_by_user",
+					},
+				)
+
+				// push
+				go s.notify.SendToProvider(
+					context.Background(),
+					providerID,
+					"Service Cancelled",
+					"User cancelled the request.",
+					map[string]string{
+						"serviceId": serviceID,
+					},
+				)
+			}
+		}
+	}
 
 	// ===========================
 	// 🧹 BACKGROUND REDIS CLEANUP
@@ -1513,6 +1534,9 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 			"service:attempts:" + serviceID + ":*",
 			"service:userReject:" + serviceID + ":*",
 			"service:providerBidLock:" + serviceID + ":*",
+			"service:activeProvider:" + serviceID + ":*",
+			"service:sendcount:" + serviceID + ":*",
+			"service:dist:" + serviceID + ":*",
 		}
 
 		for _, pattern := range patterns {
@@ -1540,6 +1564,7 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 	return nil
 }
+
 
 
 

@@ -19,3 +19,4 @@ type NotificationService interface {
 		data map[string]string,
 	) error
 }
+

@@ -36,15 +36,19 @@ var ErrMissingFirebaseCred = errors.New(
 )
 
 /* ============================================================
-   DEVICE TOKEN REPO PORT
+   DEVICE TOKEN REPO PORT  ✅ FIXED
 ============================================================ */
 
 type DeviceTokenRepository interface {
-	GetTokens(ctx context.Context, ownerID string) ([]string, error)
+	GetTokens(
+		ctx context.Context,
+		ownerID string,
+		ownerType string,
+	) ([]string, error)
 }
 
 /* ============================================================
-   CONSTRUCTOR  ✅ UPDATED
+   CONSTRUCTOR
 ============================================================ */
 
 func NewFirebaseNotificationService(
@@ -121,7 +125,7 @@ func (f *FirebaseNotificationService) SendToUser(
 }
 
 /* ============================================================
-   CORE SEND + SAVE  ✅ FIXED
+   CORE SEND + SAVE
 ============================================================ */
 
 func (f *FirebaseNotificationService) send(
@@ -181,9 +185,9 @@ func (f *FirebaseNotificationService) send(
 	}
 
 	// ------------------------------
-	// 🔎 FETCH TOKENS
+	// 🔎 FETCH TOKENS  ✅ FIXED
 	// ------------------------------
-	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID)
+	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID, ownerType)
 	if err != nil {
 		log.Printf("❌ FCM token lookup failed owner=%s err=%v",
 			ownerID, err)

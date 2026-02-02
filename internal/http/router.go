@@ -42,6 +42,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.POST("/raise-complaint", userAuth, s3Uploader.Upload([]s3.FieldConfig{
 			{FormFieldName: "photos", ContextKey: "complaint_photos"},}), complaintHandler.RaiseComplaint)
 		user.GET("/complaints", userAuth, complaintHandler.GetMyComplaints)
+		user.GET("/complaints/booking/:acceptedServiceId", complaintHandler.GetUserComplaintByBooking)
 		user.POST("/logout", userAuth, userHandler.Logout)
 		user.DELETE("/delete", userAuth, userHandler.DeleteUser)
 		user.GET("/booking/:userID", bookingHandler.GetUserBookings)
@@ -135,6 +136,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/my-service/:id", providerAuth, providerHandler.GetMyService)
 		provider.POST("/raise-complaint", providerAuth, s3Uploader.Upload([]s3.FieldConfig{
 		  {FormFieldName: "photos", ContextKey: "complaint_photos"},}), complaintHandler.RaiseComplaint)
+		provider.GET("/complaints/booking/:acceptedServiceId", complaintHandler.GetProviderComplaintByBooking)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
 		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
 		provider.POST("/logout", providerAuth, providerHandler.Logout)

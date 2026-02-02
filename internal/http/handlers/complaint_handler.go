@@ -100,3 +100,63 @@ func (h *ComplaintHandler) GetProviderComplaints(c *gin.Context) {
 
 	c.JSON(http.StatusOK, list)
 }
+
+
+func (h *ComplaintHandler) GetUserComplaintByBooking(c *gin.Context) {
+	acceptedServiceID := c.Param("acceptedServiceId")
+	
+	if acceptedServiceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "acceptedServiceId is required",
+		})
+		return
+	}
+
+	complaint, err := h.svc.GetUserComplaintByAcceptedService(c.Request.Context(), acceptedServiceID)
+	if err != nil {
+		if err.Error() == "no complaint found for this booking" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": complaint,
+	})
+}
+
+
+func (h *ComplaintHandler) GetProviderComplaintByBooking(c *gin.Context) {
+	acceptedServiceID := c.Param("acceptedServiceId")
+	
+	if acceptedServiceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "acceptedServiceId is required",
+		})
+		return
+	}
+
+	complaint, err := h.svc.GetProviderComplaintByAcceptedService(c.Request.Context(), acceptedServiceID)
+	if err != nil {
+		if err.Error() == "no complaint found for this booking" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": complaint,
+	})
+}

@@ -857,7 +857,7 @@ func (s *BookingService) GetProviderTodayEarnings(
 	}
 
 	return &dto.TodayEarningsResponse{
-		Total:    total,
+		Total:    utils.RoundTo2(total),
 		Earnings: earnings,
 	}, nil
 }
@@ -902,3 +902,4 @@ func (s *BookingService) GetProviderSettledEarnings(
 		Settlements: settlements,
 	}, nil
 }
+

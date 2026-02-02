@@ -126,29 +126,33 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	// ----------------------------------
 
 	var complaint any
-	if svc.ComplaintProvider != nil &&
-		*svc.ComplaintProvider != primitive.NilObjectID {
+	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
+	if err == nil && complaintDoc != nil {
+		var remark string
+		if complaintDoc.Assessment != nil {
+			remark = complaintDoc.Assessment.RemarkForUser
+		}
 
-		list, err := s.complaintRepo.FindByProvider(ctx, *svc.ComplaintProvider)
-		if err == nil && len(list) > 0 {
+		complaintMap := map[string]any{
+			"_id":              complaintDoc.ID.Hex(),
+			"complaintNumber": complaintDoc.ComplaintNumber,
+			"status":          string(complaintDoc.Status),
+			"timeline":        complaintDoc.Timeline,
+			"Remark":          remark,
+			"createdAt":       complaintDoc.CreatedAt,
+			"updatedAt":       complaintDoc.UpdatedAt,
+		}
 
-			cmp := list[0]
-
-			var problem string
-
-			if cmp.ProviderComplaint != nil {
-				problem = cmp.ProviderComplaint.Problem
-			}
-
-			complaint = map[string]any{
-				"id":        cmp.ID,
-				"status":    cmp.Status,
-				"problem":   problem,
-				"createdAt": cmp.CreatedAt,
+		if complaintDoc.UserComplaint != nil {
+			complaintMap["userComplaint"] = map[string]any{
+				"problem":  complaintDoc.UserComplaint.Problem,
+				"photos":   complaintDoc.UserComplaint.Photos,
+				"raisedAt": complaintDoc.UserComplaint.RaisedAt,
 			}
 		}
-	}
 
+		complaint = complaintMap
+	}
 
 	// ----------------------------------
 	// 📦 Response
@@ -235,28 +239,34 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 	// ----------------------------------
 
 	var complaint any
-	if svc.ComplaintUser != nil &&
-		*svc.ComplaintUser != primitive.NilObjectID {
+	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
+	if err == nil && complaintDoc != nil {
+		var remark string
+		if complaintDoc.Assessment != nil {
+			remark = complaintDoc.Assessment.RemarkForProvider
+		}
 
-		list, err := s.complaintRepo.FindByUser(ctx, *svc.ComplaintUser)
-		if err == nil && len(list) > 0 {
+		complaintMap := map[string]any{
+			"_id":              complaintDoc.ID.Hex(),
+			"complaintNumber": complaintDoc.ComplaintNumber,
+			"status":          string(complaintDoc.Status),
+			"timeline":        complaintDoc.Timeline,
+			"Remark":          remark,
+			"createdAt":       complaintDoc.CreatedAt,
+			"updatedAt":       complaintDoc.UpdatedAt,
+		}
 
-			cmp := list[0]
-
-			var problem string
-
-			if cmp.UserComplaint != nil {
-				problem = cmp.UserComplaint.Problem
-			}
-
-			complaint = map[string]any{
-				"id":        cmp.ID,
-				"status":    cmp.Status,
-				"problem":   problem,
-				"createdAt": cmp.CreatedAt,
+		if complaintDoc.ProviderComplaint != nil {
+			complaintMap["providerComplaint"] = map[string]any{
+				"problem":  complaintDoc.ProviderComplaint.Problem,
+				"photos":   complaintDoc.ProviderComplaint.Photos,
+				"raisedAt": complaintDoc.ProviderComplaint.RaisedAt,
 			}
 		}
+
+		complaint = complaintMap
 	}
+
 	return map[string]any{
 		"screen": "PROVIDER_TRACKING",
 
@@ -269,10 +279,8 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 
 		"service": svc.ServiceType,
 		"status":  svc.Status,
-
-		"complaint": complaint,
-
 		"timestamps": svc.Timestamps,
+		"complaint": complaint,
 	}, nil
 }
 

@@ -20,7 +20,7 @@ type Rating struct {
 	RatingType      RatingType         `bson:"ratingType" json:"ratingType"`
 	Stars           int                `bson:"stars" json:"stars"`
 	Review          string             `bson:"review" json:"review"`
-	Recommended     bool               `bson:"recommended" json:"recommended"`
+	Recommended     *bool               `bson:"recommended" json:"recommended"`
 	CreatedAt       time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt       time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

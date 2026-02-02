@@ -45,13 +45,14 @@ func (h *RatingHandler) CreateProviderRating(c *gin.Context) {
 		return
 	}
 
-	if !req.Recommended {
+	if req.Recommended == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   true,
-			"message": "Recommended is required",
+			"message": "recommended is required",
 		})
 		return
 	}
+	
 	
 	rating, err := h.svc.CreateProviderRating(c.Request.Context(), userID, req)
 	if err != nil {
@@ -91,13 +92,14 @@ func (h *RatingHandler) CreateUserRating(c *gin.Context) {
 		return
 	}
 
-	if !req.Recommended {
+	if req.Recommended == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   true,
-			"message": "Recommended is required",
+			"message": "recommended is required",
 		})
 		return
 	}
+	
 
 	rating, err := h.svc.CreateUserRating(c.Request.Context(), providerID, req)
 	if err != nil {

@@ -39,6 +39,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		ctx,
 		serviceOID,
 		domain.PaymentPaid,
+		"confirmed",
 	)
 
 	// ---------------- LOAD SERVICE ----------------
@@ -205,6 +206,7 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		ctx,
 		serviceOID,
 		domain.PaymentFailed,
+		"provider_assigned",
 	); err != nil {
 		log.Println("❌ update grace:", err)
 	}

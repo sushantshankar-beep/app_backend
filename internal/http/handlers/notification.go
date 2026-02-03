@@ -7,6 +7,8 @@ import (
 	"app_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type NotificationHandler struct {
@@ -25,7 +27,10 @@ func NewNotificationHandler(
 
 func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 
-	userID := c.GetString("userID")
+	userID := c.GetString("userId")
+
+	fmt.Println("👉 userId =", userID)
+
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -41,7 +46,19 @@ func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 		skip,
 	)
 
+	// ✅ NOTHING FOUND — RETURN EMPTY 200
 	if err != nil {
+
+		if err == mongo.ErrNoDocuments {
+
+			c.JSON(http.StatusOK, gin.H{
+				"serviceId":     "",
+				"notifications": []any{},
+			})
+
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -52,13 +69,15 @@ func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 	})
 }
 
+
 /* ============================================================
    PROVIDER – LATEST SERVICE
 ============================================================ */
 
 func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 
-	providerID := c.GetString("providerID")
+	providerID := c.GetString("providerId")
+
 	if providerID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -74,7 +93,19 @@ func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 		skip,
 	)
 
+	// ✅ EMPTY CASE
 	if err != nil {
+
+		if err == mongo.ErrNoDocuments {
+
+			c.JSON(http.StatusOK, gin.H{
+				"serviceId":     "",
+				"notifications": []any{},
+			})
+
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -47,7 +47,7 @@ type AcceptedServiceRepository interface {
 	FindByIDAndProvider(ctx context.Context, serviceID string, providerID domain.ProviderID) (*domain.AcceptedService, error)
 
 	UpdateByID(ctx context.Context, id primitive.ObjectID, update bson.M) error
-	UpdatePaymentStatus(ctx context.Context, id primitive.ObjectID, status domain.PaymentStatus) error
+	UpdatePaymentStatus(ctx context.Context, id primitive.ObjectID, status domain.PaymentStatus,serviceStatus string) error
 	FindStaleSearching(ctx context.Context, before time.Time) ([]domain.AcceptedService, error)
 	FindStuckAssigned(
 		ctx context.Context,

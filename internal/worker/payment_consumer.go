@@ -43,6 +43,7 @@ func (c *PaymentConsumer) Handle(msg []byte) {
 			ctx,
 			serviceOID,
 			domain.PaymentPaid,
+			"confirmed",
 		)
 
 	case "grace":
@@ -50,6 +51,7 @@ func (c *PaymentConsumer) Handle(msg []byte) {
 			ctx,
 			serviceOID,
 			domain.PaymentFailedGrace,
+			"provider_assigned",
 		)
 
 	case "cancelled":

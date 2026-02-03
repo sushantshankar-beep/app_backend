@@ -255,12 +255,13 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 	ctx context.Context,
 	id primitive.ObjectID,
 	status domain.PaymentStatus,
+	ServiceStatus string,
 ) error {
 	_, err := r.col.UpdateByID(ctx, id, bson.M{
 		"$set": bson.M{
 			"paymentStatus": status,
 			"updatedAt":     time.Now(),
-			"status":"confirmed",
+			"status":status,
 		},
 	})
 	return err

@@ -9,8 +9,9 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
-	"go.mongodb.org/mongo-driver/bson"
+	// "go.mongodb.org/mongo-driver/bson"
 	"encoding/json"
+	"github.com/redis/go-redis/v9"
 	// "strconv"
 	// "fmt"
 )
@@ -286,43 +287,70 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 		return
 	}
 
+	log.Printf(
+		"🧪 grace-check service=%s status=%s payment=%s provider=%s",
+		svc.ID.Hex(),
+		svc.Status,
+		svc.PaymentStatus,
+		svc.Provider.Hex(),
+	)
+
+	// 🚫 if payment completed meanwhile → stop
+	if svc.PaymentStatus == domain.PaymentPaid {
+		log.Println("⛔ payment done during grace — skip release")
+		return
+	}
+
 	if err := domain.CanReleaseProviderAfterFailure(svc); err != nil {
 		log.Println("⛔ not releasing provider:", err)
 		return
 	}
 
-	log.Println("✅ releasing provider:", providerID)
+	log.Println("✅ releasing provider after grace:", providerID)
 
-	// ---------------- REDIS CLEANUP ----------------
-	if err := s.redis.Del(ctx, "reserve:"+providerID).Err(); err != nil {
-		log.Println("⚠ redis delete failed:", err)
-	}
-	if err := s.redis.Del(ctx,"provider:busy:"+providerID); err != nil{
-		log.Println("⚠ redis delete failed:", err)
-	}
+	// ===============================
+	// 🔓 REDIS CLEANUP
+	// ===============================
 
-	// ---------------- FINAL STATUS ----------------
-	_ = s.acceptedServiceRepo.UpdateStatus(
-		ctx,
-		serviceOID,
-		"cancelled",
-		bson.M{},
+	s.redis.Del(ctx,
+		"reserve:"+providerID,
+		"provider:busy:"+providerID,
+		"service:locked:"+serviceID,
 	)
 
-	// ---------------- EVENTS ----------------
-	s.events.Publish("payment.failed.final", events.PaymentEvent{
-		ServiceID: serviceID,
-		Status:    "cancelled",
-	})
+	// ===============================
+	// 🌍 ADD PROVIDER BACK TO GEO
+	// ===============================
 
-	// ---------------- USER SOCKET ----------------
+	if svc.ProviderLocation != nil {
+
+		err := s.redis.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+			Name:      providerID,
+			Longitude: svc.ProviderLocation.Long,
+			Latitude:  svc.ProviderLocation.Lat,
+		}).Err()
+
+		if err != nil {
+			log.Println("❌ geo add failed:", err)
+		} else {
+			log.Println("🌍 provider returned to geo:", providerID)
+		}
+	}
+
+	// ===============================
+	// 📡 FINAL SOCKET ONLY
+	// ===============================
+
 	s.socket.EmitWithRetry(
 		"user:"+svc.User.Hex(),
-		"service:cancelled",
+		"provider:released_after_grace",
 		map[string]any{
-			"serviceId": serviceID,
-			"reason":    "payment_timeout",
+			"serviceId":  serviceID,
+			"providerId": providerID,
 		},
 		3,
 	)
+
+	log.Println("🎯 grace release completed:", providerID)
 }
+// 

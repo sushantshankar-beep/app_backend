@@ -355,13 +355,13 @@ func (s *ServiceTrackingService) UpdateStatus(
 	}
 
 	// ================= BUILD PAYLOAD =================
+	var complaintId any = nil
+	if svc.ComplaintProvider != nil && *svc.ComplaintProvider != primitive.NilObjectID {
 
-
-	var complaintId any
-	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
-	if err == nil && complaintDoc != nil {
-		complaintId = complaintDoc.ID.Hex()
+    complaintId = svc.ComplaintProvider.Hex()
 	}
+
+	
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))

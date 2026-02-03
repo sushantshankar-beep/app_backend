@@ -852,10 +852,6 @@ func (s *BiddingService) ProviderCancelService(
 		return errors.New("not assigned provider")
 	}
 	fixedPrice := svc.FinalPrice
-	providerOID, err1 := primitive.ObjectIDFromHex(providerID)
-	if err1 != nil {
-		return err1
-	}
 
 	// 🔓 unlock service
 	stopKey := "service:stop:" + serviceID
@@ -893,7 +889,7 @@ func (s *BiddingService) ProviderCancelService(
 				"provider":      primitive.NilObjectID,
 				"acceptedBid":   primitive.NilObjectID,
 				"fixedPrice":    fixedPrice,
-				"cancelledProviderId": providerOID,
+				"cancelledProviderId": providerID,
 				"updatedAt":     time.Now(),
 				"cancelledByProvider": true,
 			},

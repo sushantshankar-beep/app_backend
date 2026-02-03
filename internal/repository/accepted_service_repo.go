@@ -261,7 +261,7 @@ func (r *AcceptedServiceRepo) UpdatePaymentStatus(
 		"$set": bson.M{
 			"paymentStatus": status,
 			"updatedAt":     time.Now(),
-			"status":status,
+			"status":ServiceStatus,
 		},
 	})
 	return err

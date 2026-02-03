@@ -88,6 +88,8 @@ func (s *BookingService) BuildBookingScreen(
 
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
+	loc, _ := time.LoadLocation("Asia/Kolkata")
+	now := time.Now().In(loc)
 
 	/* ---------------- Build Screen Payload ---------------- */
 
@@ -126,7 +128,7 @@ func (s *BookingService) BuildBookingScreen(
 			"fuelType":      svc.FuelType,
 			"year":          svc.ModelYear,
 			"model":         svc.Model,
-			"time":          time.Now().Local().Format("03:04:05 PM"),
+			"time": now.Format("03:04:05 PM"),
 		},
 
 		"billing": map[string]any{

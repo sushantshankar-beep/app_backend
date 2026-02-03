@@ -51,7 +51,7 @@ type AcceptedService struct {
 	Cancelled  *CancelInfo        `bson:"cancelled,omitempty"`
 	UserLocation *UserLocation `bson:"userLocation" json:"userLocation"`
 	CancelledByProvider bool  	`bson:"cancelledByProvider" json:"cancelledByProvider"`
-	CancelledByProviderId primitive.ObjectID `bson:"cancelledByProviderId" json:"cancelledByProviderId"`
+	CancelledByProviderId string `bson:"cancelledByProviderId" json:"cancelledByProviderId"`
 }
 type UserLocation struct {
 	Lat  float64 `bson:"lat"`

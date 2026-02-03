@@ -42,7 +42,7 @@ func (s *ProviderService) GetDashboardStats(ctx context.Context, providerID doma
 
 	totalCompleted, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "status": "completed"})
 
-	totalCancelled, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID,"cancelledProviderId": providerID, "status": "cancelled"})
+	totalCancelled, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "status": "cancelled"})
 
 	totalPending, _ := s.acceptedServiceRepo.Count(ctx, bson.M{"provider": providerID, "paymentStatus": "pending"})
 

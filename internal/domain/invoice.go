@@ -18,7 +18,7 @@ type Invoice struct {
 	VehicleDetails VehicleInfo        `bson:"vehicle" json:"vehicle"`
 	ServiceInfo    ServiceInfo        `bson:"service" json:"service"`
 	PricingDeatils PricingInfo        `bson:"pricing" json:"pricing"`
-	Transaction    Transaction         `bson:"transaction" json:"transaction"`
+	Transaction    InvoiceTransaction         `bson:"transaction" json:"transaction"`
 	PDFUrl         string             `bson:"pdfUrl" json:"pdfUrl"`
 	CreatedAt      time.Time          `bson:"createdAt" json:"createdAt"`
 }
@@ -57,6 +57,6 @@ type PricingInfo struct {
 	Total         float64 `bson:"total" json:"total"`
 }
 
-type Transaction struct {
+type InvoiceTransaction struct {
 	PaymentMode        string    `bson:"method,omitempty"`
 }

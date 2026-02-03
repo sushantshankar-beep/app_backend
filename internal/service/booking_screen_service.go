@@ -684,7 +684,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 	var totalExpense float64
 
 	for _, service := range services {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, service.ID.Hex())
+		transaction, err := s.transactionRepo.GetLatestPaidTransactionByServiceID(ctx, service.ID.Hex())
 		if err != nil {
 			continue
 		}

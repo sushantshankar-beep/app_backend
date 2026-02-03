@@ -244,8 +244,6 @@ func (s *BookingService) GetUserBookingDetails(
 	serviceID string,
 ) (*dto.UserBookingDetailDTO, error) {
 
-	// ---------------- PARSE IDS ----------------
-
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, err
@@ -256,21 +254,15 @@ func (s *BookingService) GetUserBookingDetails(
 		return nil, err
 	}
 
-	// ---------------- LOAD USER ----------------
-
 	user, err := s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
 		return nil, err
 	}
 
-	// ---------------- LOAD SERVICE ----------------
-
 	r, err := s.acceptedRepo.GetByID(ctx, serviceObjID)
 	if err != nil {
 		return nil, err
 	}
-
-	// ---------------- LOAD PROVIDER (OPTIONAL) ----------------
 
 	var providerName string
 	var providerID domain.ProviderID
@@ -286,61 +278,52 @@ func (s *BookingService) GetUserBookingDetails(
 		}
 		providerName = provider.Name
 		providerID = provider.ID
-		providerProfileUrl =  provider.ProfileURL
+		providerProfileUrl = provider.ProfileURL
 	}
-
-	// ---------------- LOAD COMPLAINT ----------------
-
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(
-		ctx,
-		serviceObjID,
-	)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, err
-	}
-
-	// ---------------- BUILD COMPLAINT DTO (SAFE) ----------------
 
 	var complaintDTO *dto.ComplaintDTO
 
-	if complaint != nil {
-
-		var remark string
-		if complaint.Assessment != nil {
-			remark = complaint.Assessment.RemarkForUser
+	if r.ComplaintUser != nil {
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(
+			ctx,
+			serviceObjID,
+		)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
 		}
 
-		complaintDTO = &dto.ComplaintDTO{
-			ID:              complaint.ID.Hex(),
-			ComplaintUserID: complaint.ID.Hex(),
-			ComplaintNumber: complaint.ComplaintNumber,
-			Status:          string(complaint.Status),
-			Timeline:        complaint.Timeline,
-			Remark:          remark,
-			CreatedAt:       complaint.CreatedAt,
-			UpdatedAt:       complaint.UpdatedAt,
-		}
+		if complaint != nil {
+			var remark string
+			if complaint.Assessment != nil {
+				remark = complaint.Assessment.RemarkForUser
+			}
 
-		if complaint.UserComplaint != nil {
-			complaintDTO.UserIssue = &dto.UserComplaintDTO{
-				Problem:  complaint.UserComplaint.Problem,
-				Photos:   complaint.UserComplaint.Photos,
-				RaisedAt: complaint.UserComplaint.RaisedAt,
+			complaintDTO = &dto.ComplaintDTO{
+				ID:              complaint.ID.Hex(),
+				ComplaintUserID: complaint.ID.Hex(),
+				ComplaintNumber: complaint.ComplaintNumber,
+				Status:          string(complaint.Status),
+				Timeline:        complaint.Timeline,
+				Remark:          remark,
+				CreatedAt:       complaint.CreatedAt,
+				UpdatedAt:       complaint.UpdatedAt,
+			}
+
+			if complaint.UserComplaint != nil {
+				complaintDTO.UserIssue = &dto.UserComplaintDTO{
+					Problem:  complaint.UserComplaint.Problem,
+					Photos:   complaint.UserComplaint.Photos,
+					RaisedAt: complaint.UserComplaint.RaisedAt,
+				}
 			}
 		}
 	}
-
-
-
-	// ---------------- BILLING ----------------
 
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
 	gstAmount := (serviceCharge * gstPercent) / 100
 	totalPayable := serviceCharge + gstAmount
-
-	// ---------------- SAFE LOCATIONS ----------------
 
 	var userLoc dto.UserLocation
 	if r.UserLocation != nil {
@@ -366,30 +349,25 @@ func (s *BookingService) GetUserBookingDetails(
 		cancelledAt = r.CancelledAt
 	}
 
-	// ---------------- FINAL DTO ----------------
-
 	return &dto.UserBookingDetailDTO{
-		ID:            r.ID,
-		UserID:        string(user.ID),
-		ServiceNumber: r.ServiceNumber,
-		Status:        string(r.Status),
-		FinalPrice:    r.FinalPrice,
-		ProfileURL:    user.ImageUrl,
-		VehicleNumber: r.VehicleNumber,
-		Brand:         r.Brand,
-		Model:         r.Model,
-		ModelYear:     r.ModelYear,
-		FuelType:      r.FuelType,
-		VehicleType:   r.VehicleType,
-		Issues:        r.Issues,
-  
-		Timestamps: r.Timestamps,
-        
-		UserName:     user.Name,
-		ProviderID:   providerID,
-		ProviderName: providerName,
+		ID:                 r.ID,
+		UserID:             string(user.ID),
+		ServiceNumber:      r.ServiceNumber,
+		Status:             string(r.Status),
+		FinalPrice:         r.FinalPrice,
+		ProfileURL:         user.ImageUrl,
+		VehicleNumber:      r.VehicleNumber,
+		Brand:              r.Brand,
+		Model:              r.Model,
+		ModelYear:          r.ModelYear,
+		FuelType:           r.FuelType,
+		VehicleType:        r.VehicleType,
+		Issues:             r.Issues,
+		Timestamps:         r.Timestamps,
+		UserName:           user.Name,
+		ProviderID:         providerID,
+		ProviderName:       providerName,
 		ProviderProfileUrl: providerProfileUrl,
-
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -397,16 +375,13 @@ func (s *BookingService) GetUserBookingDetails(
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
 		},
-
-		Cancelled:   cancelled,
-		CancelledAt: cancelledAt,
-		Complaint: complaintDTO,
-
+		Cancelled:        cancelled,
+		CancelledAt:      cancelledAt,
+		Complaint:        complaintDTO,
 		UserLocation:     userLoc,
 		ProviderLocation: providerLoc,
-
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
 	}, nil
 }
 
@@ -513,8 +488,6 @@ func (s *BookingService) GetProviderBookingDetails(
 	serviceID string,
 ) (*dto.ProviderBookingDetailDTO, error) {
 
-	// ---------------- ID PARSE ----------------
-
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
 		return nil, err
@@ -525,8 +498,6 @@ func (s *BookingService) GetProviderBookingDetails(
 		return nil, err
 	}
 
-	// ---------------- LOAD PROVIDER ----------------
-
 	provider, err := s.providerRepo.FindByID(
 		ctx,
 		domain.ProviderID(providerObjID.Hex()),
@@ -535,70 +506,59 @@ func (s *BookingService) GetProviderBookingDetails(
 		return nil, err
 	}
 
-	// ---------------- LOAD SERVICE ----------------
-
 	r, err := s.acceptedRepo.GetByID(ctx, serviceObjID)
 	if err != nil {
 		return nil, err
 	}
-
-	// ---------------- LOAD USER ----------------
 
 	user, err := s.userRepo.GetByID(ctx, r.User)
 	if err != nil {
 		return nil, err
 	}
 
-	// ---------------- LOAD COMPLAINT ----------------
-
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(
-		ctx,
-		serviceObjID,
-	)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, err
-	}
-
-	// ---------------- BUILD COMPLAINT DTO (SAFE) ----------------
-
 	var complaintDTO *dto.ComplaintDTO
 
-	if complaint != nil {
-
-		var remark string
-		if complaint.Assessment != nil {
-			remark = complaint.Assessment.RemarkForProvider
+	if r.ComplaintProvider != nil {
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(
+			ctx,
+			serviceObjID,
+		)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
 		}
 
-		complaintDTO = &dto.ComplaintDTO{
-			ID:              complaint.ID.Hex(),
-			ComplaintProviderID: complaint.ID.Hex(),
-			ComplaintNumber: complaint.ComplaintNumber,
-			Status:          string(complaint.Status),
-			Timeline:        complaint.Timeline,
-			CreatedAt:       complaint.CreatedAt,
-			UpdatedAt:       complaint.UpdatedAt,
-			Remark:          remark,
-		}
+		if complaint != nil {
+			var remark string
+			if complaint.Assessment != nil {
+				remark = complaint.Assessment.RemarkForProvider
+			}
 
-		if complaint.ProviderComplaint != nil {
-			complaintDTO.ProviderIssue = &dto.ProviderComplaintDTO{
-				Problem:  complaint.ProviderComplaint.Problem,
-				Photos:   complaint.ProviderComplaint.Photos,
-				RaisedAt: complaint.ProviderComplaint.RaisedAt,
+			complaintDTO = &dto.ComplaintDTO{
+				ID:                  complaint.ID.Hex(),
+				ComplaintProviderID: complaint.ID.Hex(),
+				ComplaintNumber:     complaint.ComplaintNumber,
+				Status:              string(complaint.Status),
+				Timeline:            complaint.Timeline,
+				CreatedAt:           complaint.CreatedAt,
+				UpdatedAt:           complaint.UpdatedAt,
+				Remark:              remark,
+			}
+
+			if complaint.ProviderComplaint != nil {
+				complaintDTO.ProviderIssue = &dto.ProviderComplaintDTO{
+					Problem:  complaint.ProviderComplaint.Problem,
+					Photos:   complaint.ProviderComplaint.Photos,
+					RaisedAt: complaint.ProviderComplaint.RaisedAt,
+				}
 			}
 		}
 	}
-
-	// ---------------- BILLING ----------------
 
 	const gstPercent = 18.0
 
 	serviceCharge := r.FinalPrice
 	gstOnCommission := (serviceCharge * gstPercent) / 100
 	providerPayout := serviceCharge + gstOnCommission
-
-	// ---------------- SAFE LOCATIONS ----------------
 
 	var userLoc dto.UserLocation
 	if r.UserLocation != nil {
@@ -615,7 +575,7 @@ func (s *BookingService) GetProviderBookingDetails(
 			Long: r.ProviderLocation.Long,
 		}
 	}
-	
+
 	var cancelled *domain.CancelInfo
 	var cancelledAt *time.Time
 
@@ -623,49 +583,42 @@ func (s *BookingService) GetProviderBookingDetails(
 		cancelled = r.Cancelled
 		cancelledAt = r.CancelledAt
 	}
-	// ---------------- FINAL DTO ----------------
 
 	return &dto.ProviderBookingDetailDTO{
-		ID:            r.ID,
-		ProviderID:    string(provider.ID),
-		ProfileURL:    user.ImageUrl,
-		ServiceNumber: r.ServiceNumber,
-		Status:        string(r.Status),
-		FinalPrice:    r.FinalPrice,  
-        UserProfileUrl:  user.ImageUrl,
-		VehicleNumber: r.VehicleNumber,
-		Brand:         r.Brand,
-		Model:         r.Model,
-		ModelYear:     r.ModelYear,
-		FuelType:      r.FuelType,
-		VehicleType:   r.VehicleType,
-		Issues:        r.Issues,
-
-		Timestamps: r.Timestamps,
-
-		ProviderName: provider.Name,
-		UserName:     user.Name,
-
-		Complaint: complaintDTO,
-
+		ID:               r.ID,
+		ProviderID:       string(provider.ID),
+		ProfileURL:       user.ImageUrl,
+		ServiceNumber:    r.ServiceNumber,
+		Status:           string(r.Status),
+		FinalPrice:       r.FinalPrice,
+		UserProfileUrl:   user.ImageUrl,
+		VehicleNumber:    r.VehicleNumber,
+		Brand:            r.Brand,
+		Model:            r.Model,
+		ModelYear:        r.ModelYear,
+		FuelType:         r.FuelType,
+		VehicleType:      r.VehicleType,
+		Issues:           r.Issues,
+		Timestamps:       r.Timestamps,
+		ProviderName:     provider.Name,
+		UserName:         user.Name,
+		Complaint:        complaintDTO,
 		Billing: dto.BillingDetailsDTO{
-			ServiceCharge: utils.RoundTo2(serviceCharge),
+			ServiceCharge:  utils.RoundTo2(serviceCharge),
 			GSTPercent:     gstPercent,
 			GSTAmount:      utils.RoundTo2(gstOnCommission),
 			TotalPayable:   serviceCharge,
 			ProviderPayout: utils.RoundTo2(providerPayout),
 			PaymentStatus:  string(r.PaymentStatus),
 		},
-		Cancelled:   cancelled,
-		CancelledAt: cancelledAt,
+		Cancelled:        cancelled,
+		CancelledAt:      cancelledAt,
 		UserLocation:     userLoc,
 		ProviderLocation: providerLoc,
-
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
 	}, nil
 }
-
 
 func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]dto.UserExpenseDTO, float64, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)

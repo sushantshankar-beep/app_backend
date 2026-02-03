@@ -310,6 +310,7 @@ func (s *BookingService) GetUserBookingDetails(
 
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
+			ComplaintUserID: complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
 			Timeline:        complaint.Timeline,
@@ -569,6 +570,7 @@ func (s *BookingService) GetProviderBookingDetails(
 
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
+			ComplaintProviderID: complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
 			Timeline:        complaint.Timeline,

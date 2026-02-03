@@ -467,6 +467,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			ProviderName:  provider.Name,
 			UserName:      user.Name,
 			VehicleNumber: r.VehicleNumber,
+			UserProfileUrl:  user.ImageUrl,
 			Brand:         r.Brand,
 			Model:         r.Model,
 			ModelYear:     r.ModelYear,
@@ -628,8 +629,8 @@ func (s *BookingService) GetProviderBookingDetails(
 		ProfileURL:    user.ImageUrl,
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
-		FinalPrice:    r.FinalPrice,
-
+		FinalPrice:    r.FinalPrice,  
+        UserProfileUrl:  user.ImageUrl,
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,

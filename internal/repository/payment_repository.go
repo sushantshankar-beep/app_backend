@@ -101,3 +101,27 @@ func (r *PaymentRepository) FindByServiceID(
 	return &txn, err
 }
 
+func (r *PaymentRepository) GetLatestPaidTransactionByServiceID(
+	ctx context.Context,
+	serviceID string,
+) (*domain.Transaction, error) {
+
+	filter := bson.M{
+		"serviceId": serviceID,
+		"status":    "paid",
+	}
+
+	opts := options.FindOne().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}})
+
+	var txn domain.Transaction
+	err := r.txnCol.FindOne(ctx, filter, opts).Decode(&txn)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("no paid transaction found for service")
+		}
+		return nil, err
+	}
+
+	return &txn, nil
+}

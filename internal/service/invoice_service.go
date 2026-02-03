@@ -108,8 +108,8 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 			GST:           utils.RoundTo2(gst),
 			Total:         utils.RoundTo2(finalPrice + gst),
 		},
-		Transaction:domain.Transaction{
-			PaymentMode: transaction.PaymentMode,
+		Transaction:domain.InvoiceTransaction{
+			PaymentMode: transaction.Method,
 		},
 		CreatedAt: time.Now(),
 	}

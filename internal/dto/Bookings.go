@@ -166,6 +166,8 @@ type TodayEarningsResponse struct {
 
 type ComplaintDTO struct {
 	ID              string                `json:"_id"`
+	ComplaintUserID string                `json:"complaintUserId"`
+	ComplaintProviderID string             `json:"complaintProviderId"`
 	ComplaintNumber string                `json:"complaintNumber"`
 	Status          string                `json:"status"`
 	ProviderIssue   *ProviderComplaintDTO `json:"providerComplaint"`

@@ -183,7 +183,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 			"currency":      "INR",
 		},
 
-		"complaintId": complaintId,
+		"complaintUserId": complaintId,
 
 		"timestamps": svc.Timestamps,
 	}, nil
@@ -234,7 +234,7 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 		"service": svc.ServiceType,
 		"status":  svc.Status,
 		"timestamps": svc.Timestamps,
-		"complaintId": complaintId,
+		"complaintProviderId": complaintId,
 	}, nil
 }
 
@@ -356,6 +356,13 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	// ================= BUILD PAYLOAD =================
 
+
+	var complaintId any
+	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
+	if err == nil && complaintDoc != nil {
+		complaintId = complaintDoc.ID.Hex()
+	}
+
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
 
@@ -379,7 +386,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		"oldStatus":     prevStatus,
 		"newStatus":     newStatus,
 		"date":          svc.CreatedAt.Format("2006-01-02"),
-
+        "complaintProviderId": complaintId,
 		"user": map[string]any{
 			"id":    svc.User.Hex(),
 			"name":  user.Name,

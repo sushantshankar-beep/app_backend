@@ -310,6 +310,7 @@ func (s *BookingService) GetUserBookingDetails(
 
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
+			ComplaintUserID: complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
 			Timeline:        complaint.Timeline,
@@ -569,6 +570,7 @@ func (s *BookingService) GetProviderBookingDetails(
 
 		complaintDTO = &dto.ComplaintDTO{
 			ID:              complaint.ID.Hex(),
+			ComplaintProviderID: complaint.ID.Hex(),
 			ComplaintNumber: complaint.ComplaintNumber,
 			Status:          string(complaint.Status),
 			Timeline:        complaint.Timeline,
@@ -684,7 +686,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 	var totalExpense float64
 
 	for _, service := range services {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, service.ID.Hex())
+		transaction, err := s.transactionRepo.GetLatestPaidTransactionByServiceID(ctx, service.ID.Hex())
 		if err != nil {
 			continue
 		}

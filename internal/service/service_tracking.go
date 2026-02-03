@@ -117,7 +117,6 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	// 💰 Billing
 	// ----------------------------------
 
-	gstMain := "18%"
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
@@ -158,7 +157,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
-			"date":          time.Now().Format("2006-01-02"),
+			"date":          time.Now().Format("2006-01-02 3:04 PM"),
 			"vehicleNumber": svc.VehicleNumber,
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,
@@ -179,7 +178,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 		"billing": map[string]any{
 			"serviceAmount": svc.FinalPrice,
-			"gst":           gstMain,
+			"gst":           gst,
 			"totalAmount":   total,
 			"currency":      "INR",
 		},

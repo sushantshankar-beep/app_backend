@@ -63,9 +63,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
-	transaction , err := s.transactionRepo.GetTransactionByServiceID(ctx, serviceID)
+	transaction , err := s.transactionRepo.GetLatestPaidTransactionByServiceID(ctx, serviceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user: %w", err)
+		return nil, fmt.Errorf("invoice cannot be generated without successful payment: %w", err)
 	}
 
 	finalPrice := service.FinalPrice
@@ -109,7 +109,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
 			Total:         utils.RoundTo2(finalPrice + gst),
 		},
 		Transaction:domain.Transaction{
-			PaymentMode: transaction.Method,
+			PaymentMode: transaction.PaymentMode,
 		},
 		CreatedAt: time.Now(),
 	}

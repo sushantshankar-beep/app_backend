@@ -104,7 +104,7 @@ func (r *PaymentRepository) FindByServiceID(
 func (r *PaymentRepository) GetLatestPaidTransactionByServiceID(
 	ctx context.Context,
 	serviceID string,
-) (*domain.Transaction, error) {
+) (*domain.PaymentTransaction, error) {
 
 	filter := bson.M{
 		"serviceId": serviceID,
@@ -114,7 +114,7 @@ func (r *PaymentRepository) GetLatestPaidTransactionByServiceID(
 	opts := options.FindOne().
 		SetSort(bson.D{{Key: "createdAt", Value: -1}})
 
-	var txn domain.Transaction
+	var txn domain.PaymentTransaction
 	err := r.txnCol.FindOne(ctx, filter, opts).Decode(&txn)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {

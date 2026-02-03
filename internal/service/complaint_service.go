@@ -233,7 +233,7 @@ func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context
 	if complaintDoc == nil {
 		return nil, errors.New("no complaint found for this booking")
 	}
-	
+
 	if complaintDoc.UserID != userObjID {
 		return nil, errors.New("unauthorized: you can only view your own complaints")
 	}
@@ -245,6 +245,7 @@ func (s *ComplaintService) GetUserComplaintByAcceptedService(ctx context.Context
 
 	complaintMap := map[string]any{
 		"_id":             complaintDoc.ID.Hex(),
+		"complaintUserId":  complaintDoc.ID.Hex(),
 		"acceptedService": complaintDoc.AcceptedService.Hex(),
 		"complaintNumber": complaintDoc.ComplaintNumber,
 		"status":          string(complaintDoc.Status),
@@ -296,6 +297,7 @@ func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Con
 
 	complaintMap := map[string]any{
 		"_id":             complaintDoc.ID.Hex(),
+		"complaintProviderId":  complaintDoc.ID.Hex(),
 		"acceptedService": complaintDoc.AcceptedService.Hex(),
 		"complaintNumber": complaintDoc.ComplaintNumber,
 		"status":          string(complaintDoc.Status),

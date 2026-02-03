@@ -460,14 +460,14 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		dtoItem := dto.ProviderBookingDTO{
 			ID:            r.ID,
 			ProviderID:    providerID,
-			ProfileURL:    provider.ProfileURL,
+			ProfileURL:     user.ImageUrl,
 			ServiceNumber: r.ServiceNumber,
 			Status:        string(r.Status),
 			FinalPrice:    tx.Amount,
 			ProviderName:  provider.Name,
 			UserName:      user.Name,
-			UserProfileUrl: user.ImageUrl,
 			VehicleNumber: r.VehicleNumber,
+			UserProfileUrl:  user.ImageUrl,
 			Brand:         r.Brand,
 			Model:         r.Model,
 			ModelYear:     r.ModelYear,
@@ -626,11 +626,11 @@ func (s *BookingService) GetProviderBookingDetails(
 	return &dto.ProviderBookingDetailDTO{
 		ID:            r.ID,
 		ProviderID:    string(provider.ID),
-		ProfileURL:    provider.ProfileURL,
+		ProfileURL:    user.ImageUrl,
 		ServiceNumber: r.ServiceNumber,
 		Status:        string(r.Status),
-		FinalPrice:    r.FinalPrice,
-
+		FinalPrice:    r.FinalPrice,  
+        UserProfileUrl:  user.ImageUrl,
 		VehicleNumber: r.VehicleNumber,
 		Brand:         r.Brand,
 		Model:         r.Model,
@@ -643,7 +643,6 @@ func (s *BookingService) GetProviderBookingDetails(
 
 		ProviderName: provider.Name,
 		UserName:     user.Name,
-		UserProfileUrl: user.ImageUrl,
 
 		Complaint: complaintDTO,
 

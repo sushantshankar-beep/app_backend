@@ -891,6 +891,7 @@ func (s *BiddingService) ProviderCancelService(
 				"fixedPrice":    fixedPrice,
 				"updatedAt":     time.Now(),
 				"cancelledByProvider": true,
+				"cancelledProviderID":providerID,
 			},
 		},
 	)

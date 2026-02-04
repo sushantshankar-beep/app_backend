@@ -89,6 +89,7 @@ func (s *BookingService) BuildBookingScreen(
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
+
 	/* ---------------- Build Screen Payload ---------------- */
 
 	return map[string]any{
@@ -120,7 +121,7 @@ func (s *BookingService) BuildBookingScreen(
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
-			"date":          time.Now().Format("2006-01-02 3:04 PM"),
+			"date": time.Now().Format("2006-01-02 03:04 PM"),
 			"vehicleNumber": svc.VehicleNumber,
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,
@@ -164,7 +165,12 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 	result := make([]dto.UserBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
-		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		providerIDStr := r.Provider.Hex()
+		if r.Provider.IsZero() && r.CancelledProviderID != "" {
+			providerIDStr = r.CancelledProviderID
+		}
+
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerIDStr))
 
 		if err != nil {
 			continue
@@ -412,7 +418,12 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
-		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(r.Provider.Hex()))
+		providerIDStr := r.Provider.Hex()
+		if r.Provider.IsZero() && r.CancelledProviderID != "" {
+			providerIDStr = r.CancelledProviderID
+		}
+
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerIDStr))
 		if err != nil {
 			continue
 		}
@@ -421,7 +432,6 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		if err != nil {
 			continue
 		}
-
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
@@ -432,31 +442,28 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		}
 
 		dtoItem := dto.ProviderBookingDTO{
-			ID:            r.ID,
-			ProviderID:    providerID,
+			ID:             r.ID,
+			ProviderID:     providerID,
 			ProfileURL:     user.ImageUrl,
-			ServiceNumber: r.ServiceNumber,
-			Status:        string(r.Status),
-			FinalPrice:    tx.Amount,
-			ProviderName:  provider.Name,
-			UserName:      user.Name,
-			VehicleNumber: r.VehicleNumber,
-			UserProfileUrl:  user.ImageUrl,
-			Brand:         r.Brand,
-			Model:         r.Model,
-			ModelYear:     r.ModelYear,
-			VehicleType:   r.VehicleType,
-			Issues:        r.Issues,
-			Cancelled:   cancelled,
-			CancelledAt: cancelledAt,
-			CreatedAt:     r.CreatedAt,
-			UpdatedAt:     r.UpdatedAt,
-
+			ServiceNumber:  r.ServiceNumber,
+			Status:         string(r.Status),
+			FinalPrice:     tx.Amount,
+			ProviderName:   provider.Name,
+			UserName:       user.Name,
+			VehicleNumber:  r.VehicleNumber,
+			UserProfileUrl: user.ImageUrl,
+			Brand:          r.Brand,
+			Model:          r.Model,
+			ModelYear:      r.ModelYear,
+			VehicleType:    r.VehicleType,
+			Issues:         r.Issues,
+			Cancelled:      cancelled,
+			CancelledAt:    cancelledAt,
+			CreatedAt:      r.CreatedAt,
+			UpdatedAt:      r.UpdatedAt,
 		}
-		
-		
+
 		result = append(result, dtoItem)
-		
 	}
 
 	response := &dto.ProviderBookingResponse{

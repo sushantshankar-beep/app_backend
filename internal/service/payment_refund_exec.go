@@ -34,7 +34,6 @@ func (s *PaymentService) ProcessRefund(
 		"%s|cancel_refund_transaction|%s|%s|%s",
 		s.key,
 		mihpayid,
-		refundID,
 		s.salt,
 	)
 

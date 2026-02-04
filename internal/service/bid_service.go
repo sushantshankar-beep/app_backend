@@ -251,7 +251,7 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{10, 25, 50, 100}
+	radiusSteps := []float64{25, 50, 100}
 
 	const (
 		cooldownSec    = 77
@@ -351,7 +351,7 @@ func (s *BiddingService) findProviders(
 						map[string]any{
 							"user": map[string]any{
 								"name": user.Name,
-								"profileUrl":user.ImageUrl,
+								"profileUrl":user.ImageUrl
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{

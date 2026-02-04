@@ -26,16 +26,20 @@ func (s *PaymentService) ProcessRefund(
 	)
 
 	// -------------------------------
-	// Build Hash String
-	// Format PayU expects:
-	// key|command|var1|var2|salt
+	// Build PayU Hash
+	// Format:
+	// key|command|var1|salt
 	// -------------------------------
 	hashStr := fmt.Sprintf(
-		"%s|cancel_refund_transaction|%s|%s|%s",
+		"%s|cancel_refund_transaction|%s|%s",
 		s.key,
 		mihpayid,
 		s.salt,
 	)
+
+	// DEBUG HASH PRINT
+	log.Println("PAYU HASH STRING:", hashStr)
+	log.Println("PAYU HASH VALUE :", sha512Hash(hashStr))
 
 	// -------------------------------
 	// Build Form Body

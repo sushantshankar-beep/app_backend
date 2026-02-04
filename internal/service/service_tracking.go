@@ -125,11 +125,10 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 	// ----------------------------------
 
 	var complaintId any
-	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
-	if err == nil && complaintDoc != nil {
-		complaintId = complaintDoc.ID.Hex()
+	if svc.ComplaintUser != nil {
+		complaintId = svc.ComplaintUser.Hex()
 	}
-
+	
 	// ----------------------------------
 	// 📦 Response
 	// ----------------------------------
@@ -215,11 +214,9 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 	// ----------------------------------
 
 	var complaintId any
-	complaintDoc, err := s.complaintRepo.FindByAcceptedServiceId(ctx, objID)
-	if err == nil && complaintDoc != nil {
-		complaintId = complaintDoc.ID.Hex()
+	if svc.ComplaintProvider != nil {
+		complaintId = svc.ComplaintProvider.Hex()
 	}
-
 
 	return map[string]any{
 		"screen": "PROVIDER_TRACKING",
@@ -338,6 +335,29 @@ func (s *ServiceTrackingService) UpdateStatus(
 				},
 			},
 		)
+
+		gst := svc.FinalPrice * 18 / 100
+		totalAmount := svc.FinalPrice + gst
+
+		user, err := s.userRepo.GetByID(ctx, svc.User)
+		if err != nil {
+			return nil, err
+		}
+
+	    userObjID, err := primitive.ObjectIDFromHex(string(user.ID))
+	    if err != nil {
+	    	return nil, err
+    	}
+
+		newTotalExpense := user.TotalExpense + totalAmount
+
+		if err := s.userRepo.UpdateTotalExpense(
+			ctx,
+			userObjID,
+			newTotalExpense,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	// ================= SAVE STATUS =================
@@ -360,8 +380,6 @@ func (s *ServiceTrackingService) UpdateStatus(
 
     complaintId = svc.ComplaintProvider.Hex()
 	}
-
-	
 
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))

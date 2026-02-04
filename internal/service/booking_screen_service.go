@@ -675,10 +675,6 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 		totalExpense += transaction.Amount
 	}
 
-	if err := s.userRepo.UpdateTotalExpense(ctx, userObjID, totalExpense); err != nil {
-		return nil, 0, err
-	}
-
 	return result, totalExpense, nil
 }
 

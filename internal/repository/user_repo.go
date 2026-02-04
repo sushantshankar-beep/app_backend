@@ -221,3 +221,29 @@ func (r *UserRepo) ClearPrimaryVehicle(
 
 	return err
 }
+
+func (r *UserRepo) UpdateRating(ctx context.Context, userID domain.UserID, rating string) error {
+	objID, err := primitive.ObjectIDFromHex(string(userID))
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	filter := bson.M{"_id": objID}
+	update := bson.M{
+		"$set": bson.M{
+			"rating":    rating,
+			"updatedAt": time.Now(),
+		},
+	}
+
+	result, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to update user rating: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}

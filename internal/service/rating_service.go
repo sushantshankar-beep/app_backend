@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"errors"
-
+	"log"
+    "fmt"
 	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/repository"
@@ -72,6 +73,10 @@ func (s *RatingService) CreateUserRating(ctx context.Context, userID string, req
 		return nil, err
 	}
 
+	if err := s.updateUserAverageRating(ctx, userObjID); err != nil {
+		log.Printf("failed to update user average rating: %v", err)
+	}
+
 	user, _ := s.userRepo.GetByID(ctx, userObjID)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
 
@@ -129,6 +134,10 @@ func (s *RatingService) CreateProviderRating(ctx context.Context, userID string,
 
 	if err := s.ratingRepo.Create(ctx, rating); err != nil {
 		return nil, err
+	}
+
+	if err := s.updateProviderAverageRating(ctx, providerObjID); err != nil {
+		fmt.Printf("failed to update provider average rating: %v\n", err)
 	}
 
 	user, _ := s.userRepo.GetByID(ctx, userObjID)
@@ -266,3 +275,57 @@ func (s *RatingService) mapRatingsToResponse(ctx context.Context, ratings []doma
 
 	return result, nil
 }
+
+func (s *RatingService) updateProviderAverageRating(ctx context.Context, providerID primitive.ObjectID) error {
+
+	ratings, err := s.ratingRepo.GetByRateeID(ctx, providerID)
+	if err != nil {
+		return fmt.Errorf("failed to get provider ratings: %w", err)
+	}
+
+	if len(ratings) == 0 {
+		return nil
+	}
+
+	var totalStars int
+	for _, rating := range ratings {
+		totalStars += rating.Stars
+	}
+	avgRating := float64(totalStars) / float64(len(ratings))
+
+	avgRatingStr := fmt.Sprintf("%.1f", avgRating)
+	
+	if err := s.providerRepo.UpdateRating(ctx, domain.ProviderID(providerID.Hex()), avgRatingStr); err != nil {
+		return fmt.Errorf("failed to update provider rating: %w", err)
+	}
+
+	return nil
+}
+
+func (s *RatingService) updateUserAverageRating(ctx context.Context, userID primitive.ObjectID) error {
+	
+	ratings, err := s.ratingRepo.GetUserRatingsByRateeID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user ratings: %w", err)
+	}
+
+	if len(ratings) == 0 {
+		return nil
+	}
+
+	
+	var totalStars int
+	for _, rating := range ratings {
+		totalStars += rating.Stars
+	}
+	avgRating := float64(totalStars) / float64(len(ratings))
+
+	avgRatingStr := fmt.Sprintf("%.1f", avgRating)
+	
+	if err := s.userRepo.UpdateRating(ctx, domain.UserID(userID.Hex()), avgRatingStr); err != nil {
+		return fmt.Errorf("failed to update user rating: %w", err)
+	}
+
+	return nil
+}
+

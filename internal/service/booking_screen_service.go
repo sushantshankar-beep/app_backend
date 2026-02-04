@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"app_backend/internal/domain"
@@ -10,6 +11,7 @@ import (
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
 	"fmt"
+
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -89,7 +91,6 @@ func (s *BookingService) BuildBookingScreen(
 	gst := svc.FinalPrice * 18 / 100
 	total := svc.FinalPrice + gst
 
-
 	/* ---------------- Build Screen Payload ---------------- */
 
 	return map[string]any{
@@ -116,12 +117,12 @@ func (s *BookingService) BuildBookingScreen(
 			"name":       provider.Name,
 			"rating":     provider.Rating,
 			"etaMinutes": 6,
-			"profileUrl":provider.ProfileURL,
+			"profileUrl": provider.ProfileURL,
 		},
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
-			"date": time.Now().Format("2006-01-02 03:04 PM"),
+			"date":          time.Now().Format("2006-01-02 03:04 PM"),
 			"vehicleNumber": svc.VehicleNumber,
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,
@@ -190,26 +191,26 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		}
 
 		dtoItem := dto.UserBookingDTO{
-			ID:            r.ID,
-			UserID:        string(user.ID),
-			ProfileURL:    user.ImageUrl,
-			ServiceNumber: r.ServiceNumber,
-			Status:        string(r.Status),
-			FinalPrice:    tx.Amount,
-			UserName:      user.Name,
-			ProviderName:  provider.Name,
+			ID:                 r.ID,
+			UserID:             string(user.ID),
+			ProfileURL:         user.ImageUrl,
+			ServiceNumber:      r.ServiceNumber,
+			Status:             string(r.Status),
+			FinalPrice:         tx.Amount,
+			UserName:           user.Name,
+			ProviderName:       provider.Name,
 			ProviderProfileUrl: provider.ProfileURL,
-			VehicleType:   r.VehicleType,
-			Ratings:       "",
-			Issues:        r.Issues,
-			CreatedAt:     r.CreatedAt,
-			UpdatedAt:     r.UpdatedAt,
-			Cancelled:   cancelled,
-			CancelledAt: cancelledAt,
+			VehicleType:        r.VehicleType,
+			Rating:             provider.Rating,
+			Issues:             r.Issues,
+			CreatedAt:          r.CreatedAt,
+			UpdatedAt:          r.UpdatedAt,
+			Cancelled:          cancelled,
+			CancelledAt:        cancelledAt,
 		}
-		
+
 		result = append(result, dtoItem)
-		
+
 	}
 
 	return result, nil
@@ -270,18 +271,27 @@ func (s *BookingService) GetUserBookingDetails(
 	var providerName string
 	var providerID domain.ProviderID
 	var providerProfileUrl string
+	var providerRating string
 
-	if r.Provider != primitive.NilObjectID {
+	var providerIDStr string
+
+	if !r.Provider.IsZero() {
+		providerIDStr = r.Provider.Hex()
+	} else if r.CancelledProviderID != "" {
+		providerIDStr = r.CancelledProviderID
+	}
+
+	if providerIDStr != "" {
 		provider, err := s.providerRepo.FindByID(
 			ctx,
-			domain.ProviderID(r.Provider.Hex()),
+			domain.ProviderID(providerIDStr),
 		)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			providerName = provider.Name
+			providerID = provider.ID
+			providerProfileUrl = provider.ProfileURL
+			providerRating = provider.Rating
 		}
-		providerName = provider.Name
-		providerID = provider.ID
-		providerProfileUrl = provider.ProfileURL
 	}
 
 	var complaintDTO *dto.ComplaintDTO
@@ -371,6 +381,7 @@ func (s *BookingService) GetUserBookingDetails(
 		ProviderID:         providerID,
 		ProviderName:       providerName,
 		ProviderProfileUrl: providerProfileUrl,
+		Rating:             providerRating,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge: utils.RoundTo2(serviceCharge),
 			GSTPercent:    gstPercent,
@@ -387,7 +398,6 @@ func (s *BookingService) GetUserBookingDetails(
 		UpdatedAt:        r.UpdatedAt,
 	}, nil
 }
-
 
 func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
 	sStatus, err := mapStatus(status)
@@ -456,6 +466,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			Model:          r.Model,
 			ModelYear:      r.ModelYear,
 			VehicleType:    r.VehicleType,
+			Rating:         user.Rating,
 			Issues:         r.Issues,
 			Cancelled:      cancelled,
 			CancelledAt:    cancelledAt,
@@ -589,24 +600,25 @@ func (s *BookingService) GetProviderBookingDetails(
 	}
 
 	return &dto.ProviderBookingDetailDTO{
-		ID:               r.ID,
-		ProviderID:       string(provider.ID),
-		ProfileURL:       user.ImageUrl,
-		ServiceNumber:    r.ServiceNumber,
-		Status:           string(r.Status),
-		FinalPrice:       r.FinalPrice,
-		UserProfileUrl:   user.ImageUrl,
-		VehicleNumber:    r.VehicleNumber,
-		Brand:            r.Brand,
-		Model:            r.Model,
-		ModelYear:        r.ModelYear,
-		FuelType:         r.FuelType,
-		VehicleType:      r.VehicleType,
-		Issues:           r.Issues,
-		Timestamps:       r.Timestamps,
-		ProviderName:     provider.Name,
-		UserName:         user.Name,
-		Complaint:        complaintDTO,
+		ID:             r.ID,
+		ProviderID:     string(provider.ID),
+		ProfileURL:     user.ImageUrl,
+		ServiceNumber:  r.ServiceNumber,
+		Status:         string(r.Status),
+		FinalPrice:     r.FinalPrice,
+		UserProfileUrl: user.ImageUrl,
+		VehicleNumber:  r.VehicleNumber,
+		Brand:          r.Brand,
+		Model:          r.Model,
+		ModelYear:      r.ModelYear,
+		FuelType:       r.FuelType,
+		Rating:         user.Rating,
+		VehicleType:    r.VehicleType,
+		Issues:         r.Issues,
+		Timestamps:     r.Timestamps,
+		ProviderName:   provider.Name,
+		UserName:       user.Name,
+		Complaint:      complaintDTO,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:  utils.RoundTo2(serviceCharge),
 			GSTPercent:     gstPercent,
@@ -864,4 +876,3 @@ func (s *BookingService) GetProviderSettledEarnings(
 		Settlements: settlements,
 	}, nil
 }
-

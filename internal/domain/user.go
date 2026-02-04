@@ -37,6 +37,7 @@ type User struct {
 	ComplaintsSubmitted []primitive.ObjectID `bson:"complaintsSubmitted" json:"complaintsSubmitted"`
 	ServiceOTP          string               `bson:"service_otp" json:"service_otp"`
 	TotalExpense        float64              `bson:"totalExpense" json:"totalExpense"`
+	Rating               string             `bson:"rating" json:"rating"`
 	VehicleID           *primitive.ObjectID  `bson:"vehicleId,omitempty" json:"vehicleId,omitempty"`
 	PrimaryVehicleID    *primitive.ObjectID  `bson:"primaryVehicleId,omitempty" json:"primaryVehicleId,omitempty"`
 	FallbackVehicleIDs []primitive.ObjectID  `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`

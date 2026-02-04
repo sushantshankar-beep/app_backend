@@ -196,3 +196,29 @@ func (r *ProviderRepo) UpdateAgreement(ctx context.Context, p *domain.Provider) 
     _, err = r.col.UpdateOne(ctx, filter, update)
     return err
 }
+
+func (r *ProviderRepo) UpdateRating(ctx context.Context, providerID domain.ProviderID, rating string) error {
+	objID, err := primitive.ObjectIDFromHex(string(providerID))
+	if err != nil {
+		return fmt.Errorf("invalid provider ID: %w", err)
+	}
+
+	filter := bson.M{"_id": objID}
+	update := bson.M{
+		"$set": bson.M{
+			"rating":    rating,
+			"updatedAt": time.Now(),
+		},
+	}
+
+	result, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to update provider rating: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("provider not found")
+	}
+
+	return nil
+}

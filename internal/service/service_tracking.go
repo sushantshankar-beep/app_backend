@@ -157,7 +157,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
-			"date":          time.Now().Format("2006-01-02 3:04 PM"),
+			"date": time.Now().Format("2006-01-02 03:04 PM"),
 			"vehicleNumber": svc.VehicleNumber,
 			"brand":         svc.Brand,
 			"fuelType":      svc.FuelType,

@@ -50,6 +50,7 @@ type AcceptedService struct {
 	Cancelled             *CancelInfo          `bson:"cancelled,omitempty"`
 	UserLocation          *UserLocation        `bson:"userLocation" json:"userLocation"`
 	CancelledByProvider   bool                 `bson:"cancelledByProvider" json:"cancelledByProvider"`
+	CancelledProviderID   string               `bson:"cancelledProviderID" json:"cancelledProviderID"`
 }
 type UserLocation struct {
 	Lat  float64 `bson:"lat"`

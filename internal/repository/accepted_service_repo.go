@@ -298,16 +298,19 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 	return bookings, nil
 }
 
-func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID  primitive.ObjectID, status []domain.ServiceStatus) ([]domain.AcceptedService, error) {
+func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus) ([]domain.AcceptedService, error) {
 
-   filter := bson.M{
-     "provider": providerID,
-	 "status":   bson.M{"$in": status},
-    }
-    
+	filter := bson.M{
+		"$or": []bson.M{
+			{"provider": providerID},
+			{"cancelledProviderID": providerID.Hex()},
+		},
+		"status": bson.M{"$in": status},
+	}
+
 	var bookings []domain.AcceptedService
 	opts := options.Find().SetSort(bson.M{"createdAt": -1})
-    cursor, err := r.col.Find(ctx, filter, opts)
+	cursor, err := r.col.Find(ctx, filter, opts)
 
 	if err != nil {
 		return nil, err

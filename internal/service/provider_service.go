@@ -141,7 +141,13 @@ func (s *ProviderService) VerifyOTP(
 	}else if err != nil{
 		return "",false,false,err
 	}else{
-		isProfileCompleted = isProviderProfileCompleted(provider)  
+		if provider.IsActive == domain.PROVIDER_DELETED {
+			isNew = true
+			isProfileCompleted = false
+		} else {
+			isNew = false
+			isProfileCompleted = isProviderProfileCompleted(provider)
+		}
 	}
 
 	// ✅ GENERATE PROVIDER JWT

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"time"
+	"fmt"
     "app_backend/internal/domain"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -58,6 +59,46 @@ func (r *RatingRepo) GetRatingsByRatee(ctx context.Context, rateeID primitive.Ob
 	var ratings []domain.Rating
 	if err := cursor.All(ctx, &ratings); err != nil {
 		return nil, err
+	}
+
+	return ratings, nil
+}
+
+func (r *RatingRepo) GetByRateeID(ctx context.Context, rateeID primitive.ObjectID) ([]*domain.Rating, error) {
+	filter := bson.M{
+		"rateeId": rateeID,
+		"ratingType": domain.RATING_PROVIDER,
+	}
+
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find ratings: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var ratings []*domain.Rating
+	if err := cursor.All(ctx, &ratings); err != nil {
+		return nil, fmt.Errorf("failed to decode ratings: %w", err)
+	}
+
+	return ratings, nil
+}
+
+func (r *RatingRepo) GetUserRatingsByRateeID(ctx context.Context, rateeID primitive.ObjectID) ([]*domain.Rating, error) {
+	filter := bson.M{
+		"rateeId":    rateeID,
+		"ratingType": domain.RATING_USER,
+	}
+
+	cursor, err := r.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find user ratings: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var ratings []*domain.Rating
+	if err := cursor.All(ctx, &ratings); err != nil {
+		return nil, fmt.Errorf("failed to decode user ratings: %w", err)
 	}
 
 	return ratings, nil

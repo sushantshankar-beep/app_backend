@@ -351,7 +351,7 @@ func (s *BiddingService) findProviders(
 						map[string]any{
 							"user": map[string]any{
 								"name": user.Name,
-								"profileUrl":user.ImageUrl
+								"profileUrl":user.ImageUrl,
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{

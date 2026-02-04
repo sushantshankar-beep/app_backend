@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"log"
 )
 
 func (s *PaymentService) ProcessRefund(
@@ -27,15 +27,14 @@ func (s *PaymentService) ProcessRefund(
 
 	// -------------------------------
 	// Build Hash String
-	// Format:
-	// key|command|var1|var2|var3|salt
+	// Format PayU expects:
+	// key|command|var1|var2|salt
 	// -------------------------------
 	hashStr := fmt.Sprintf(
-		"%s|cancel_refund_transaction|%s|%s|%.2f|%s",
+		"%s|cancel_refund_transaction|%s|%s|%s",
 		s.key,
 		mihpayid,
 		refundID,
-		amount,
 		s.salt,
 	)
 
@@ -58,10 +57,12 @@ func (s *PaymentService) ProcessRefund(
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetBody(form.Encode()).
 		Post(s.payuURL + "/merchant/postservice?form=2")
-	log.Println("PayU refund response:", string(resp.Body()))
+
 	if err != nil {
 		return fmt.Errorf("payu refund request failed: %w", err)
 	}
+
+	log.Println("PayU refund response:", string(resp.Body()))
 
 	if resp.IsError() {
 		return fmt.Errorf(
@@ -72,7 +73,6 @@ func (s *PaymentService) ProcessRefund(
 
 	// -------------------------------
 	// Mark Refund Processing
-	// (Webhook is source of truth)
 	// -------------------------------
 	return s.repo.UpdateTxn(ctx, mihpayid, bson.M{
 		"refundStatus": "processing",

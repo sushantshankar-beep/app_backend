@@ -51,16 +51,22 @@ func (r *ComplaintRepo) FindByUser(ctx context.Context, userID primitive.ObjectI
 }
 
 func (r *ComplaintRepo) FindByProvider(ctx context.Context, providerID primitive.ObjectID) ([]domain.Complaint, error) {
-	cur, err := r.col.Find(ctx, bson.M{"providerId": providerID})
+	filter := bson.M{
+		"providerId": providerID,
+		"providerComplaint": bson.M{"$exists": true},
+	}
+
+	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	var list []domain.Complaint
-	if err := cur.All(ctx, &list); err != nil {
+	var complaints []domain.Complaint
+	if err := cursor.All(ctx, &complaints); err != nil {
 		return nil, err
 	}
-	return list, nil
+
+	return complaints, nil
 }
 
 func (r *ComplaintRepo) GetNextSequence(ctx context.Context, sequenceName string) (int64, error) {

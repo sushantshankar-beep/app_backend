@@ -67,6 +67,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		service.GET("/:id/provider-tracking", providerAuth, serviceTrackingHandler.ProviderTracking)
 		service.POST("/:id/verify-otp", providerAuth, serviceTrackingHandler.VerifyOTP)
 		service.POST("/:id/status", providerAuth, serviceTrackingHandler.UpdateStatus)
+		service.GET("/invoice", userAuth,serviceTrackingHandler.GetInvoiceUrl)
+
 	}
 	bid := r.Group("/bid", userAuth)
 	{
@@ -175,6 +177,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		providerAgreement.GET("", providerAuth,providerAgreementHandler.GetProviderAgreement)
 	}
 	
+
 	if homepageHandler != nil {
 		r.GET("/homepage", homepageHandler.GetHomepage)
 	}

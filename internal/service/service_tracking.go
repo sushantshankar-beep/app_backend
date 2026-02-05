@@ -24,6 +24,7 @@ type ServiceTrackingService struct {
 	notify        ports.NotificationService
 	rdb          *redis.Client
 	complaintRepo *repository.ComplaintRepo
+	invoiceRepo  *repository.InvoiceRepo
 }
 
 func NewServiceTrackingService(
@@ -34,6 +35,7 @@ func NewServiceTrackingService(
 	notify ports.NotificationService,
 	rdb *redis.Client,
 	complaintRepo *repository.ComplaintRepo,
+	invoiceRepo  *repository.InvoiceRepo,
 ) *ServiceTrackingService {
 
 	return &ServiceTrackingService{
@@ -44,6 +46,7 @@ func NewServiceTrackingService(
 		notify:        notify,
 		rdb:           rdb,
 		complaintRepo: complaintRepo,
+		invoiceRepo: invoiceRepo,
 	}
 }
 
@@ -538,4 +541,20 @@ func (s *ServiceTrackingService) VerifyOTP(
 	)
 }
 
+func (s *ServiceTrackingService) GetInvoiceUrl(ctx context.Context,serviceID string) (*domain.Invoice, error) {
 
+	if serviceID == "" {
+		return nil, errors.New("serviceId is required")
+	}
+
+	invoice, err := s.invoiceRepo.FindByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if invoice.PDFUrl == "" {
+		return nil, errors.New("invoice pdf not generated yet")
+	}
+
+	return invoice, nil
+}

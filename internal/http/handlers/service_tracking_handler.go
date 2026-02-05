@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	// "net/http"
+	"net/http"
 
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
@@ -105,4 +105,31 @@ func (h *ServiceTrackingHandler) UpdateStatus(c *gin.Context) {
 	c.JSON(200, resp)
 }
 
+func (h *ServiceTrackingHandler) GetInvoiceUrl(c *gin.Context) {
+	serviceID := c.Query("bookingId")
 
+	if serviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "serviceId is required",
+		})
+		return
+	}
+
+	invoice, err := h.svc.GetInvoiceUrl(c.Request.Context(), serviceID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Invoice fetched successfully",
+		"data": gin.H{
+			"invoiceUrl": invoice.PDFUrl,
+		},
+	})
+}

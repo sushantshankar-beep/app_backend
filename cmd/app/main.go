@@ -155,7 +155,7 @@ func main() {
 	otpQueue.Start()
 	defer otpQueue.Stop()
 
-	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo)
+	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo,vehicleRepo)
 
 	agreementPdfUploader := s3.NewPDFUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"),  os.Getenv("AWS_S3_FOLDER"))
 

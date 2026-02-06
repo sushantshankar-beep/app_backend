@@ -23,10 +23,11 @@ type UserService struct {
 	queue   *worker.OTPQueue
 	counter *repository.CounterRepo
 	amcRepo *repository.AMCRepo
+	vehicleRepo *repository.VehicleRepo
 }
 
-func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo) *UserService {
-	return &UserService{users: users, otp: otp, token: token, queue: q, counter: counter}
+func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo,vehicleRepo *repository.VehicleRepo) *UserService {
+	return &UserService{users: users, otp: otp, token: token, queue: q, counter: counter, vehicleRepo: vehicleRepo}
 }
 
 func GenerateOTP() string {
@@ -51,11 +52,48 @@ func (s *UserService) SendOTP(ctx context.Context, phone string) error {
 	s.queue.Enqueue(worker.OTPJob{Phone: phone, Msg: code, Type: "user"})
 	return nil
 }
-func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.ObjectID) (*domain.User, error) {
+func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.ObjectID) (map[string]interface{}, error) {
 	fmt.Println("this is user id in get profile", userObjID)
-	return s.users.GetByID(ctx, userObjID)
+	user, err := s.users.GetByID(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
+	vehicleCount := int64(0)
+	if user.PrimaryVehicleID != nil {
+		vehicleCount++
+	}
+	if user.FallbackVehicleIDs != nil {
+		vehicleCount += int64(len(user.FallbackVehicleIDs))
+	}
+	result := map[string]interface{}{
+		"id":                  user.ID,
+		"userCode":            user.UserCode,
+		"phone":               user.Phone,
+		"name":                user.Name,
+		"createdAt":           user.CreatedAt,
+		"updatedAt":           user.UpdatedAt,
+		"email":               user.Email,
+		"image_url":           user.ImageUrl,
+		"referralCode":        user.ReferralCode,
+		"isActive":            user.IsActive,
+		"fcmToken":            user.FcmToken,
+		"appStateStatus":      user.AppStateStatus,
+		"isProfileComplete":   user.IsProfileComplete,
+		"selectedCity":        user.SelectedCity,
+		"amcPurchased":        user.AmcPurchased,
+		"complaintsSubmitted": user.ComplaintsSubmitted,
+		"service_otp":         user.ServiceOTP,
+		"totalExpense":        user.TotalExpense,
+		"rating":              user.Rating,
+		"primaryVehicleId":    user.PrimaryVehicleID,
+		"fallbackVehicleIds":  user.FallbackVehicleIDs,
+		"vehicleCount":        vehicleCount,
+	}
+	if user.VehicleID != nil {
+		result["vehicleId"] = user.VehicleID
+	}
+	return result, nil
 }
-
 func (s *UserService) VerifyOTP(
 	ctx context.Context,
 	phone, code string,
@@ -196,3 +234,6 @@ func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID)
 	return err
 }
 
+func (s *UserService) GetUserVehicleCount(ctx context.Context, userObjID primitive.ObjectID) (int64, error) {
+	return s.vehicleRepo.CountByUserID(ctx, userObjID)
+}

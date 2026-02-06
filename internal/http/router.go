@@ -1,4 +1,3 @@
-
 package http
 
 import (
@@ -36,7 +35,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/profile", userAuth, userHandler.Profile)
 		user.PUT("/profile", userAuth, s3Uploader.Upload([]s3.FieldConfig{
 			{FormFieldName: "profileImage",ContextKey:    "profileImage",}}), 
-		userHandler.CreateOrUpdateUserProfile)
+			userHandler.CreateOrUpdateUserProfile)
 		user.POST("/location", userAuth, locationHandler.SaveUserLocation)
 		user.GET("/location", userAuth, locationHandler.GetUserLocation)
 		user.POST("/raise-complaint", userAuth, s3Uploader.Upload([]s3.FieldConfig{
@@ -121,10 +120,10 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.POST("/verify-otp", providerHandler.VerifyOTP)
 		provider.GET("/profile", providerAuth, providerHandler.Profile)
 		provider.PUT("/profile-update", providerAuth, s3Uploader.Upload([]s3.FieldConfig{
-		    {
-			  FormFieldName: "profileUrl",
-			  ContextKey:    "profileUrl",
-		    },
+			{
+				FormFieldName: "profileUrl",
+				ContextKey:    "profileUrl",
+			},
 	    }), providerHandler.CreateOrUpdateProfile )
 		provider.POST("/location", providerAuth, locationHandler.SaveProviderLocation)
 		provider.POST("/accept-offer",providerAuth, biddingHandler.AcceptOffer)
@@ -140,7 +139,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		  {FormFieldName: "photos", ContextKey: "complaint_photos"},}), complaintHandler.RaiseComplaint)
 		provider.GET("/complaints/booking/:acceptedServiceId",providerAuth, complaintHandler.GetProviderComplaintByBooking)
 		provider.GET("/complaints", providerAuth, complaintHandler.GetProviderComplaints)
-		provider.POST("/bid", providerAuth,biddingHandler.PlaceBid)
+		provider.POST("/bid", providerAuth, biddingHandler.PlaceBid)
 		provider.POST("/logout", providerAuth, providerHandler.Logout)
 		provider.DELETE("/delete", providerAuth, providerHandler.DeleteAccount)
 		provider.GET("/booking/:providerID", bookingHandler.GetProviderBookings)
@@ -150,7 +149,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/dashboard/:providerID", bookingHandler.GetProviderDashboard)
 		provider.GET("/earnings/:providerID", bookingHandler.GetProviderEarnings)
 		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
-        provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
+		provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
         provider.GET("/notifications/latest-service",providerAuth,notificationHandler.ListProviderLatestService)
 
 
@@ -164,10 +163,10 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 	imageUpload := r.Group("/upload-image")
 	{
 		imageUpload.POST("", s3Uploader.Upload([]s3.FieldConfig{
-				{
-					FormFieldName: "image",
-					ContextKey:    "image",
-				},
+			{
+				FormFieldName: "image",
+				ContextKey:    "image",
+			},
 		}), imageUploadS3Handler.UploadSingle)
 	}
 

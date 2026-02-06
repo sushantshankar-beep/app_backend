@@ -126,7 +126,7 @@ func (s *ProviderService) VerifyOTP(
 		isNew  bool
 		isProfileCompleted bool
 	)
-	if err == domain.ErrNotFound {
+	if err == domain.ErrNotFound || (err == nil && provider.IsActive == domain.PROVIDER_DELETED){
 		isNew = true
 
 		seq, _ := s.counterRepo.Next(ctx, "provider")
@@ -147,13 +147,8 @@ func (s *ProviderService) VerifyOTP(
 	}else if err != nil{
 		return "",false,false,err
 	}else{
-		if provider.IsActive == domain.PROVIDER_DELETED {
-			isNew = true
-			isProfileCompleted = false
-		} else {
 			isNew = false
 			isProfileCompleted = isProviderProfileCompleted(provider)
-		}
 	}
 
 	// ✅ GENERATE PROVIDER JWT

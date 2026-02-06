@@ -66,6 +66,31 @@ var ErrServiceAlreadyAssigned = errors.New("service already assigned")
 
 func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,vehicleType string,vehicleNumber string,brand string,modelYear int,fuelType string,serviceType string,issues []string,lat, lng float64,model string) (string, error){
 	userOID, _ := primitive.ObjectIDFromHex(string(userID))
+	activeStatuses := []domain.ServiceStatus{
+		domain.StatusSearching,
+		domain.StatusConfirmed,
+		domain.StatusStarted,
+		domain.StatusReachedLocation,
+		domain.StatusOTPVerified,
+		domain.StatusInProgress,
+		domain.StatusProviderAssigned,
+		domain.StatusNotStarted,
+	}
+
+	cnt, err := s.acceptedRepo.Count(ctx, bson.M{
+		"user": userOID,
+		"status": bson.M{
+			"$in": activeStatuses,
+		},
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if cnt > 0 {
+		return "", errors.New("you already have an active service")
+	}
 
 	seq, _ := s.counterRepo.Next(ctx, "service")
 	serviceNumber := fmt.Sprintf("VHBK%05d", seq)

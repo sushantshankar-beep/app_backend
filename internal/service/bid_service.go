@@ -73,7 +73,6 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		domain.StatusReachedLocation,
 		domain.StatusOTPVerified,
 		domain.StatusInProgress,
-		domain.StatusProviderAssigned,
 		domain.StatusNotStarted,
 	}
 

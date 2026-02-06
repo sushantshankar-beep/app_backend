@@ -47,7 +47,7 @@ func (w *ProviderTimeoutWorker) scan() {
 
 	ctx := context.Background()
 
-	cutoff := time.Now().Add(-w.timeout)
+	cutoff := time.Now().Add(-5*time.Minute)
 
 	services, err := w.repo.FindStuckAssigned(ctx, cutoff)
 	if err != nil {

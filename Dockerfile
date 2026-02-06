@@ -10,24 +10,29 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd/app/main.go
 
 
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates \
+RUN apt-get update && apt-get install -y \
+    wkhtmltopdf \
     chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ttf-freefont \
-    fontconfig
+    ca-certificates \
+    fontconfig \
+    fonts-dejavu \
+    fonts-liberation \
+    fonts-freefont-ttf \
+    && rm -rf /var/lib/apt/lists/*
 
 # 👇 copy binary
 COPY --from=builder /app/server .
 
-# 👇 copy templates + storage folders
+# 👇 templates + storage
 COPY --from=builder /app/internal/template ./internal/template
 COPY --from=builder /app/internal/storage ./internal/storage
+
+ENV CHROME_BIN=/usr/bin/chromium
+ENV WKHTMLTOPDF_BIN=/usr/bin/wkhtmltopdf
 
 EXPOSE 8080
 CMD ["./server"]

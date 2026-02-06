@@ -865,13 +865,13 @@ func (s *BookingService) GetProviderSettledEarnings(
 			ID:            rec.ServiceID.Hex(),
 			ProviderID:    rec.ProviderID.Hex(),
 			ServiceNumber: service.ServiceNumber,
-			Amount:        rec.NetAmount,
+			Amount:        utils.RoundTo2(rec.NetAmount),
 			CreatedAt:     rec.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
 	return &dto.ProviderSettlementResponse{
-		Total:       total,
+		Total:       utils.RoundTo2(total),
 		Settlements: settlements,
 	}, nil
 }

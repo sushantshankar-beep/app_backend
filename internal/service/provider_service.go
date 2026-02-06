@@ -5,10 +5,12 @@ import (
 	"time"
 
 	"app_backend/internal/domain"
-	"app_backend/internal/ports"
-	"app_backend/internal/worker"
 	"app_backend/internal/dto"
+	"app_backend/internal/ports"
 	"app_backend/internal/repository"
+	"app_backend/internal/s3"
+	"app_backend/internal/utils"
+	"app_backend/internal/worker"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,29 +21,33 @@ import (
 
 type ProviderService struct {
 	repo                ports.ProviderRepository
-	counterRepo *repository.CounterRepo
+	counterRepo         *repository.CounterRepo
 	otp                 ports.OTPStore
 	token               ports.TokenService
 	queue               *worker.OTPQueue
 	acceptedServiceRepo ports.AcceptedServiceRepository
-	providerRepo  *repository.ProviderRepo
-	kycRepo *repository.KYCRepo
-	userRepo *repository.UserRepo
-	ratingsRepo *repository.RatingRepo
+	providerRepo        *repository.ProviderRepo
+	kycRepo             *repository.KYCRepo
+	userRepo            *repository.UserRepo
+	ratingsRepo         *repository.RatingRepo
+	agreementRepo       *repository.AgreementRepo
+	pdfUploader         *s3.PDFUploader
 }
 
-func NewProviderService(repo ports.ProviderRepository,counterRepo *repository.CounterRepo,otp ports.OTPStore,token ports.TokenService,q *worker.OTPQueue,acceptedRepo ports.AcceptedServiceRepository,providerRepo  *repository.ProviderRepo,	kycRepo *repository.KYCRepo,userRepo *repository.UserRepo,ratingsRepo *repository.RatingRepo) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository, counterRepo *repository.CounterRepo, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, acceptedRepo ports.AcceptedServiceRepository, providerRepo *repository.ProviderRepo, kycRepo *repository.KYCRepo, userRepo *repository.UserRepo, ratingsRepo *repository.RatingRepo, agreementRepo *repository.AgreementRepo, pdfUploader *s3.PDFUploader) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
-		counterRepo:		counterRepo,
+		counterRepo:         counterRepo,
 		otp:                 otp,
 		token:               token,
 		queue:               q,
 		acceptedServiceRepo: acceptedRepo,
-		providerRepo: providerRepo,
-		kycRepo: kycRepo,
-		userRepo: userRepo,
-		ratingsRepo: ratingsRepo,
+		providerRepo:        providerRepo,
+		kycRepo:             kycRepo,
+		userRepo:            userRepo,
+		ratingsRepo:         ratingsRepo,
+		agreementRepo:       agreementRepo,
+		pdfUploader:         pdfUploader,
 	}
 }
 func isProviderProfileCompleted(p *domain.Provider) bool {
@@ -176,7 +182,7 @@ func (s *ProviderService) GetProfile(
 			ctx,
 			string(provider.ID),
 		)
-  
+
 		if err == nil && kyc != nil {
 			provider.KycStatus = kyc.Status
 		}
@@ -213,6 +219,11 @@ func (s *ProviderService) CreateOrUpdateProfile(
 		}
 	}
 
+	keyFieldsChanged := false
+	oldName := provider.Name
+	oldCompanyName := provider.CompanyName
+	oldCity := provider.City
+
 	assignString(&provider.Name, req["name"])
 	assignString(&provider.Email, req["email"])
 	assignString(&provider.CompanyName, req["companyName"])
@@ -223,6 +234,12 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	assignString(&provider.City, req["city"])
 	assignString(&provider.VehicleNumber, req["vehicleNumber"])
 	assignString(&provider.Description, req["description"])
+
+	if provider.Name != oldName || 
+	   provider.CompanyName != oldCompanyName || 
+	   provider.City != oldCity {
+		keyFieldsChanged = true
+	}
 
 	if v, ok := req["vehicleType"]; ok {
 		switch t := v.(type) {
@@ -253,12 +270,24 @@ func (s *ProviderService) CreateOrUpdateProfile(
 
 	provider.UpdatedAt = time.Now()
 
+	shouldGenerateAgreement := false
+	
 	if isDeleted {
 		provider.IsActive = domain.PROVIDER_ACTIVE
 		provider.FormSubmitted = 1
+		shouldGenerateAgreement = true
 	} else if !wasCompleted && isProviderProfileCompleted(provider) {
 		provider.FormSubmitted = 1
 		provider.IsActive = domain.PROVIDER_ACTIVE
+		shouldGenerateAgreement = true
+	} else if keyFieldsChanged && isProviderProfileCompleted(provider) {
+		shouldGenerateAgreement = true
+	}
+
+	if shouldGenerateAgreement {
+		if err := s.generateAndUploadAgreement(ctx, provider); err != nil {
+			return nil, fmt.Errorf("failed to generate agreement: %w", err)
+		}
 	}
 
 	if err := s.repo.Update(ctx, provider); err != nil {
@@ -414,6 +443,10 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 	provider.AgreementSubmittedAt = &now
 	provider.UpdatedAt = now
 
+	if err := s.generateAndUploadAgreement(ctx, provider); err != nil {
+		return nil, fmt.Errorf("failed to generate agreement with submission date: %w", err)
+	}
+
 	if err := s.providerRepo.UpdateAgreement(ctx, provider); err != nil {
 		return nil, err
 	}
@@ -515,4 +548,28 @@ func (s *ProviderService) getUniqueRatings(ratings []domain.Rating) []domain.Rat
 	}
 
 	return unique
+}
+
+func (s *ProviderService) GetAgreementTemplate(ctx context.Context) (*domain.Agreement, error) {
+	return s.agreementRepo.FindDefault(ctx)
+}
+
+func (s *ProviderService) generateAndUploadAgreement(ctx context.Context, provider *domain.Provider) error {
+	agreement, err := s.agreementRepo.FindDefault(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch agreement template: %w", err)
+	}
+
+	pdfBytes, err := utils.GenerateAgreementPDF(provider, agreement)
+	if err != nil {
+		return fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	url, err := s.pdfUploader.UploadPDF(pdfBytes, string(provider.ID))
+	if err != nil {
+		return fmt.Errorf("failed to upload PDF: %w", err)
+	}
+
+	provider.AgreementUrl = url
+	return nil
 }

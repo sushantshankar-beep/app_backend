@@ -40,6 +40,7 @@ type Provider struct {
 	IsAgreementSubmitted bool               `bson:"isAgreementSubmitted" json:"isAgreementSubmitted"`
 	AgreementSubmittedAt   *time.Time        `bson:"agreementSubmittedAt,omitempty" json:"agreementSubmittedAt,omitempty"`
 	AgreementPDF         string             `bson:"agreementPdf,omitempty" json:"agreementPdf,omitempty"`
+	AgreementUrl         string             `bson:"agreementUrl" json:"agreementUrl"`
 	CommissionPercentage float64            `bson:"commissionPercentage,omitempty" json:"commissionPercentage,omitempty"`
 	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`
 	Rating               string             `bson:"rating" json:"rating"`

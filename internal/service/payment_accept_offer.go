@@ -22,6 +22,13 @@ func (s *BiddingService) AcceptOffer(
 	defer cancel()
 
 	// ---------------- PARSE IDS ----------------
+	if s.rdb.Exists(ctx, "service:stop:"+serviceID).Val() == 1 {
+		return errors.New("service is no longer available")
+	}
+
+	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 1 {
+		return errors.New("service is no longer available")
+	}
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {

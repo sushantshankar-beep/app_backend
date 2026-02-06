@@ -474,12 +474,41 @@ func (s *ServiceTrackingService) UpdateStatus(
 		s.socket.Emit(userRoom, "service:closed", nil)
 		s.socket.Emit(providerRoom, "service:closed", nil)
 
+		// ===============================
+		// 🔔 PUSH NOTIFICATION (ONLY HERE)
+		// ===============================
+
+		go s.notify.SendToUser(
+			context.Background(),
+			svc.User.Hex(),
+			svc.ID.Hex(),
+			"Service Completed",
+			"Your service has been successfully completed.",
+			map[string]string{
+				"type":      "SERVICE_COMPLETED",
+				"serviceId": svc.ID.Hex(),
+			},
+		)
+
+		go s.notify.SendToProvider(
+			context.Background(),
+			svc.Provider.Hex(),
+			svc.ID.Hex(),
+			"Job Completed",
+			"Service marked as completed.",
+			map[string]string{
+				"type":      "SERVICE_COMPLETED",
+				"serviceId": svc.ID.Hex(),
+			},
+		)
+
 		go func() {
 			time.Sleep(400 * time.Millisecond)
 			s.socket.CloseRoom(userRoom)
 			s.socket.CloseRoom(providerRoom)
 		}()
 	}
+
 
 	return payload, nil
 }

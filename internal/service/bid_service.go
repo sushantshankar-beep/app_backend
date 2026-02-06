@@ -251,7 +251,7 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{10, 25, 50, 100}
+	radiusSteps := []float64{25, 50, 100}
 
 	const (
 		cooldownSec    = 77
@@ -352,6 +352,7 @@ func (s *BiddingService) findProviders(
 							"user": map[string]any{
 								"name": user.Name,
 								"profileUrl":user.ImageUrl,
+								"rating":user.Rating,
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{
@@ -851,6 +852,38 @@ func (s *BiddingService) ProviderCancelService(
 	if svc.Provider.Hex() != providerID {
 		return errors.New("not assigned provider")
 	}
+	now := time.Now()
+
+	snap := svc // full copy
+
+	// mutate ONLY snapshot
+	snap.Status = domain.StatusCancelled
+	snap.CancelledAt = &now
+	snap.CancelledBy = "provider"
+
+	snap.Cancelled = &domain.CancelInfo{
+		By:     "provider",
+		Reason: reason,
+	}
+
+	snap.UpdatedAt = now
+
+	doc := bson.M{
+		"_id":        primitive.NewObjectID(), // snapshot row id
+		"serviceId":  svc.ID,                  // original service id
+		"snapshotAt": now,
+		"service":    snap,
+	}
+
+	_, err1 := s.acceptedRepo.Col().
+		Database().
+		Collection("accepted_service_snapshots").
+		InsertOne(ctx, doc)
+
+	if err1 != nil {
+		log.Println("❌ snapshot insert failed:", err1)
+	}
+
 	fixedPrice := svc.FinalPrice
 
 	// 🔓 unlock service
@@ -874,7 +907,6 @@ func (s *BiddingService) ProviderCancelService(
 			})
 		}
 	}
-	now := time.Now()
 
 	// 🔄 reset service state
 	_, err := s.acceptedRepo.Col().UpdateByID(
@@ -945,7 +977,7 @@ func (s *BiddingService) ProviderCancelService(
 
 	return nil
 }
-const luaFindProvidersFixed = `
+const luaFindProvidersFixedFast = `
 -- KEYS[1] = providers:geo
 
 -- ARGV:
@@ -953,8 +985,10 @@ const luaFindProvidersFixed = `
 -- 2 = lat
 -- 3 = radiusKm
 -- 4 = serviceID
--- 5 = cooldownSecs
--- 6 = excludeProviderID
+-- 5 = cooldownSec
+-- 6 = maxSend
+-- 7 = ttlSec
+-- 8 = excludeProviderID
 
 if redis.call("EXISTS", "service:stop:"..ARGV[4]) == 1 then
 	return {}
@@ -963,8 +997,6 @@ end
 if redis.call("EXISTS", "service:locked:"..ARGV[4]) == 1 then
 	return {}
 end
-
-local providersKey = "service:providers:"..ARGV[4]
 
 local res = redis.call(
 	"GEORADIUS",
@@ -975,7 +1007,7 @@ local res = redis.call(
 	"km",
 	"WITHDIST",
 	"COUNT",
-	80
+	300
 )
 
 local out = {}
@@ -985,37 +1017,66 @@ for i=1,#res do
 	local pid = res[i][1]
 	local dist = res[i][2]
 
-	if pid ~= ARGV[6] then
+	local skip = false
 
-		if redis.call("EXISTS", "provider:busy:"..pid) == 0 then
+	if pid == ARGV[8] then
+		skip = true
+	end
 
-			local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
-			if redis.call("SETNX", activeKey, "1") == 1 then
+	-- busy?
+	if not skip and redis.call("EXISTS", "provider:busy:"..pid) == 1 then
+		skip = true
+	end
 
-				redis.call("EXPIRE", activeKey, ARGV[5])
-
-				local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
-				if redis.call("SETNX", cdKey, "1") == 1 then
-
-					redis.call("EXPIRE", cdKey, ARGV[5])
-
-					redis.call("SADD", providersKey, pid)
-					redis.call("EXPIRE", providersKey, 1800)
-
-					table.insert(out, pid)
-					table.insert(out, dist)
-
-				end
-			end
+	-- already active
+	if not skip then
+		local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+		if redis.call("EXISTS", activeKey) == 1 then
+			skip = true
 		end
+	end
+
+	-- cooldown
+	if not skip then
+		local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
+		if redis.call("SETNX", cdKey, "1") == 0 then
+			skip = true
+		else
+			redis.call("EXPIRE", cdKey, ARGV[5])
+		end
+	end
+
+	-- send count
+	if not skip then
+		local scKey = "service:sendcount:"..ARGV[4]..":"..pid
+		local cnt = redis.call("INCR", scKey)
+		redis.call("EXPIRE", scKey, ARGV[7])
+
+		if cnt > tonumber(ARGV[6]) then
+			skip = true
+		end
+	end
+
+	if not skip then
+
+		redis.call(
+			"SET",
+			"service:dist:"..ARGV[4]..":"..pid,
+			dist,
+			"EX",
+			1800
+		)
+
+		local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
+		redis.call("SET", activeKey, "1", "EX", ARGV[5])
+
+		table.insert(out, pid)
+		table.insert(out, dist)
 	end
 end
 
 return out
 `
-
-
-
 func (s *BiddingService) findProvidersFixedPrice(
 	serviceID string,
 	lat, lng float64,
@@ -1030,6 +1091,7 @@ func (s *BiddingService) findProvidersFixedPrice(
 	fixedPrice float64,
 	excludeProviderID string,
 ) {
+
 	ctx := context.Background()
 
 	stopKey := "service:stop:" + serviceID
@@ -1040,12 +1102,8 @@ func (s *BiddingService) findProvidersFixedPrice(
 		return
 	}
 
-	// ✅ GST INCLUDED
+	// ✅ GST
 	fixedPriceGst := math.Round(fixedPrice*1.18*100) / 100
-
-	// ===============================
-	// LOAD SERVICE + USER
-	// ===============================
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -1062,23 +1120,28 @@ func (s *BiddingService) findProvidersFixedPrice(
 	radiusSteps := []float64{25, 50, 100}
 
 	const (
-		roundDelay   = 70 * time.Second
-		maxRounds    = 10
-		cooldownSecs = 90
+		cooldownSec    = 77
+		maxSendPerProv = 8
+		ttlSec         = 7200
+		roundDelay     = 5 * time.Second
+		globalTimeout  = 30 * time.Minute
 	)
 
-	round := 0
+	startedAt := time.Now()
 
-	for round < maxRounds {
+	for {
 
-		round++
-
-		// 🛑 redis kill-switch
-		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
-			s.rdb.Exists(ctx, lockKey).Val() == 1 {
-			log.Println("🛑 fixed price stopped:", serviceID)
+		if time.Since(startedAt) > globalTimeout {
+			log.Println("⏱ fixed-price timeout", serviceID)
 			return
 		}
+
+		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
+			s.rdb.Exists(ctx, lockKey).Val() == 1 {
+			log.Println("🛑 fixed-price dispatch stopped", serviceID)
+			return
+		}
+
 		var current domain.AcceptedService
 		if err := s.acceptedRepo.Col().
 			FindOne(ctx, bson.M{"_id": serviceOID}).
@@ -1086,30 +1149,32 @@ func (s *BiddingService) findProvidersFixedPrice(
 			return
 		}
 
-		if current.Status != "searching_after_cancel"{
-
-			log.Println("🛑 fixed-price discovery exit due to status:", current.Status)
+		if current.Status != "searching_after_cancel" {
 			return
 		}
 
 		for _, radius := range radiusSteps {
+
 			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 				return
 			}
+
 			res, err := s.rdb.Eval(
 				ctx,
-				luaFindProvidersFixed,
+				luaFindProvidersFixedFast,
 				[]string{"providers:geo"},
 				lng,
 				lat,
 				radius,
 				serviceID,
-				cooldownSecs,
+				cooldownSec,
+				maxSendPerProv,
+				ttlSec,
 				excludeProviderID,
 			).Result()
 
 			if err != nil {
-				log.Println("lua fixed search error:", err)
+				log.Println("lua fixed fast error:", err)
 				continue
 			}
 
@@ -1119,88 +1184,50 @@ func (s *BiddingService) findProvidersFixedPrice(
 			}
 
 			for i := 0; i < len(list); i += 2 {
-				if s.rdb.Exists(ctx, stopKey).Val() == 1 {
-					return
-				}
 
 				pid := list[i].(string)
-
 				distStr := list[i+1].(string)
 				dist, _ := strconv.ParseFloat(distStr, 64)
 
-				distKm := round2(dist)
-				eta := estimateETA(distKm)
+				go func(providerID string, distance float64, r float64) {
 
-				// ===============================
-				// SOCKET
-				// ===============================
+					if s.rdb.Exists(ctx, stopKey).Val() == 1 {
+						return
+					}
 
-				s.socket.Emit(
-					"provider:"+pid,
-					"bid:request:fixed",
-					map[string]any{
-						"user": map[string]any{
-							"name":       user.Name,
-							"profileUrl": user.ImageUrl,
+					s.socket.Emit(
+						"provider:"+providerID,
+						"bid:request:fixed",
+						map[string]any{
+							"user": map[string]any{
+								"name":       user.Name,
+								"profileUrl": user.ImageUrl,
+							},
+							"serviceId":  serviceID,
+							"fixedPrice": fixedPriceGst,
+							"serviceType": "fixedPrice",
+							"vehicle": map[string]any{
+								"type":   vehicleType,
+								"number": vehicleNumber,
+								"brand":  brand,
+								"year":   modelYear,
+								"fuel":   fuelType,
+								"model":  model,
+							},
+							"issues":     issues,
+							"distanceKm": distance,
+							"etaMin":     estimateETA(distance),
+							"radiusKm":   r,
+							"expiresIn":  60,
 						},
-						"serviceId":  serviceID,
-						"fixedPrice": fixedPriceGst,
-						"serviceType":"fixedPrice",
-						"vehicle": map[string]any{
-							"type":   vehicleType,
-							"number": vehicleNumber,
-							"brand":  brand,
-							"year":   modelYear,
-							"fuel":   fuelType,
-							"model":  model,
-						},
-						"issues":      issues,
-						"distanceKm":  distKm,
-						"etaMin":      eta,
-						"expiresIn":   60,
-					},
-				)
-			payload := map[string]any{
-				"user": map[string]any{
-					"name":       user.Name,
-					"profileUrl": user.ImageUrl,
-				},
-				"serviceId":   serviceID,
-				"fixedPrice":  fixedPriceGst,
-				"serviceType": "fixedPrice",
-				"vehicle": map[string]any{
-					"type":   vehicleType,
-					"number": vehicleNumber,
-					"brand":  brand,
-					"year":   modelYear,
-					"fuel":   fuelType,
-					"model":  model,
-				},
-				"issues":     issues,
-				"distanceKm": distKm,
-				"etaMin":     eta,
-				"expiresIn":  60,
+					)
+
+				}(pid, dist, radius)
 			}
-
-			payloadBytes, _ := json.Marshal(payload)
-
-			go s.notify.SendToProvider(
-				context.Background(),
-				pid,
-				serviceID,
-				"Service available",
-				fmt.Sprintf("Fixed price ₹%.0f — open app", fixedPriceGst),
-				map[string]string{
-					"type":      "fixed_price_request",
-					"serviceId": serviceID,
-					"payload":   string(payloadBytes), // ✅ SAME AS SOCKET
-				},
-			)
 		}
 
 		time.Sleep(roundDelay)
 	}
-}
 }
 func (s *BiddingService) CancelService(ctx context.Context,serviceID string,userID string,reason string) error {
 
@@ -1359,6 +1386,18 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 				"by":        "user",
 			},
 		)
+		go s.notify.SendToProvider(
+			context.Background(),
+			cancelledProvider,
+			serviceID,
+			"Booking Cancelled By User",
+			"User cancelled the service.",
+			map[string]string{
+				"type":      "SERVICE_CANCELLED_BY_USER",
+				"serviceId": serviceID,
+				"reason":    reason,
+			},
+		)
 
 		s.socket.CloseRoom("provider:" + cancelledProvider)
 	}
@@ -1372,6 +1411,17 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 		"user:"+serviceID,
 		"service:cancelled",
 		map[string]any{
+			"serviceId": serviceID,
+		},
+	)
+	go s.notify.SendToUser(
+		context.Background(),
+		userID,
+		serviceID,
+		"Booking Cancelled",
+		"Your service has been cancelled.",
+		map[string]string{
+			"type":      "SERVICE_CANCELLED",
 			"serviceId": serviceID,
 		},
 	)

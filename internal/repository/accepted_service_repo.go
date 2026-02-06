@@ -32,6 +32,9 @@ func NewAcceptedServiceRepo(db *mongo.Database) *AcceptedServiceRepo {
 
 	return &AcceptedServiceRepo{col: col}
 }
+func (r *AcceptedServiceRepo) SnapshotCol() *mongo.Collection {
+	return r.col.Database().Collection("accepted_service_snapshots")
+}
 
 func (r *AcceptedServiceRepo) Col() *mongo.Collection {
 	return r.col
@@ -158,6 +161,59 @@ func (r *AcceptedServiceRepo) ListByProvider(
 
 	return services, nil
 }
+func (r *AcceptedServiceRepo) ListSnapshotsByProvider(
+	ctx context.Context,
+	providerID primitive.ObjectID,
+	skip, limit int,
+) ([]bson.M, error) {
+
+	filter := bson.M{
+		"service.provider": providerID,
+	}
+
+	opts := options.Find().
+		SetSkip(int64(skip)).
+		SetLimit(int64(limit)).
+		SetSort(bson.M{"snapshotAt": -1})
+
+	cur, err := r.SnapshotCol().Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []bson.M
+	if err := cur.All(ctx, &res); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+func (r *AcceptedServiceRepo) ListSnapshotsByService(
+	ctx context.Context,
+	serviceID primitive.ObjectID,
+) ([]bson.M, error) {
+
+	filter := bson.M{
+		"serviceId": serviceID,
+	}
+
+	opts := options.Find().
+		SetSort(bson.M{"snapshotAt": -1})
+
+	cur, err := r.SnapshotCol().Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []bson.M
+	if err := cur.All(ctx, &res); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+
 func (r *AcceptedServiceRepo) FindByID(
 	ctx context.Context,
 	id string,

@@ -13,6 +13,7 @@ type Vehicle struct {
 	Brand         string             `bson:"brand" json:"brand"`
 	Model         string             `bson:"model" json:"model"`
 	ModelYear    string          	 `bson:"modelYear" json:"modelYear"`
+	FuelType     string               `bson:"fuelType" json:"fuelType"`
 	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
@@ -26,7 +27,7 @@ type UserVehicle struct {
 	Brand         string             `bson:"brand" json:"brand"`
 	Model         string             `bson:"model" json:"model"`
 	ModelYear    string          	 `bson:"modelYear" json:"modelYear"`
-
+	FuelType     string             `bson:"fuelType" json:"fuelType"`
 	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

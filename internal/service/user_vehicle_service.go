@@ -66,6 +66,7 @@ func (s *UserVehicleService) SaveVehicleForUser(ctx context.Context, userID prim
 			Brand:         req["brand"],
 			Model:         req["model"],
 			ModelYear:        req["modelYear"],
+			FuelType:       req["fuelType"],
 			CreatedAt:     time.Now(),
 		}
 
@@ -222,6 +223,9 @@ func (s *UserVehicleService) UpdateVehicle(
 	}
 	if val, ok := req["modelYear"]; ok && val != "" {
 		updateData["modelYear"] = val
+	}
+	if val,ok := req["fuelType"]; ok && val != "" {
+		updateData["fuelType"] = val
 	}
 
 	if len(updateData) == 0 {

@@ -852,6 +852,38 @@ func (s *BiddingService) ProviderCancelService(
 	if svc.Provider.Hex() != providerID {
 		return errors.New("not assigned provider")
 	}
+	now := time.Now()
+
+	snap := svc // full copy
+
+	// mutate ONLY snapshot
+	snap.Status = domain.StatusCancelled
+	snap.CancelledAt = &now
+	snap.CancelledBy = "provider"
+
+	snap.Cancelled = &domain.CancelInfo{
+		By:     "provider",
+		Reason: reason,
+	}
+
+	snap.UpdatedAt = now
+
+	doc := bson.M{
+		"_id":        primitive.NewObjectID(), // snapshot row id
+		"serviceId":  svc.ID,                  // original service id
+		"snapshotAt": now,
+		"service":    snap,
+	}
+
+	_, err1 := s.acceptedRepo.Col().
+		Database().
+		Collection("accepted_service_snapshots").
+		InsertOne(ctx, doc)
+
+	if err1 != nil {
+		log.Println("❌ snapshot insert failed:", err1)
+	}
+
 	fixedPrice := svc.FinalPrice
 
 	// 🔓 unlock service
@@ -875,7 +907,6 @@ func (s *BiddingService) ProviderCancelService(
 			})
 		}
 	}
-	now := time.Now()
 
 	// 🔄 reset service state
 	_, err := s.acceptedRepo.Col().UpdateByID(
@@ -1355,6 +1386,18 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 				"by":        "user",
 			},
 		)
+		go s.notify.SendToProvider(
+			context.Background(),
+			cancelledProvider,
+			serviceID,
+			"Booking Cancelled By User",
+			"User cancelled the service.",
+			map[string]string{
+				"type":      "SERVICE_CANCELLED_BY_USER",
+				"serviceId": serviceID,
+				"reason":    reason,
+			},
+		)
 
 		s.socket.CloseRoom("provider:" + cancelledProvider)
 	}
@@ -1368,6 +1411,17 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 		"user:"+serviceID,
 		"service:cancelled",
 		map[string]any{
+			"serviceId": serviceID,
+		},
+	)
+	go s.notify.SendToUser(
+		context.Background(),
+		userID,
+		serviceID,
+		"Booking Cancelled",
+		"Your service has been cancelled.",
+		map[string]string{
+			"type":      "SERVICE_CANCELLED",
 			"serviceId": serviceID,
 		},
 	)

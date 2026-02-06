@@ -113,8 +113,16 @@ func (r *NotificationRepo) FindByService(
 		"ownerId":   ownerID,
 		"ownerType": ownerType,
 		"serviceId": serviceID,
+		"title": bson.M{
+			"$in": []string{
+				"Service Completed",
+				"Booking Cancelled By User",
+				"Booking Cancelled By Provider",
+				"Booking Cancelled",
+				"Payment Completed",
+			},
+		},
 	}
-
 	opts := options.Find().
 		SetSort(bson.M{"createdAt": -1}).
 		SetLimit(limit).

@@ -78,13 +78,25 @@ func (s *UserVehicleService) SaveVehicleForUser(ctx context.Context, userID prim
 	if err != nil {
 		return nil, err
 	}
+	
 	if u.PrimaryVehicleID == nil {
-		err = s.userRepo.SetPrimaryVehicle(ctx, userID, v.ID)
-	} else {
-		err = s.userRepo.AddFallbackVehicle(ctx, userID, v.ID)
+		if err := s.userRepo.SetPrimaryVehicle(ctx, userID, v.ID); err != nil {
+			return nil, err
+		}
+		return v, nil
 	}
 
-	if err != nil {
+	if u.PrimaryVehicleID.Hex() == v.ID.Hex() {
+		return v, nil
+	}
+
+	for _, fid := range u.FallbackVehicleIDs {
+		if fid.Hex() == v.ID.Hex() {
+			return v, nil
+		}
+	}
+
+	if err := s.userRepo.AddFallbackVehicle(ctx, userID, v.ID); err != nil {
 		return nil, err
 	}
 

@@ -85,3 +85,9 @@ func (r *VehicleRepo) Update(
 
 	return err
 }
+
+
+func (r *VehicleRepo) CountByUserID(ctx context.Context, userID primitive.ObjectID) (int64, error) {
+	filter := bson.M{"userId": userID}
+	return r.col.CountDocuments(ctx, filter)
+}

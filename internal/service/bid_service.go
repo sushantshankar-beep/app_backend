@@ -1253,14 +1253,26 @@ func (s *BiddingService) findProvidersFixedPrice(
 		time.Sleep(roundDelay)
 	}
 }
-func (s *BiddingService) CancelService(ctx context.Context,serviceID string,userID string,reason string) error {
+func (s *BiddingService) CancelService(
+	ctx context.Context,
+	serviceID string,
+	userID string,
+	reason string,
+) error {
 
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return err
 	}
 
+	now := time.Now()
+
 	lockKey := "service:locked:" + serviceID
+	notifiedKey := "service:notified:" + serviceID
+
+	// ===========================
+	// 📦 FETCH SERVICE
+	// ===========================
 
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -1272,22 +1284,25 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 	if svc.User.Hex() != userID {
 		return errors.New("not allowed")
 	}
-	now := time.Now()
 
-	// 🔒 STOP search goroutines
-	s.rdb.Set(ctx, lockKey, "1", 15*time.Minute)
+	// ===========================
+	// 🔒 STOP SEARCH
+	// ===========================
+
+	pipe := s.rdb.Pipeline()
+	pipe.Set(ctx, lockKey, "1", 15*time.Minute)
+
 	cancelledProvider := ""
+
 	if svc.Provider != primitive.NilObjectID {
 
 		cancelledProvider = svc.Provider.Hex()
 
-		// remove busy lock
-		s.rdb.Del(ctx, "provider:busy:"+cancelledProvider)
+		pipe.Del(ctx, "provider:busy:"+cancelledProvider)
 
-		// restore geo
 		if svc.ProviderLocation != nil {
 
-			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+			pipe.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
 				Name:      cancelledProvider,
 				Longitude: svc.ProviderLocation.Long,
 				Latitude:  svc.ProviderLocation.Lat,
@@ -1295,21 +1310,26 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 		}
 	}
 
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
 
+	// ===========================
 	// ❌ DB UPDATE
+	// ===========================
+
 	_, err = s.acceptedRepo.Col().UpdateByID(
 		ctx,
 		serviceOID,
 		bson.M{
 			"$set": bson.M{
-				"status":      domain.StatusCancelled,
+				"status":                  domain.StatusCancelled,
 				"timestamps.cancelledAt": now,
-				"cancelled.by": "user",
-				"cancelled.reason": reason,
-				"cancelledAt": time.Now(),
-				"updatedAt":   time.Now(),
-				"reason" : reason,
-
+				"cancelled.by":           "user",
+				"cancelled.reason":       reason,
+				"cancelledAt":            now,
+				"updatedAt":              now,
+				"reason":                 reason,
 			},
 		},
 	)
@@ -1321,11 +1341,12 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 	// 📡 INFORM PROVIDERS
 	// ===========================
 
-	notifiedKey := "service:notified:" + serviceID
-
 	providers, _ := s.rdb.SMembers(ctx, notifiedKey).Result()
 
 	for _, pid := range providers {
+
+		pid := pid // avoid goroutine capture
+
 		go s.notify.SendToProvider(
 			context.Background(),
 			pid,
@@ -1351,7 +1372,7 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 	s.rdb.Del(ctx, notifiedKey)
 
 	// ===========================
-	// 🧹 REDIS CLEANUP
+	// 🧹 REDIS CLEANUP (BATCHED)
 	// ===========================
 
 	patterns := []string{
@@ -1362,11 +1383,29 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 	}
 
 	for _, p := range patterns {
-		iter := s.rdb.Scan(ctx, 0, p, 200).Iterator()
+
+		iter := s.rdb.Scan(ctx, 0, p, 500).Iterator()
+
+		var batch []string
+
 		for iter.Next(ctx) {
-			s.rdb.Del(ctx, iter.Val())
+			batch = append(batch, iter.Val())
+
+			if len(batch) >= 50 {
+				s.rdb.Del(ctx, batch...)
+				batch = batch[:0]
+			}
+		}
+
+		if len(batch) > 0 {
+			s.rdb.Del(ctx, batch...)
 		}
 	}
+
+	// ===========================
+	// 💸 REFUND QUEUE
+	// ===========================
+
 	paymentTxn, err := s.paymentRepo.FindByServiceID(ctx, serviceID)
 	if err == nil {
 
@@ -1378,9 +1417,9 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 
 			job := domain.RefundJob{
 				ServiceID: serviceID,
-				MihPayID: paymentTxn.MihPayID,
-				Amount: paymentTxn.Amount,
-				Retries: 0,
+				MihPayID:  paymentTxn.MihPayID,
+				Amount:   paymentTxn.Amount,
+				Retries:  0,
 			}
 
 			b, _ := json.Marshal(job)
@@ -1388,19 +1427,25 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 			s.rdb.RPush(ctx, "refund:queue", b)
 
 			s.refundRepo.Create(ctx, &domain.RefundTransaction{
-				TxnID: paymentTxn.TxnID,
-				MihPayID: paymentTxn.MihPayID,
+				TxnID:     paymentTxn.TxnID,
+				MihPayID:  paymentTxn.MihPayID,
 				ServiceID: serviceID,
-				UserID: paymentTxn.UserID,
-				Amount: paymentTxn.Amount,
-				Status: "pending",
-				Reason: reason,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
+				UserID:    paymentTxn.UserID,
+				Amount:    paymentTxn.Amount,
+				Status:    "pending",
+				Reason:    reason,
+				CreatedAt: now,
+				UpdatedAt: now,
 			})
 		}
 	}
+
+	// ===========================
+	// 📢 CANCELLED PROVIDER
+	// ===========================
+
 	if cancelledProvider != "" {
+
 		s.socket.Emit(
 			"provider:"+cancelledProvider,
 			"service:cancelled",
@@ -1410,6 +1455,7 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 				"by":        "user",
 			},
 		)
+
 		go s.notify.SendToProvider(
 			context.Background(),
 			cancelledProvider,
@@ -1426,7 +1472,6 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 		s.socket.CloseRoom("provider:" + cancelledProvider)
 	}
 
-
 	// ===========================
 	// 👤 USER ROOM
 	// ===========================
@@ -1438,6 +1483,7 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 			"serviceId": serviceID,
 		},
 	)
+
 	go s.notify.SendToUser(
 		context.Background(),
 		userID,
@@ -1449,11 +1495,14 @@ func (s *BiddingService) CancelService(ctx context.Context,serviceID string,user
 			"serviceId": serviceID,
 		},
 	)
+
 	s.socket.CloseRoom("user:" + serviceID)
+
 	cleanupServiceKeys(ctx, s.rdb, serviceID)
 
 	return nil
 }
+
 func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	ctx context.Context,
 	serviceID string,

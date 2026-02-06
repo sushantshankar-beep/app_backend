@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -16,12 +15,13 @@ import (
 	"app_backend/internal/ports"
 	"app_backend/internal/redis"
 	"app_backend/internal/repository"
+	"app_backend/internal/s3"
 	"app_backend/internal/service"
 	"app_backend/internal/sms"
 	"app_backend/internal/socket"
 	"app_backend/internal/worker"
-	"app_backend/internal/s3"
 	"os"
+
 	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
 )
@@ -43,7 +43,7 @@ func main() {
 		log.Fatal("Failed to initialize AWS session:", err)
 	}
 	log.Println("AWS session initialized successfully")
-	
+
 
 	s3Uploader := s3.NewUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"),os.Getenv("AWS_S3_FOLDER"))
 
@@ -110,7 +110,7 @@ func main() {
 		deviceTokenRepo,
 		notificationRepo,
 	)
-	notificationQuerySvc := service.NewNotificationQueryService(notificationRepo) 
+	notificationQuerySvc := service.NewNotificationQueryService(notificationRepo)
 
 	kycService := service.NewKYCService(kycRepo,providerRepo)
 	userVehicleService := service.NewUserVehicleService(
@@ -156,6 +156,9 @@ func main() {
 	defer otpQueue.Stop()
 
 	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo)
+
+	agreementPdfUploader := s3.NewPDFUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"),  os.Getenv("AWS_S3_FOLDER"))
+
 	providerSvc := service.NewProviderService(
 		providerRepo,
 		counterRepo,
@@ -167,6 +170,8 @@ func main() {
 		kycRepo,
 		userRepo,
 		ratingRepo,
+		providerAgreementRepo,
+		agreementPdfUploader,
 	)
 	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo,paymentRepo)
 	locationSvc := service.NewLocationService(locationRepo)
@@ -194,7 +199,7 @@ func main() {
 	)
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
-	
+
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb,complaintRepo,invoiceRepo)
 	imageUploadS3 := service.NewImageUploadS3Service()
 	ratingService := service.NewRatingService(ratingRepo,userRepo,providerRepo,acceptedServiceRepo)
@@ -226,7 +231,7 @@ func main() {
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
 	providerStatusHandler := handlers.NewProviderStatusHandler(rdb,providerRepo)
 	metaHandler := handlers.NewMetaHandler(metaSvc)
-    imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
+	imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)
 	ratingHandler := handlers.NewRatingHandler(ratingService)
 	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)

@@ -108,6 +108,7 @@ func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 			"providerServices": p.ProviderServices,
 			"formSubmitted": p.FormSubmitted,
 			"isActive":      p.IsActive,
+			"agreementUrl": p.AgreementUrl,
 			"updatedAt": time.Now(),
 		},
 	}
@@ -188,6 +189,7 @@ func (r *ProviderRepo) UpdateAgreement(ctx context.Context, p *domain.Provider) 
         "$set": bson.M{
             "isAgreementSubmitted": p.IsAgreementSubmitted,
             "agreementSubmittedAt": p.AgreementSubmittedAt,
+			"agreementUrl":         p.AgreementUrl,
             "updatedAt":            p.UpdatedAt,
         },
     }

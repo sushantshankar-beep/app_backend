@@ -871,6 +871,9 @@ func (s *BiddingService) ProviderCancelService(
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
 	}
+	if svc.Status == domain.StatusCancelled{
+		return errors.New("service already cancelled")
+	}
 
 	// only assigned provider can cancel
 	if svc.Provider.Hex() != providerID {
@@ -1791,7 +1794,7 @@ func (s *BiddingService) HandleProviderTimeout(
 			svc.ID,
 			bson.M{
 				"$set": bson.M{
-					"status": domain.StatusSearching,
+					"status": domain.StatusCancelled,
 					"provider": primitive.NilObjectID,
 					"acceptedBid": primitive.NilObjectID,
 					"updatedAt": time.Now(),

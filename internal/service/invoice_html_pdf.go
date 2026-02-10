@@ -2,8 +2,7 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"os"
+	// "fmt"
 	"path/filepath"
 	"time"
 
@@ -11,34 +10,27 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-func ConvertHTMLToPDF(htmlPath string) (string, error) {
+func (s *InvoiceService) convertHTMLToPDFAndUpload(
+	htmlPath string,
+) (string, error) {
+
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
-
-	if _, err := os.ReadFile(htmlPath); err != nil {
-		return "", fmt.Errorf("failed to read HTML: %w", err)
-	}
-
-	pdfName := filepath.Base(htmlPath)
-	pdfName = pdfName[:len(pdfName)-5] + ".pdf"
-	pdfPath := filepath.Join("internal/storage/invoices", pdfName)
-
-	os.MkdirAll(filepath.Dir(pdfPath), 0755)
 
 	absPath, _ := filepath.Abs(htmlPath)
 	fileURL := "file://" + absPath
 
-	var buf []byte
+	var pdfBuf []byte
 	var err error
 
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(fileURL),
 		chromedp.Sleep(2*time.Second),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err = page.PrintToPDF().
+			pdfBuf, _, err = page.PrintToPDF().
 				WithPrintBackground(true).
-				WithPaperWidth(8.27).   
-				WithPaperHeight(11.69). 
+				WithPaperWidth(8.27).
+				WithPaperHeight(11.69).
 				WithMarginTop(0).
 				WithMarginBottom(0).
 				WithMarginLeft(0).
@@ -49,12 +41,15 @@ func ConvertHTMLToPDF(htmlPath string) (string, error) {
 	)
 
 	if err != nil {
-		return "", fmt.Errorf("chromedp failed: %w", err)
+		return "", err
 	}
 
-	if err := os.WriteFile(pdfPath, buf, 0644); err != nil {
-		return "", fmt.Errorf("failed to write PDF: %w", err)
-	}
-
-	return pdfName, nil
+	fileName := filepath.Base(htmlPath)
+	fileName = fileName[:len(fileName)-5] + ".pdf"
+// 
+	// ✅ USE YOUR WRAPPER — NOT AWS SDK
+	return s.s3Uploader.UploadInvoicePDF(
+		pdfBuf,
+		fileName, // or better: inv.ServiceID when you call this
+	)
 }

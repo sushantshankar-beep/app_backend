@@ -15,8 +15,8 @@ import (
 )
 
 type RefundWorker struct {
-	rdb *redis.Client
-	processor ports.RefundProcessor
+	rdb        *redis.Client
+	processor  ports.RefundProcessor
 	refundRepo ports.RefundRepo
 }
 
@@ -26,7 +26,7 @@ func NewRefundWorker(
 	refundRepo ports.RefundRepo,
 ) *RefundWorker {
 	return &RefundWorker{
-		rdb: rdb,
+		rdb:        rdb,
 		processor: processor,
 		refundRepo: refundRepo,
 	}
@@ -52,6 +52,7 @@ func (w *RefundWorker) process() {
 
 	var job domain.RefundJob
 	if err := json.Unmarshal([]byte(res[1]), &job); err != nil {
+		log.Println("refund worker json error:", err)
 		return
 	}
 
@@ -68,16 +69,24 @@ func (w *RefundWorker) process() {
 	// ===========================
 	// 🚀 Call gateway
 	// ===========================
-	err = w.processor.ProcessRefund(ctx, job.MihPayID, job.Amount)
+	payuResp, err := w.processor.ProcessRefund(
+		ctx,
+		job.MihPayID,
+		job.Amount,
+	)
 
 	if err == nil {
 
-		log.Println("✅ refund success:", job.MihPayID)
+		log.Println("✅ refund queued:", job.MihPayID)
 
 		_ = w.refundRepo.UpdateByMihPayID(ctx, job.MihPayID,
 			bson.M{"$set": bson.M{
-				"status":     "success",
-				"updatedAt": time.Now(),
+				"status":         "queued",
+				"payuStatus":     payuResp.Status,
+				"payuMessage":    payuResp.Msg,
+				"payuErrorCode":  payuResp.ErrorCode,
+				"payuRequestId": payuResp.RequestID,
+				"updatedAt":     time.Now(),
 			}},
 		)
 

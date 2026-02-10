@@ -8,18 +8,23 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
+	"app_backend/internal/s3"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+
 type InvoiceService struct {
-	repo         *repository.InvoiceRepo
-	serviceRepo  *repository.AcceptedServiceRepo
-	userRepo     *repository.UserRepo
-	providerRepo *repository.ProviderRepo
+	repo            *repository.InvoiceRepo
+	serviceRepo     *repository.AcceptedServiceRepo
+	userRepo        *repository.UserRepo
+	providerRepo    *repository.ProviderRepo
 	transactionRepo *repository.PaymentRepository
+
+	s3Uploader *s3.InvoiceUploader
+	bucket     string
+	s3Folder   string
 }
 
 func NewInvoiceService(
@@ -28,15 +33,19 @@ func NewInvoiceService(
 	userRepo *repository.UserRepo,
 	providerRepo *repository.ProviderRepo,
 	transactionRepo *repository.PaymentRepository,
+	s3Uploader *s3.InvoiceUploader,
 ) *InvoiceService {
+
 	return &InvoiceService{
-		repo:         repo,
-		serviceRepo:  serviceRepo,
-		userRepo:     userRepo,
-		providerRepo: providerRepo,
+		repo:            repo,
+		serviceRepo:     serviceRepo,
+		userRepo:        userRepo,
+		providerRepo:    providerRepo,
 		transactionRepo: transactionRepo,
+		s3Uploader:      s3Uploader,
 	}
 }
+
 
 func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
 	userOID, err := primitive.ObjectIDFromHex(userID)
@@ -123,21 +132,18 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serv
     if err != nil {
 	  return nil, err
     }
-  
-    fileName, err := ConvertHTMLToPDF(htmlPath)
-    if err != nil {
-	   return nil, err
-    }
-
     defer os.Remove(htmlPath)
+  
+    pdfURL, err := s.convertHTMLToPDFAndUpload(htmlPath)
+	if err != nil {
+		return nil, err
+	}
 
-    baseURL := os.Getenv("INVOICE_BASE_URL")
-   
-    publicURL := fmt.Sprintf("%s/invoices/%s", baseURL, fileName)
-    inv.PDFUrl = publicURL 
+	inv.PDFUrl = pdfURL
 
-    _ = s.repo.UpdatePDFUrl(ctx, inv.ID, publicURL)
-    return  inv, nil
+	_ = s.repo.UpdatePDFUrl(ctx, inv.ID, pdfURL)
+
+	return inv, nil
 }
 
 func (s *InvoiceService) generateInvoiceNumber(serviceID primitive.ObjectID) string {
@@ -152,23 +158,19 @@ func (s *InvoiceService) GetInvoice(ctx context.Context, bookingID string) (*dom
 	return s.repo.GetByID(ctx, bookingID)
 }
 
-func (s *InvoiceService) GetInvoicePDF(ctx context.Context, bookingId string) (string, string, error) {
+func (s *InvoiceService) GetInvoicePDF(
+	ctx context.Context,
+	bookingId string,
+) (string, error) {
+
 	invoice, err := s.GetInvoice(ctx, bookingId)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	if invoice.PDFUrl == "" {
-		return "", "", fmt.Errorf("PDF not generated for invoice %s", bookingId)
+		return "", fmt.Errorf("invoice PDF not generated")
 	}
 
-	filename := filepath.Base(invoice.PDFUrl)
-
-	pdfPath := filepath.Join("internal/storage/invoices", filename)
-
-	if _, err := os.Stat(pdfPath); err != nil {
-		return "", "", fmt.Errorf("PDF file not found on server")
-	}
-
-	return pdfPath, filename, nil
+	return invoice.PDFUrl, nil
 }

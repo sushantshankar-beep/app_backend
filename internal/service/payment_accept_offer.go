@@ -102,6 +102,7 @@ func (s *BiddingService) AcceptOffer(
 		"user": map[string]any{
 			"id":   user.ID,
 			"name": user.Name,
+			"profileUrl": user.ImageUrl,
 		},
 
 		"vehicle": map[string]any{

@@ -14,6 +14,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserService struct {
@@ -24,10 +26,11 @@ type UserService struct {
 	counter *repository.CounterRepo
 	amcRepo *repository.AMCRepo
 	vehicleRepo *repository.VehicleRepo
+	db *mongo.Database
 }
-
-func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo,vehicleRepo *repository.VehicleRepo) *UserService {
-	return &UserService{users: users, otp: otp, token: token, queue: q, counter: counter, vehicleRepo: vehicleRepo}
+var mongoDB *mongo.Database
+func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo,vehicleRepo *repository.VehicleRepo,db *mongo.Database) *UserService {
+	return &UserService{users: users, otp: otp, token: token, queue: q, counter: counter, vehicleRepo: vehicleRepo,db:db}
 }
 
 func GenerateOTP() string {
@@ -213,9 +216,41 @@ func (s *UserService) GetActiveAMCByUser(ctx context.Context, userID primitive.O
 }
 
 
-func (s *UserService) Logout(ctx context.Context, userID domain.UserID, token string) error {
+func (s *UserService) Logout(
+	ctx context.Context,
+	userID domain.UserID,
+	token string, // ignored
+) error {
+
+	filter := bson.M{
+		"ownerId":   string(userID),
+		"ownerType": "user",
+	}
+	fmt.Println("THIS IS USER ID",userID)
+	fmt.Println("THIS IS TOKEN",token)
+	fmt.Println(filter)
+
+	opts := options.FindOneAndDelete().
+		SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	res := s.db.
+	Collection("device_tokens").
+	FindOneAndDelete(ctx, filter, opts)
+	fmt.Println(res)
+
+	if res.Err() == mongo.ErrNoDocuments {
+		return errors.New("no active session found")
+	}
+
+	if res.Err() != nil {
+		return res.Err()
+	}
+
 	return nil
 }
+
+
+
 
 func (s *UserService) DeleteUser(ctx context.Context, userID primitive.ObjectID) error {
 	_ , err := s.users.GetByID(ctx, userID)

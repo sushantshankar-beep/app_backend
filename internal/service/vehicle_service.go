@@ -9,6 +9,7 @@ import (
 	"app_backend/internal/repository"
 
 	"github.com/redis/go-redis/v9"
+	"fmt"
 )
 
 type MetaService struct {
@@ -66,6 +67,7 @@ func (s *MetaService) GetServices(
 ) ([]domain.ServiceMaster, error) {
 
 	cacheKey := "meta:services:" + vehicle
+	fmt.Println(cacheKey)
 
 	if val, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
 		var cached []domain.ServiceMaster

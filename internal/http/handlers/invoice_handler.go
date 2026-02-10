@@ -30,9 +30,14 @@ func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
 	})
 }
 func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
+
 	bookingId := c.Query("bookingId")
 
-	pdfPath, filename, err := h.svc.GetInvoicePDF(c.Request.Context(), bookingId)
+	pdfURL, err := h.svc.GetInvoicePDF(
+		c.Request.Context(),
+		bookingId,
+	)
+
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": err.Error(),
@@ -40,10 +45,9 @@ func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
 		return
 	}
 
-	c.Header("Content-Disposition", "attachment; filename="+filename)
-	c.Header("Content-Type", "application/pdf")
-	c.File(pdfPath)
+	c.Redirect(http.StatusTemporaryRedirect, pdfURL)
 }
+
 
 func (h *InvoiceHandler) GenerateInvoice(c *gin.Context) {
 	var req struct {

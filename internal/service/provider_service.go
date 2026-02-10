@@ -17,6 +17,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type ProviderService struct {
@@ -32,9 +34,10 @@ type ProviderService struct {
 	ratingsRepo         *repository.RatingRepo
 	agreementRepo       *repository.AgreementRepo
 	pdfUploader         *s3.PDFUploader
+	db 					*mongo.Database
 }
 
-func NewProviderService(repo ports.ProviderRepository, counterRepo *repository.CounterRepo, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, acceptedRepo ports.AcceptedServiceRepository, providerRepo *repository.ProviderRepo, kycRepo *repository.KYCRepo, userRepo *repository.UserRepo, ratingsRepo *repository.RatingRepo, agreementRepo *repository.AgreementRepo, pdfUploader *s3.PDFUploader) *ProviderService {
+func NewProviderService(repo ports.ProviderRepository, counterRepo *repository.CounterRepo, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, acceptedRepo ports.AcceptedServiceRepository, providerRepo *repository.ProviderRepo, kycRepo *repository.KYCRepo, userRepo *repository.UserRepo, ratingsRepo *repository.RatingRepo, agreementRepo *repository.AgreementRepo, pdfUploader *s3.PDFUploader,db *mongo.Database) *ProviderService {
 	return &ProviderService{
 		repo:                repo,
 		counterRepo:         counterRepo,
@@ -48,6 +51,7 @@ func NewProviderService(repo ports.ProviderRepository, counterRepo *repository.C
 		ratingsRepo:         ratingsRepo,
 		agreementRepo:       agreementRepo,
 		pdfUploader:         pdfUploader,
+		db:                  db,
 	}
 }
 func isProviderProfileCompleted(p *domain.Provider) bool {
@@ -449,9 +453,35 @@ func (s *ProviderService) SubmitAgreement(ctx context.Context,id domain.Provider
 	return provider, nil
 }
 
-func (s *ProviderService) Logout(ctx context.Context, providerID domain.ProviderID, token string) error {
+func (s *ProviderService) Logout(
+	ctx context.Context,
+	providerID domain.ProviderID,
+	token string, // ignored for now
+) error {
+
+	filter := bson.M{
+		"ownerId":   providerID,
+		"ownerType": "provider",
+	}
+
+	opts := options.FindOneAndDelete().
+		SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	res := s.db.
+		Collection("device_tokens").
+		FindOneAndDelete(ctx, filter, opts)
+
+	if res.Err() == mongo.ErrNoDocuments {
+		return errors.New("no active session found")
+	}
+
+	if res.Err() != nil {
+		return res.Err()
+	}
+
 	return nil
 }
+
 
 func (s *ProviderService) DeleteProviderAccount(ctx context.Context, id domain.ProviderID) error {
 	provider, err := s.repo.FindByID(ctx, id)

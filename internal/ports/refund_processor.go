@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"app_backend/internal/domain"
 )
 
 type RefundProcessor interface {
@@ -11,7 +12,7 @@ type RefundProcessor interface {
 		ctx context.Context,
 		mihpayid string,
 		amount float64,
-	) error
+	) (*domain.PayURefundResponse, error)
 }
 
 type RefundRepo interface {

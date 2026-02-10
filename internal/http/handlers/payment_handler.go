@@ -18,7 +18,7 @@ type PaymentHandler struct {
 	paymentSvc *service.PaymentService
 
 	refundRepo        *repository.RefundRepo
-	refundWebhookRepo *repository.PaymentRepository // reuse webhook collection
+	refundWebhookRepo *repository.RefundWebhookRepo // reuse webhook collection
 	paymentRepo *repository.PaymentRepository
 }
 
@@ -27,11 +27,12 @@ func NewPaymentHandler(
 	paymentSvc *service.PaymentService,
 	refundRepo *repository.RefundRepo,
 	paymentRepo *repository.PaymentRepository,
+	refundWebhookRepo *repository.RefundWebhookRepo,
 ) *PaymentHandler {
 	return &PaymentHandler{
 		paymentSvc: paymentSvc,
 		refundRepo: refundRepo,
-		refundWebhookRepo: paymentRepo,
+		refundWebhookRepo: refundWebhookRepo,
 	}
 }
 
@@ -119,7 +120,7 @@ func (h *PaymentHandler) RefundWebhook(c *gin.Context) {
 	ctx := context.Background()
 
 	// 📦 Save raw webhook payload
-	h.paymentRepo.SaveWebhook(ctx, txn, payload)
+	h.refundWebhookRepo.SaveWebhook(ctx, txn, payload)
 
 	// 🔄 Update refund transaction
 	_ = h.refundRepo.UpdateByMihPayID(
@@ -134,6 +135,22 @@ func (h *PaymentHandler) RefundWebhook(c *gin.Context) {
 	c.Status(200)
 }
 
+func (h *PaymentHandler) GetRefundTracking(c *gin.Context) {
+
+	serviceID := c.Param("serviceId")
+
+	resp, err := h.paymentSvc.GetRefundTracking(
+		c.Request.Context(),
+		serviceID,
+	)
+
+	if err != nil {
+		c.JSON(404, gin.H{"error": "refund not found"})
+		return
+	}
+
+	c.JSON(200, resp)
+}
 
 
 

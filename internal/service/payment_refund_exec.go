@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
 	"time"
+
+	"app_backend/internal/domain"
 
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -14,22 +17,14 @@ func (s *PaymentService) ProcessRefund(
 	ctx context.Context,
 	mihpayid string,
 	amount float64,
-) error {
+) (*domain.PayURefundResponse, error) {
 
-	// -------------------------------
-	// Generate Refund ID (RFVH...)
-	// -------------------------------
 	refundID := fmt.Sprintf(
 		"RFVH_%s_%d",
 		mihpayid,
 		time.Now().Unix(),
 	)
 
-	// -------------------------------
-	// Build PayU Hash
-	// Format:
-	// key|command|var1|salt
-	// -------------------------------
 	hashStr := fmt.Sprintf(
 		"%s|cancel_refund_transaction|%s|%s",
 		s.key,
@@ -37,48 +32,56 @@ func (s *PaymentService) ProcessRefund(
 		s.salt,
 	)
 
-	// DEBUG HASH PRINT
-	log.Println("PAYU HASH STRING:", hashStr)
-	log.Println("PAYU HASH VALUE :", sha512Hash(hashStr))
+	hash := sha512Hash(hashStr)
 
-	// -------------------------------
-	// Build Form Body
-	// -------------------------------
 	form := url.Values{}
 	form.Set("key", s.key)
 	form.Set("command", "cancel_refund_transaction")
-	form.Set("hash", sha512Hash(hashStr))
-
+	form.Set("hash", hash)
 	form.Set("var1", mihpayid)
 	form.Set("var2", refundID)
 	form.Set("var3", fmt.Sprintf("%.2f", amount))
 
-	// -------------------------------
-	// Call PayU API
-	// -------------------------------
 	resp, err := s.http.R().
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetBody(form.Encode()).
 		Post(s.payuURL + "/merchant/postservice?form=2")
 
 	if err != nil {
-		return fmt.Errorf("payu refund request failed: %w", err)
+		return nil, fmt.Errorf("payu refund request failed: %w", err)
 	}
 
-	log.Println("PayU refund response:", string(resp.Body()))
+	body := resp.Body()
 
-	if resp.IsError() {
-		return fmt.Errorf(
-			"payu refund failed: %s",
-			string(resp.Body()),
-		)
+	log.Println("PayU refund response:", string(body))
+
+	// -------------------------------
+	// Parse JSON
+	// -------------------------------
+	var payuResp domain.PayURefundResponse
+	if err := json.Unmarshal(body, &payuResp); err != nil {
+		return nil, fmt.Errorf("failed to parse payu response: %w", err)
 	}
 
 	// -------------------------------
-	// Mark Refund Processing
+	// Gateway Error Handling
 	// -------------------------------
-	return s.repo.UpdateTxn(ctx, mihpayid, bson.M{
+	if resp.IsError() || payuResp.Status != 1 {
+		return &payuResp, fmt.Errorf("payu refund failed: %s", payuResp.Msg)
+	}
+
+	// -------------------------------
+	// Update DB
+	// -------------------------------
+	if err := s.repo.UpdateTxn(ctx, mihpayid, bson.M{
 		"refundStatus": "processing",
 		"refundRef":    refundID,
-	})
+		"refundReqId":  payuResp.RequestID,
+		"updatedAt":    time.Now(),
+	}); err != nil {
+
+		return &payuResp, err
+	}
+
+	return &payuResp, nil
 }

@@ -1,3 +1,4 @@
+
 package domain
 
 import (
@@ -17,4 +18,12 @@ type RefundTransaction struct {
 	Reason   string             `bson:"reason"`
 	CreatedAt time.Time         `bson:"createdAt"`
 	UpdatedAt time.Time         `bson:"updatedAt"`
+}
+
+type PayURefundResponse struct {
+	Msg       string `json:"msg"`
+	ErrorCode int    `json:"error_code"`
+	Status    int    `json:"status"`
+	Mihpayid  int64  `json:"mihpayid"`
+	RequestID string `json:"request_id"`
 }

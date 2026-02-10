@@ -23,7 +23,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	// "github.com/aws/aws-sdk-go/service/s3/s3manager"
 	// 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"app_backend/internal/s3"
 )
 
 type PaymentService struct {
@@ -43,6 +45,7 @@ type PaymentService struct {
 	payuURL             string
 	baseURL             string
 	http                *resty.Client
+	refundRepo *repository.RefundRepo
 }
 
 func NewPaymentService(
@@ -50,17 +53,19 @@ func NewPaymentService(
 	invoiceRepo *repository.InvoiceRepo,
 	socket *socket.Emitter,
 	acceptedRepo ports.AcceptedServiceRepository,
-	userRepo   *repository.UserRepo,
+	userRepo *repository.UserRepo,
 	providerRepo ports.ProviderRepo,
 	notify ports.NotificationService,
 	eventsBus *events.Bus,
 	key, salt, payuURL, baseURL string,
 	redis *redis.Client,
+	refundRepo *repository.RefundRepo,
+	s3Uploader *s3.InvoiceUploader,
 ) *PaymentService {
 
 	return &PaymentService{
 		repo:                repo,
-		invoiceSvc:          NewInvoiceService(invoiceRepo, acceptedRepo.(*repository.AcceptedServiceRepo), userRepo, providerRepo.(*repository.ProviderRepo),repo),
+		invoiceSvc:          NewInvoiceService(invoiceRepo,acceptedRepo.(*repository.AcceptedServiceRepo),userRepo,providerRepo.(*repository.ProviderRepo),repo,s3Uploader),
 		socket:              socket,
 		acceptedServiceRepo: acceptedRepo,
 		userRepo:			 userRepo,
@@ -73,6 +78,8 @@ func NewPaymentService(
 		payuURL:             payuURL,
 		baseURL:             baseURL,
 		http:                resty.New().SetTimeout(30 * time.Second),
+		refundRepo: refundRepo,
+
 	}
 }
 
@@ -391,3 +398,62 @@ func toMap(m map[string]string) map[string]interface{} {
 	}
 	return out
 }
+
+
+
+func (s *PaymentService) GetRefundTracking(
+	ctx context.Context,
+	serviceID string,
+) (map[string]any, error) {
+
+	refund, err := s.refundRepo.FindByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	timeline := []map[string]any{
+		{
+			"title": "Booking Cancelled",
+			"time": refund.CreatedAt,
+			"completed": true,
+		},
+	}
+
+	// under process
+	if refund.Status != "" {
+		timeline = append(timeline, map[string]any{
+			"title": "Refund Under Process",
+			"time": refund.UpdatedAt,
+			"completed": refund.Status != "failed",
+		})
+	}
+
+	// final state
+	final := map[string]any{
+		"title": "Refunded",
+		"time": nil,
+		"completed": false,
+	}
+
+	if refund.Status == "success" {
+		final["completed"] = true
+		final["time"] = refund.UpdatedAt
+	}
+
+	if refund.Status == "failed" {
+		final["title"] = "Refund Failed"
+		final["completed"] = true
+		final["time"] = refund.UpdatedAt
+	}
+
+	timeline = append(timeline, final)
+
+	return map[string]any{
+		"serviceId": refund.ServiceID,
+		"amount": refund.Amount,
+		"estimatedDays": "5–7 working days",
+		"status": refund.Status,
+		"timeline": timeline,
+	}, nil
+}
+

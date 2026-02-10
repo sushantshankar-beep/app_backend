@@ -39,3 +39,22 @@ func (r *RefundRepo) UpdateByMihPayID(
 	)
 	return err
 }
+func (r *RefundRepo) FindByServiceID(
+	ctx context.Context,
+	serviceID string,
+) (*domain.RefundTransaction, error) {
+
+	var txn domain.RefundTransaction
+
+	err := r.col.FindOne(
+		ctx,
+		bson.M{"serviceId": serviceID},
+	).Decode(&txn)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &txn, nil
+}
+

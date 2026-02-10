@@ -392,10 +392,22 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 	var distanceKm float64
 	var eta int
+	distKey := "service:dist:" + svc.ID.Hex() + ":" + svc.Provider.Hex()
 
-	if lat != 0 && long != 0 {
-		distanceKm = distanceKmHaversine(lat, long, userLat, userLong)
-		eta = int(estimateETA(distanceKm))
+	// 🔥 redis first
+	if d, err := s.rdb.Get(ctx, distKey).Float64(); err == nil && d > 0 {
+
+		distanceKm = d
+
+	} else if lat != 0 && long != 0 {
+
+		// fallback
+		distanceKm = distanceKmHaversine(
+			lat,
+			long,
+			userLat,
+			userLong,
+		)
 	}
 
 	gst := svc.FinalPrice * 18 / 100
@@ -446,14 +458,15 @@ func (s *ServiceTrackingService) UpdateStatus(
 		"timestamps": svc.Timestamps,
 	}
 
-	if lat != 0 && long != 0 {
+	if distanceKm > 0 {
+
+		payload["distanceKm"] = distanceKm
+		payload["eta"] = eta
+
 		payload["providerLocation"] = map[string]any{
 			"lat":  lat,
 			"long": long,
 		}
-
-		payload["distanceKm"] = distanceKm
-		payload["eta"] = eta
 	}
 
 	// ================= SOCKET =================

@@ -50,7 +50,7 @@ func main() {
 	//mongo
 	client, err := db.Connect(cfg.MongoURI)
 	if err != nil {
-		log.Fatal("Mongo connect:", err)
+		log.Fatal("Mongo connect:)", err)
 	}
 	db := client.Database(cfg.DBName)
 	log.Println("✅ Mongo connected:", cfg.DBName)
@@ -102,6 +102,7 @@ func main() {
 	settlementRepo := repository.NewSettlementHistoryRepository(db)
 	refundRepo := repository.NewRefundRepo(db)
 	notificationRepo := repository.NewNotificationRepo(db)
+	refundWebhookRepo := repository.NewRefundWebhookRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -120,24 +121,38 @@ func main() {
 		userRepo,
 	)
 	bus := events.NewBus(natsURL)
+	invoiceUploader := s3.NewInvoiceUploader(awsSession,os.Getenv("AWS_BUCKET_NAME"),os.Getenv("AWS_INVOICE_FOLDER"))
+	invoiceSvc := service.NewInvoiceService(
+	invoiceRepo,
+	acceptedServiceRepo,
+	userRepo,
+	providerRepo,
+	paymentRepo,
+	invoiceUploader,
+)
 	worker.NewPaymentConsumer(ports.AcceptedServiceRepository(acceptedServiceRepo))
 
 	worker.NewProviderConsumer(ports.AcceptedServiceRepository(acceptedServiceRepo))
 	paymentSvc := service.NewPaymentService(
-		paymentRepo,
-		invoiceRepo,
-		emitter,
-		ports.AcceptedServiceRepository(acceptedServiceRepo),
-		userRepo,
-		ports.ProviderRepo(providerRepo),
-		ports.NotificationService(notificationSvc),
-		bus,
-		cfg.PayUKey,
-		cfg.PayUSalt,
-		cfg.PayUBaseURL,
-		cfg.BaseURL,
-		rdb,
-	)
+	paymentRepo,
+	invoiceRepo,
+	emitter,
+	ports.AcceptedServiceRepository(acceptedServiceRepo),
+	userRepo,
+	ports.ProviderRepo(providerRepo),
+	ports.NotificationService(notificationSvc),
+	bus,
+	cfg.PayUKey,
+	cfg.PayUSalt,
+	cfg.PayUBaseURL,
+	cfg.BaseURL,
+	rdb,
+	refundRepo,
+	invoiceUploader,
+)
+
+
+
 	//Refund async worker
 	refundWorker := worker.NewRefundWorker(
 		rdb,
@@ -155,7 +170,7 @@ func main() {
 	otpQueue.Start()
 	defer otpQueue.Stop()
 
-	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo,vehicleRepo)
+	userSvc := service.NewUserService(userRepo, otpRepo, tokenSvc, otpQueue, counterRepo,vehicleRepo,db)
 
 	agreementPdfUploader := s3.NewPDFUploader(awsSession, os.Getenv("AWS_BUCKET_NAME"),  os.Getenv("AWS_S3_FOLDER"))
 
@@ -172,8 +187,9 @@ func main() {
 		ratingRepo,
 		providerAgreementRepo,
 		agreementPdfUploader,
+		db,
 	)
-	invoiceSvc := service.NewInvoiceService(invoiceRepo,acceptedServiceRepo,userRepo,providerRepo,paymentRepo)
+
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
@@ -214,6 +230,7 @@ func main() {
 		paymentSvc,
 		refundRepo,
 		paymentRepo,
+		refundWebhookRepo,
 	)
 	timeoutWorker := worker.NewProviderTimeoutWorker(
 		ports.AcceptedServiceRepository(acceptedServiceRepo),
@@ -228,6 +245,7 @@ func main() {
 		serviceTrackingSvc,
 	)
 	kycHandler := handlers.NewKYCHandler(kycService)
+
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
 	providerStatusHandler := handlers.NewProviderStatusHandler(rdb,providerRepo)
 	metaHandler := handlers.NewMetaHandler(metaSvc)
@@ -236,6 +254,7 @@ func main() {
 	ratingHandler := handlers.NewRatingHandler(ratingService)
 	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)
 	notificationHandler := handlers.NewNotificationHandler(notificationQuerySvc)
+
 
 
 	//middleware

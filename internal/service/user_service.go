@@ -131,8 +131,14 @@ func (s *UserService) VerifyOTP(
 		}
 
 		if err := s.users.Create(ctx, u); err != nil {
+		 	return nil, err
+		}
+
+		u, err = s.users.FindByPhone(ctx, phone)
+		if err != nil {
 			return nil, err
 		}
+		
 	} else if err != nil {
 		return nil, err
 	}
@@ -171,6 +177,11 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	isCreate := user.Name == "" && user.Email == "" && user.SelectedCity == ""
 	
 	update := bson.M{}
+	
+	if isCreate {
+		update["isActive"] = domain.USER_ACTIVE
+		update["isNew"] = true
+	}
 	setString(update, "name", req["name"])
 	setString(update, "email", req["email"])
 	setString(update, "fcmToken", req["fcmToken"])

@@ -63,9 +63,11 @@ func GenerateAgreementPDF(provider *domain.Provider, agreement *domain.Agreement
 	htmlBuilder.WriteString(fmt.Sprintf("<p>%s</p>", agreement.AgreementOf))
 	htmlBuilder.WriteString(fmt.Sprintf("<p><strong>AND</strong></p>"))
 
-	agreementDate := time.Now().Format("02-01-2006 15:04:05")
+	ist, _ := time.LoadLocation("Asia/Kolkata")
+
+	agreementDate := time.Now().In(ist).Format("02-01-2006 03.04 PM")
 	if provider.AgreementSubmittedAt != nil {
-		agreementDate = provider.AgreementSubmittedAt.Format("02-01-2006 15:04:05")
+		agreementDate = provider.AgreementSubmittedAt.In(ist).Format("02-01-2006 03.04 PM")
 	}
 
 	providerDetails := fmt.Sprintf(`

@@ -48,12 +48,19 @@ func (r *UserRepo) AddComplaint(ctx context.Context, userID primitive.ObjectID, 
 }
 
 func (r *UserRepo) FindByPhone(ctx context.Context, phone string) (*domain.User, error) {
-	var u domain.User
-	err := r.col.FindOne(ctx, bson.M{"phone": phone}).Decode(&u)
-	if err == mongo.ErrNoDocuments {
-		return nil, domain.ErrNotFound
+	filter := bson.M{
+		"phone": phone,
+		"isActive": bson.M{"$ne": domain.PROVIDER_DELETED},
 	}
-	return &u, err
+	var u domain.User
+	err := r.col.FindOne(ctx, filter).Decode(&u)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
 }
 
 func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {

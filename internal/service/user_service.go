@@ -168,6 +168,11 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	isCreate := user.Name == "" && user.Email == "" && user.SelectedCity == ""
 	
 	update := bson.M{}
+	
+	if isCreate {
+		update["isActive"] = domain.USER_ACTIVE
+		update["isNew"] = true
+	}
 	setString(update, "name", req["name"])
 	setString(update, "email", req["email"])
 	setString(update, "fcmToken", req["fcmToken"])

@@ -36,13 +36,22 @@ func generateProviderCode(seq int64) string {
 
 /* ---------------- QUERIES ---------------- */
 
+// In your repository
 func (r *ProviderRepo) FindByPhone(ctx context.Context, phone string) (*domain.Provider, error) {
-	var p domain.Provider
-	err := r.col.FindOne(ctx, bson.M{"phone": phone}).Decode(&p)
-	if err == mongo.ErrNoDocuments {
-		return nil, domain.ErrNotFound
+	filter := bson.M{
+		"phone": phone,
+		"isActive": bson.M{"$ne": domain.PROVIDER_DELETED},
 	}
-	return &p, err
+	
+	var provider domain.Provider
+	err := r.col.FindOne(ctx, filter).Decode(&provider)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &provider, nil
 }
 
 func (r *ProviderRepo) FindByID(ctx context.Context, id domain.ProviderID) (*domain.Provider, error) {

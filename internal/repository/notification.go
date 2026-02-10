@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"app_backend/internal/domain"
-
+    "time"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -56,11 +56,15 @@ func (r *NotificationRepo) FindLatestServiceForOwner(
 	ownerType string,
 ) (primitive.ObjectID, error) {
 
+	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour)
+
+
 	pipeline := mongo.Pipeline{
 
 		{{"$match", bson.M{
 			"ownerId":   ownerID,
 			"ownerType": ownerType,
+			"createdAt": bson.M{"$gte": twentyFourHoursAgo},
 		}}},
 
 		{{"$sort", bson.M{"createdAt": -1}}},
@@ -109,10 +113,13 @@ func (r *NotificationRepo) FindByService(
 	skip int64,
 ) ([]domain.Notification, error) {
 
+	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour)
+
 	filter := bson.M{
 		"ownerId":   ownerID,
 		"ownerType": ownerType,
 		"serviceId": serviceID,
+		"createdAt": bson.M{"$gte": twentyFourHoursAgo},
 		"title": bson.M{
 			"$in": []string{
 				"Service Completed",

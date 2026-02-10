@@ -143,6 +143,12 @@ func (s *ProviderService) VerifyOTP(
 		if err := s.repo.Create(ctx, provider); err != nil {
 			return "", false,false,err
 		}
+
+		provider, err = s.repo.FindByPhone(ctx, phone)
+		if err != nil {
+			return "", false, false, err
+		}
+
 		isProfileCompleted = false
 	}else if err != nil{
 		return "",false,false,err

@@ -128,8 +128,14 @@ func (s *UserService) VerifyOTP(
 		}
 
 		if err := s.users.Create(ctx, u); err != nil {
+		 	return nil, err
+		}
+
+		u, err = s.users.FindByPhone(ctx, phone)
+		if err != nil {
 			return nil, err
 		}
+		
 	} else if err != nil {
 		return nil, err
 	}

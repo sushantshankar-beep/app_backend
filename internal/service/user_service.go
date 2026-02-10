@@ -108,11 +108,11 @@ func (s *UserService) VerifyOTP(
 		return nil, domain.ErrOTPExpired
 	}
 	_ = s.otp.Delete(ctx, phone)
-	fmt.Println(code)
+	
 	u, err := s.users.FindByPhone(ctx, phone)
 	isNew := false
 
-	if err == domain.ErrNotFound {
+	if err == domain.ErrNotFound || (err == nil && u.IsActive == domain.USER_DELETED) {
 		isNew = true
 
 		seq, _ := s.counter.Next(ctx, "user")
@@ -124,12 +124,14 @@ func (s *UserService) VerifyOTP(
 			IsProfileComplete: false,
 			CreatedAt:         time.Now(),
 			UpdatedAt:         time.Now(),
-			ServiceOTP: code,
+			ServiceOTP:        code,
 		}
 
 		if err := s.users.Create(ctx, u); err != nil {
 			return nil, err
 		}
+	} else if err != nil {
+		return nil, err
 	}
 
 	token, err := s.token.GenerateUserToken(u.ID)
@@ -154,17 +156,16 @@ func (s *UserService) VerifyOTP(
 func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.UserID, req map[string]any) (*domain.User, string, error) {
 
 	objID, err := primitive.ObjectIDFromHex(string(userID))
-	fmt.Println(objID, err)
 	if err != nil {
 		return nil, "", errors.New("invalid user id")
 	}
+	
 	user, err := s.users.GetByID(ctx, objID)
 	if err != nil {
 		return nil, "", err
 	}
 
-	isDeleted := user.IsActive == domain.USER_DELETED
-	isCreate := (user.Name == "" && user.Email == "" && user.SelectedCity == "") || isDeleted
+	isCreate := user.Name == "" && user.Email == "" && user.SelectedCity == ""
 	
 	update := bson.M{}
 	setString(update, "name", req["name"])
@@ -174,12 +175,7 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "appStateStatus", req["appStateStatus"])
 	setString(update, "image_url", req["imageUrl"])
 	
-	if isCreate || isDeleted {
-		update["isActive"] = domain.USER_ACTIVE
-		update["isNew"] = true
-	}
-	
-	if val, ok := req["isActive"]; ok && !isDeleted {
+	if val, ok := req["isActive"]; ok {
 		setString(update, "isActive", val)
 	}
 
@@ -203,6 +199,7 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	}
 	return updatedUser, "updated", nil
 }
+
 func setString(update bson.M, key string, v any) {
 	if s, ok := v.(string); ok && s != "" {
 		update[key] = s

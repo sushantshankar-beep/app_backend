@@ -90,14 +90,34 @@ func (h *BookingHandler) GetProviderBookings(c *gin.Context) {
 		return
 	}
 
-	bookings, err := h.svc.GetProviderBookings(c.Request.Context(), providerID, status)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	bookings,total, err := h.svc.GetProviderBookings(c.Request.Context(), providerID, status,page,limit)
 	
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, bookings)
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	response := gin.H{
+		"bookings": bookings.Bookings,
+		"page":     page,
+		"limit":    limit,
+		"total":    total,
+		"totalPages": totalPages,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *BookingHandler) GetProviderBookingDetail(c *gin.Context) {
@@ -122,16 +142,32 @@ func (h *BookingHandler) GetUserExpenses(c *gin.Context) {
 		return
 	}
 
-	expenses, totalExpense, err := h.svc.GetUserExpenses(c.Request.Context(), userID)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	expenses, totalExpense, total, err := h.svc.GetUserExpenses(c.Request.Context(), userID, page, limit)
 	
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
 	c.JSON(http.StatusOK, gin.H{
 		"totalExpense": totalExpense,
 		"expenses":     expenses,
+		"page":         page,
+		"limit":        limit,
+		"total":        total,
+		"totalPages":   totalPages,
 	})
 }
 

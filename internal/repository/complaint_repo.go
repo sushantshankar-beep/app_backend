@@ -37,36 +37,74 @@ func (r *ComplaintRepo) FindByAcceptedServiceId(ctx context.Context, acceptedSer
 	return &complaint, nil
 }
 
-func (r *ComplaintRepo) FindByUser(ctx context.Context, userID primitive.ObjectID) ([]domain.Complaint, error) {
-	cur, err := r.col.Find(ctx, bson.M{"userId": userID})
-	if err != nil {
-		return nil, err
+func (r *ComplaintRepo) FindByUser(ctx context.Context, userID primitive.ObjectID, skip, limit int64) ([]domain.Complaint, int64, error) {
+	filter := bson.M{
+		"userId": userID,
+		"userComplaint": bson.M{"$exists": true},
 	}
+
+	total, err := r.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+
+	cur, err := r.col.Find(ctx,filter,opts)
+
+	if err != nil {
+		return nil,0, err
+	}
+
+	defer cur.Close(ctx)
 
 	var list []domain.Complaint
 	if err := cur.All(ctx, &list); err != nil {
-		return nil, err
+		return nil,0, err
 	}
-	return list, nil
+
+	if list == nil {
+		return []domain.Complaint{}, total, nil
+	}
+
+	return list, total, nil
 }
 
-func (r *ComplaintRepo) FindByProvider(ctx context.Context, providerID primitive.ObjectID) ([]domain.Complaint, error) {
+func (r *ComplaintRepo) FindByProvider(ctx context.Context, providerID primitive.ObjectID,skip, limit int64) ([]domain.Complaint,int64, error) {
 	filter := bson.M{
 		"providerId": providerID,
 		"providerComplaint": bson.M{"$exists": true},
 	}
 
-	cursor, err := r.col.Find(ctx, filter)
+	total, err := r.col.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+	cursor, err := r.col.Find(ctx, filter,opts)
+	if err != nil {
+		return nil, 0,err
 	}
 
 	var complaints []domain.Complaint
 	if err := cursor.All(ctx, &complaints); err != nil {
-		return nil, err
+		return nil, 0,err
 	}
 
-	return complaints, nil
+	if complaints == nil {
+		return []domain.Complaint{}, total, nil
+	}
+
+	return complaints,total, nil
 }
 
 func (r *ComplaintRepo) GetNextSequence(ctx context.Context, sequenceName string) (int64, error) {

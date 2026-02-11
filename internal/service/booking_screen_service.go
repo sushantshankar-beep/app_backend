@@ -618,21 +618,9 @@ func (s *BookingService) GetProviderBookingDetails(
 
 	const gstPercent = 18.0
 
-	finalPrice := serviceData.FinalPrice
-
-	if !useSnapshot {
-		tx, err := s.transactionRepo.GetTransactionByServiceID(
-			ctx,
-			serviceData.ID.Hex(),
-		)
-		if err == nil {
-			finalPrice = tx.Amount
-		}
-	}
-
-	serviceCharge := finalPrice
-	gstOnCommission := (serviceCharge * gstPercent) / 100
-	providerPayout := serviceCharge + gstOnCommission
+	serviceCharge := serviceData.FinalPrice
+	gstAmount := (serviceCharge * gstPercent) / 100
+	totalPayable := serviceCharge + gstAmount
 
 	var userLoc dto.UserLocation
 	if serviceData.UserLocation != nil {
@@ -671,7 +659,7 @@ func (s *BookingService) GetProviderBookingDetails(
 		ProfileURL:     user.ImageUrl,
 		ServiceNumber:  serviceData.ServiceNumber,
 		Status:         string(serviceData.Status),
-		FinalPrice:     finalPrice,
+		FinalPrice:     serviceData.FinalPrice,
 		UserProfileUrl: user.ImageUrl,
 		VehicleNumber:  serviceData.VehicleNumber,
 		Brand:          serviceData.Brand,
@@ -688,9 +676,9 @@ func (s *BookingService) GetProviderBookingDetails(
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:  utils.RoundTo2(serviceCharge),
 			GSTPercent:     gstPercent,
-			GSTAmount:      utils.RoundTo2(gstOnCommission),
-			TotalPayable:   serviceCharge,
-			ProviderPayout: utils.RoundTo2(providerPayout),
+			GSTAmount:      utils.RoundTo2(gstAmount),
+			TotalPayable:   utils.RoundTo2(totalPayable),
+			ProviderPayout: utils.RoundTo2(serviceCharge),
 			PaymentStatus:  string(serviceData.PaymentStatus),
 		},
 		Cancelled:        cancelled,

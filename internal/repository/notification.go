@@ -108,7 +108,6 @@ func (r *NotificationRepo) FindByService(
 	ctx context.Context,
 	ownerID primitive.ObjectID,
 	ownerType string,
-	serviceID primitive.ObjectID,
 	limit int64,
 	skip int64,
 ) ([]domain.Notification, error) {
@@ -118,7 +117,6 @@ func (r *NotificationRepo) FindByService(
 	filter := bson.M{
 		"ownerId":   ownerID,
 		"ownerType": ownerType,
-		"serviceId": serviceID,
 		"createdAt": bson.M{"$gte": twentyFourHoursAgo},
 		"title": bson.M{
 			"$in": []string{

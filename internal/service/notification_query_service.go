@@ -31,33 +31,23 @@ func (s *NotificationQueryService) ListLatestServiceNotifications(
 	ownerType string,
 	limit int64,
 	skip int64,
-) (primitive.ObjectID, []dto.NotificationResponse, error) {
+) ([]dto.NotificationResponse, error) {
 
 	oid, err := primitive.ObjectIDFromHex(ownerID)
 	if err != nil {
-		return primitive.NilObjectID, nil, errors.New("invalid owner id")
-	}
-
-	serviceID, err := s.repo.FindLatestServiceForOwner(
-		ctx,
-		oid,
-		ownerType,
-	)
-	if err != nil {
-		return primitive.NilObjectID, nil, err
+		return nil, errors.New("invalid owner id")
 	}
 
 	items, err := s.repo.FindByService(
 		ctx,
 		oid,
 		ownerType,
-		serviceID,
 		limit,
 		skip,
 	)
 
 	if err != nil {
-		return primitive.NilObjectID, nil, err
+		return nil, err
 	}
 
 	out := make([]dto.NotificationResponse, 0, len(items))
@@ -66,7 +56,7 @@ func (s *NotificationQueryService) ListLatestServiceNotifications(
 		out = append(out, mapNotification(n))
 	}
 
-	return serviceID, out, nil
+	return out, nil
 }
 
 /* ============================================================

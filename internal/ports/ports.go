@@ -60,6 +60,13 @@ type AcceptedServiceRepository interface {
 		fields bson.M,
 	) error
 }
+type SnapshotRepository interface {
+	GetByServiceID(
+		ctx context.Context,
+		serviceID primitive.ObjectID,
+	) (*domain.ActiveServiceSnapshot, error)
+}
+
 
 type HomepageRepository interface {
 	Create(ctx context.Context, h *domain.Homepage) error

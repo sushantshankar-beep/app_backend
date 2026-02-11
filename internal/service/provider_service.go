@@ -478,7 +478,7 @@ func (s *ProviderService) Logout(
 		FindOneAndDelete(ctx, filter, opts)
 
 	if res.Err() == mongo.ErrNoDocuments {
-		return errors.New("no active session found")
+		return nil
 	}
 
 	if res.Err() != nil {

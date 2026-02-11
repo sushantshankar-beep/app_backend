@@ -138,28 +138,30 @@ func (s *BookingService) BuildBookingScreen(
 	}, nil
 }
 
-func (s *BookingService) GetUserBookings(ctx context.Context, userID, status string) ([]dto.UserBookingDTO, error) {
+func (s *BookingService) GetUserBookings(ctx context.Context, userID, status string, page, limit int) ([]dto.UserBookingDTO, int64,error) {
 	sStatus, err := mapStatus(status)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	user, err := s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
 		if err.Error() == "not found" {
-			return []dto.UserBookingDTO{}, nil
+			return []dto.UserBookingDTO{},0, nil
 		}
-		return nil, err
+		return nil,0, err
 	}
 
-	raw, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userObjID, sStatus)
+	skip := int64((page - 1) * limit)
+
+	raw,_, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userObjID, sStatus,skip,int64(limit))
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	result := make([]dto.UserBookingDTO, 0, len(raw))
@@ -212,8 +214,9 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	}
 
-	return result, nil
+	return result,int64(len(result)), nil
 }
+
 func mapStatus(status string) ([]domain.ServiceStatus, error) {
 	switch status {
 

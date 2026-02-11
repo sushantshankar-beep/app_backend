@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"app_backend/internal/service"
-	
+	"strconv"
 	"net/http"
-
+    "math"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,15 +39,33 @@ func (h *BookingHandler) GetUserBookings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "userID and status are required"})
 		return
 	}
-
-	bookings, err := h.svc.GetUserBookings(c.Request.Context(), userID, status)
 	
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	bookings,total, err := h.svc.GetUserBookings(c.Request.Context(), userID, status, page, limit)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"bookings": bookings})
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"bookings": bookings,
+		"page":        page,
+		"limit":       limit,
+		"total":       total,
+		"totalPages":  totalPages,
+	})
 }
 
 func (h *BookingHandler) GetUserBookingDetail(c *gin.Context) {

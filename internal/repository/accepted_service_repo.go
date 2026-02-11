@@ -369,7 +369,6 @@ func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context
 	filter := bson.M{
 		"$or": []bson.M{
 			{"provider": providerID},
-			{"cancelledProviderID": providerID.Hex()},
 		},
 		"status": bson.M{"$in": status},
 	}

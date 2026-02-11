@@ -247,7 +247,7 @@ func (s *UserService) Logout(
 	fmt.Println(res)
 
 	if res.Err() == mongo.ErrNoDocuments {
-		return errors.New("no active session found")
+		return nil
 	}
 
 	if res.Err() != nil {

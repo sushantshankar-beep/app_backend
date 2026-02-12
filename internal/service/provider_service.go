@@ -280,10 +280,12 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	if isDeleted {
 		provider.IsActive = domain.PROVIDER_ACTIVE
 		provider.FormSubmitted = 1
+		provider.CommissionPercentage = 20
 		shouldGenerateAgreement = true
 	} else if !wasCompleted && isProviderProfileCompleted(provider) {
 		provider.FormSubmitted = 1
 		provider.IsActive = domain.PROVIDER_ACTIVE
+		provider.CommissionPercentage = 20
 		shouldGenerateAgreement = true
 	} else if keyFieldsChanged && isProviderProfileCompleted(provider) {
 		shouldGenerateAgreement = true

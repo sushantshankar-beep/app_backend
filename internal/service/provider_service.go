@@ -562,7 +562,7 @@ func (s *ProviderService) GetProviderServicesAndReviews(ctx context.Context, pro
 
 	return &dto.ProviderServicesAndReviewsResponse{
 		Services:      provider.ProviderServices,
-		AverageRating: avg,
+		AverageRating: utils.RoundTo2(avg),
 		TotalRatings:  len(uniqueRatings),
 		TopReviews:    topReviews,
 	}, nil

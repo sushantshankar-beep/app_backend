@@ -18,11 +18,16 @@ type UserBookingDTO struct {
 	UserName      string             `json:"userName"`
 	ProviderName  string             `json:"providerName`
 	VehicleType   string             `json:"vehicleType"`
+	VehicleNumber string             `json:"vehicleNumber"`
+	Brand         string             `json:"brand"`
+	Model         string             `json:"model"`
+	ModelYear     int                `json:"modelYear"`
 	Rating               string      `json:"rating"`
 	Cancelled     *domain.CancelInfo `json:"cancelled"`
 	CancelledAt   *time.Time         `json:"cancelledAt"`
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
+	ProviderRaisedComplaint bool                `json:"providerRaisedComplaint"`
 }
 
 type UserBookingDetailDTO struct {
@@ -87,6 +92,7 @@ type ProviderBookingDTO struct {
 	CancelledAt   *time.Time         `json:"cancelledAt"`
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
+	UserRaisedComplaint bool                `json:"userRaisedComplaint"`
 }
 
 type ProviderBookingDetailDTO struct {

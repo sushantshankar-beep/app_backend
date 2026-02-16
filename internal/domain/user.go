@@ -11,8 +11,8 @@ type UserStatus string
 
 const (
 	USER_ACTIVE  UserStatus = "active"
-	USER_DEACTIVE UserStatus = "deactivate"
-	USER_BLACKLIST UserStatus = "blacklist"
+	USER_DEACTIVE UserStatus = "deactivated"
+	USER_BLACKLIST UserStatus = "blacklisted"
 	USER_DELETED   UserStatus = "delete"
 )
 

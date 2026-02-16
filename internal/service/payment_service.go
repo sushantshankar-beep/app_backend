@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	// "log"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +26,7 @@ import (
 	// "github.com/aws/aws-sdk-go/service/s3/s3manager"
 	// 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"app_backend/internal/s3"
+	"app_backend/internal/queue"
 )
 
 type PaymentService struct {
@@ -46,6 +47,7 @@ type PaymentService struct {
 	baseURL             string
 	http                *resty.Client
 	refundRepo *repository.RefundRepo
+	invoiceQueue        *queue.InvoiceQueue
 }
 
 func NewPaymentService(
@@ -61,6 +63,7 @@ func NewPaymentService(
 	redis *redis.Client,
 	refundRepo *repository.RefundRepo,
 	s3Uploader *s3.InvoiceUploader,
+	invoiceQueue        *queue.InvoiceQueue,
 ) *PaymentService {
 
 	return &PaymentService{
@@ -79,6 +82,7 @@ func NewPaymentService(
 		baseURL:             baseURL,
 		http:                resty.New().SetTimeout(30 * time.Second),
 		refundRepo: refundRepo,
+		invoiceQueue:invoiceQueue,
 
 	}
 }
@@ -99,28 +103,26 @@ func (s *PaymentService) InitiatePayment(
 	phone string,
 	price float64,
 ) (map[string]string, error) {
-	log.Println("kjdsbnjksbjkv",userID)
 	email := fmt.Sprintf("app%s@vahanwire.com",serviceID)
-	fmt.Println("this is email",email)
-
-	// 🔒 Lock service
-
-	if userID == "" {
-		serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
-		if err != nil {
-			return nil, errors.New("invalid serviceId")
-		}
-
-		svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceObjID)
-		if err != nil {
-			return nil, errors.New("service not found")
-		}
-
-		userID = svc.User.Hex()
+	serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, errors.New("invalid serviceId")
 	}
-	
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceObjID)
+	if err != nil {
+		return nil, errors.New("service not found")
+	}
+	userID = svc.User.Hex()
+	providerID := svc.Provider.Hex()
+	online, err := s.redis.Get(ctx, "provider:online:"+providerID).Result()
+	if err != nil || online != "1" {
+		return nil, errors.New("provider is not available")
+	}
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
+	if svc.Provider == primitive.NilObjectID {
+		return nil, errors.New("no provider assigned")
+	}
 
 	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 2*time.Minute).Result()
 	if err != nil {
@@ -129,33 +131,22 @@ func (s *PaymentService) InitiatePayment(
 	if !ok {
 		return nil, errors.New("payment already in progress")
 	}
-
 	PAYU_KEY := s.key
 	PAYU_SALT := s.salt
-
 	firstname := name
 	finalAmount := math.Round(price*100) / 100
 	amount := fmt.Sprintf("%.2f", finalAmount)
-
 	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
-
 	productinfo := "vahanwire service"
-
-	// 🔐 PAYU HASH STRING
 	hashStr := fmt.Sprintf(
 		"%s|%s|%s|%s|%s|%s|||||||||||%s",
 		PAYU_KEY,
-		txnid,
-		amount,
 		productinfo,
 		firstname,
 		email,
 		PAYU_SALT,
 	)
-
 	hash := sha512Hash(hashStr)
-    log.Println("kjcbkjsadbckas",userID)
-
 	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
 		TxnID:         txnid,
 		Amount:        finalAmount,

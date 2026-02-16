@@ -17,6 +17,7 @@ type PaymentTransaction struct {
 	UpdatedAt     time.Time `bson:"updatedAt"`
 	InvoiceGenerated bool `bson:"invoiceGenerated" json:"invoiceGenerated"`
 	FailReason string `bson:"failReason,omitempty" json:"failReason,omitempty"`
+	InvoiceGeneratedAt time.Time `bson:"invoiceGeneratedAt,omitempty"`
 }
 
 type PaymentWebhook struct {

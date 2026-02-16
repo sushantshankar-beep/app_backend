@@ -46,8 +46,17 @@ func NewInvoiceService(
 	}
 }
 
+func (s *InvoiceService) GenerateInvoice(
+	ctx context.Context,
+	userID string,
+	serviceID string,
+) (*domain.Invoice, error) {
 
-func (s *InvoiceService) GenerateInvoice(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
+	return s.GenerateInternal(ctx, userID, serviceID)
+}
+
+
+func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, serviceID string ) (*domain.Invoice, error) {
 	userOID, err := primitive.ObjectIDFromHex(userID)
 	defer func() {
 		if r := recover(); r != nil {

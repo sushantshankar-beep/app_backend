@@ -568,7 +568,13 @@ func (s *BiddingService) AcceptBid(
 				"bidId":   bidID,
 			}, ErrServiceAlreadyAssigned
 		}
-
+		online, err := s.rdb.Get(ctx, "provider:online:"+providerID).Result()
+		if err != nil || online != "1" {
+			return map[string]string{
+				"message": "mechanic not available",
+				"bidId":   bidID,
+			}, errors.New("mechanic not available")
+		}
 		// stop provider search loops immediately
 		s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
 

@@ -233,3 +233,37 @@ func (r *ProviderRepo) UpdateRating(ctx context.Context, providerID domain.Provi
 
 	return nil
 }
+
+
+func (r *ProviderRepo)SetOnlineStatus(ctx context.Context,providerID domain.ProviderID,isOnline bool,lat float64,lng float64)error {
+	providerOID, err := primitive.ObjectIDFromHex(string(providerID))
+	if err != nil {
+		return err
+	}
+	if isOnline {
+		update := bson.M{
+			"$set": bson.M{
+				"isOnline":   true,
+				"lastSeenAt": time.Now(),
+				"location": bson.M{
+					"lat": lat,
+					"lng": lng,
+				},
+			},
+		}
+
+		_, err = r.col.UpdateByID(ctx, providerOID, update)
+		return err
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"isOnline":   false,
+			"lastSeenAt": time.Now(),
+		},
+		"$unset": bson.M{
+			"location": "",
+		},
+	}
+	_, err = r.col.UpdateByID(ctx, providerOID, update)
+	return err
+}

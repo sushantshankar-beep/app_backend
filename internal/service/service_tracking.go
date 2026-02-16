@@ -74,10 +74,7 @@ func estimateETASeconds(distanceKm float64) int64 {
 	return int64((distanceKm / avgSpeed) * 3600)
 }
 
-func (s *ServiceTrackingService) UserTrackingScreen(
-	ctx context.Context,
-	serviceID string,
-) (map[string]any, error) {
+func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceID string) (map[string]any, error){
 
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
@@ -193,10 +190,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(
 
 
 
-func (s *ServiceTrackingService) ProviderTrackingScreen(
-	ctx context.Context,
-	serviceID string,
-) (map[string]any, error) {
+func (s *ServiceTrackingService) ProviderTrackingScreen(ctx context.Context,serviceID string) (map[string]any, error){
 
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
@@ -239,30 +233,52 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(
 }
 
 
-/* ============================================================
-                     STATUS ENGINE
-============================================================ */
+func (s *ServiceTrackingService) sendStatusNotification(svc *domain.AcceptedService,newStatus domain.ServiceStatus){
+	title := ""
+	message := ""
 
-func (s *ServiceTrackingService) UpdateStatus(
-	ctx context.Context,
-	serviceID string,
-	newStatus domain.ServiceStatus,
-	lat float64,
-	long float64,
-) (map[string]any, error) {
+	switch newStatus {
 
+	case domain.StatusStarted:
+		title = "Mechanic On The Way"
+		message = "Mechanic has started your service."
+
+	case domain.StatusReachedLocation:
+		title = "Mechanic Reached"
+		message = "Mechanic has reached your location."
+
+	case domain.StatusOTPVerified:
+		title = "OTP Verified"
+		message = "Service verification completed."
+
+	case domain.StatusInProgress:
+		title = "Service Started"
+		message = "Your service is currently in progress."
+
+	case domain.StatusCompleted:
+		title = "Service Completed"
+		message = "Your service has been successfully completed."
+
+	default:
+		title = "Service Update"
+		message = "Your service status has been updated."
+	}
+
+	go s.notify.SendToUser(context.Background(),svc.User.Hex(),svc.ID.Hex(),title,message,map[string]string{"type": "SERVICE_STATUS_UPDATE","serviceId": svc.ID.Hex(),"status": string(newStatus)})
+
+	go s.notify.SendToProvider(context.Background(),svc.Provider.Hex(),svc.ID.Hex(),title,message,map[string]string{"type": "SERVICE_STATUS_UPDATE","serviceId": svc.ID.Hex(),"status":string(newStatus)})
+}
+
+
+func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID string,newStatus domain.ServiceStatus,lat float64,long float64) (map[string]any, error) {
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, err
 	}
-
 	var svc domain.AcceptedService
-	if err := s.acceptedRepo.Col().
-		FindOne(ctx, bson.M{"_id": objID}).
-		Decode(&svc); err != nil {
+	if err := s.acceptedRepo.Col().FindOne(ctx, bson.M{"_id": objID}).Decode(&svc); err != nil {
 		return nil, errors.New("service not found")
 	}
-
 	prevStatus := svc.Status
 	if prevStatus == "cancelled"{
 		return nil,errors.New("Service already Cancelled")
@@ -288,7 +304,6 @@ func (s *ServiceTrackingService) UpdateStatus(
 	}
 
 	switch newStatus {
-
 	case domain.StatusStarted:
 		update["timestamps.startedAt"] = now
 
@@ -305,8 +320,6 @@ func (s *ServiceTrackingService) UpdateStatus(
 		update["timestamps.completedAt"] = now
 		serviceHex := svc.ID.Hex()
 		providerHex := svc.Provider.Hex()
-
-		// 🔐 free provider ONLY if owned by this service
 		busyKey := "provider:busy:" + providerHex
 
 		val, _ := s.rdb.Get(ctx, busyKey).Result()
@@ -318,7 +331,7 @@ func (s *ServiceTrackingService) UpdateStatus(
 		s.rdb.Del(ctx, "service:locked:"+serviceHex)
 		s.rdb.Del(ctx, "service:stop:"+serviceHex)
 
-		// re-add geo
+		// provider re added
 		if svc.ProviderLocation != nil {
 			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
 				Name:      providerHex,
@@ -326,8 +339,6 @@ func (s *ServiceTrackingService) UpdateStatus(
 				Latitude:  svc.ProviderLocation.Lat,
 			})
 		}
-
-		// archive booking
 		_, _ = s.acceptedRepo.Col().UpdateByID(
 			ctx,
 			objID,
@@ -338,78 +349,45 @@ func (s *ServiceTrackingService) UpdateStatus(
 				},
 			},
 		)
-
 		gst := svc.FinalPrice * 18 / 100
 		totalAmount := svc.FinalPrice + gst
-
 		user, err := s.userRepo.GetByID(ctx, svc.User)
 		if err != nil {
 			return nil, err
 		}
-
 	    userObjID, err := primitive.ObjectIDFromHex(string(user.ID))
 	    if err != nil {
 	    	return nil, err
     	}
-
 		newTotalExpense := user.TotalExpense + totalAmount
-
-		if err := s.userRepo.UpdateTotalExpense(
-			ctx,
-			userObjID,
-			newTotalExpense,
-		); err != nil {
+		if err := s.userRepo.UpdateTotalExpense(ctx,userObjID,newTotalExpense); err != nil {
 			return nil, err
 		}
 	}
-
-	// ================= SAVE STATUS =================
-
 	if _, err := s.acceptedRepo.Col().
 		UpdateByID(ctx, objID, bson.M{"$set": update}); err != nil {
 		return nil, err
 	}
-
-	// 🔄 RELOAD UPDATED SERVICE (IMPORTANT FIX)
-	if err := s.acceptedRepo.Col().
-		FindOne(ctx, bson.M{"_id": objID}).
-		Decode(&svc); err != nil {
+	if err := s.acceptedRepo.Col().FindOne(ctx, bson.M{"_id": objID}).Decode(&svc); err != nil {
 		return nil, errors.New("failed to reload service after update")
 	}
-
-	// ================= BUILD PAYLOAD =================
 	var complaintId any = nil
 	if svc.ComplaintProvider != nil && *svc.ComplaintProvider != primitive.NilObjectID {
-
-    complaintId = svc.ComplaintProvider.Hex()
+    	complaintId = svc.ComplaintProvider.Hex()
 	}
-
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
-
 	userLat := svc.UserLocation.Lat
 	userLong := svc.UserLocation.Long
-
 	var distanceKm float64
 	var eta int
 	distKey := "service:dist:" + svc.ID.Hex() + ":" + svc.Provider.Hex()
-
-	// 🔥 redis first
 	if d, err := s.rdb.Get(ctx, distKey).Float64(); err == nil && d > 0 {
-
 		distanceKm = d
-
 	} else if lat != 0 && long != 0 {
-
-		// fallback
-		distanceKm = distanceKmHaversine(
-			lat,
-			long,
-			userLat,
-			userLong,
-		)
+		// fallback for distance
+		distanceKm = distanceKmHaversine(lat,long,userLat,userLong)
 	}
-
 	gst := svc.FinalPrice * 18 / 100
 	totalAmount := gst + svc.FinalPrice
 
@@ -469,52 +447,16 @@ func (s *ServiceTrackingService) UpdateStatus(
 		}
 	}
 
-	// ================= SOCKET =================
-
 	userRoom := "user:" + svc.ID.Hex()
 	providerRoom := "provider:" + svc.Provider.Hex()
-
-	socketPayload := map[string]any{
-		"serviceId": svc.ID.Hex(),
-		"status":    newStatus,
-	}
-
+	socketPayload := map[string]any{"serviceId": svc.ID.Hex(),"status":  newStatus}
 	s.socket.EmitWithRetry(userRoom, "service:status_update", socketPayload, 1)
 	s.socket.EmitWithRetry(providerRoom, "service:status_update", socketPayload, 1)
+	s.sendStatusNotification(&svc, newStatus)
 
 	if newStatus == domain.StatusCompleted {
-
 		s.socket.Emit(userRoom, "service:closed", nil)
 		s.socket.Emit(providerRoom, "service:closed", nil)
-
-		// ===============================
-		// 🔔 PUSH NOTIFICATION (ONLY HERE)
-		// ===============================
-
-		go s.notify.SendToUser(
-			context.Background(),
-			svc.User.Hex(),
-			svc.ID.Hex(),
-			"Service Completed",
-			"Your service has been successfully completed.",
-			map[string]string{
-				"type":      "SERVICE_COMPLETED",
-				"serviceId": svc.ID.Hex(),
-			},
-		)
-
-		go s.notify.SendToProvider(
-			context.Background(),
-			svc.Provider.Hex(),
-			svc.ID.Hex(),
-			"Job Completed",
-			"Service marked as completed.",
-			map[string]string{
-				"type":      "SERVICE_COMPLETED",
-				"serviceId": svc.ID.Hex(),
-			},
-		)
-
 		go func() {
 			time.Sleep(400 * time.Millisecond)
 			s.socket.CloseRoom(userRoom)
@@ -528,23 +470,14 @@ func (s *ServiceTrackingService) UpdateStatus(
 
 
 
-func (s *ServiceTrackingService) VerifyOTP(
-	ctx context.Context,
-	serviceID string,
-	inputOTP string,
-	lat float64,
-	long float64,
-) (map[string]any, error) {
-
+func (s *ServiceTrackingService) VerifyOTP(ctx context.Context,serviceID string,inputOTP string,lat float64,long float64) (map[string]any, error) {
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, err
 	}
 
 	var svc domain.AcceptedService
-	if err := s.acceptedRepo.Col().
-		FindOne(ctx, bson.M{"_id": objID}).
-		Decode(&svc); err != nil {
+	if err := s.acceptedRepo.Col().FindOne(ctx, bson.M{"_id": objID}).Decode(&svc); err != nil {
 		return nil, errors.New("service not found")
 	}
 
@@ -558,8 +491,6 @@ func (s *ServiceTrackingService) VerifyOTP(
 	}
 
 	now := time.Now()
-
-	// ✅ Update OTP fields only
 	if _, err := s.acceptedRepo.Col().UpdateByID(
 		ctx,
 		objID,
@@ -572,15 +503,7 @@ func (s *ServiceTrackingService) VerifyOTP(
 	); err != nil {
 		return nil, err
 	}
-
-	// ✅ Delegate to UpdateStatus (returns payload)
-	return s.UpdateStatus(
-		ctx,
-		serviceID,
-		domain.StatusOTPVerified,
-		lat,
-		long,
-	)
+	return s.UpdateStatus(ctx,serviceID,domain.StatusOTPVerified,lat,long)
 }
 
 func (s *ServiceTrackingService) GetInvoiceUrl(ctx context.Context,serviceID string) (*domain.Invoice, error) {

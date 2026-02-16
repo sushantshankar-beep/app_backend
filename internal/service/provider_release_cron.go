@@ -91,7 +91,7 @@ func StartProviderAssignmentTimeoutCron(
 
 func (c *ProviderAssignmentTimeoutCron) Run(ctx context.Context) {
 
-	cutoff := time.Now().Add(-6 * time.Minute)
+	cutoff := time.Now().Add(-11 * time.Minute)
 
 	cur, err := c.acceptedRepo.Col().Find(
 		ctx,

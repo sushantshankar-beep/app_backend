@@ -272,7 +272,7 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 
 	log.Println("⏳ grace timer started for provider:", providerID)
 
-	time.Sleep(5 * time.Minute)
+	time.Sleep(11 * time.Minute)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

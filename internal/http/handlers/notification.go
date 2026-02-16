@@ -38,7 +38,7 @@ func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 
 	limit, skip := parsePagination(c)
 
-	serviceID, res, err := h.svc.ListLatestServiceNotifications(
+     res, err := h.svc.ListLatestServiceNotifications(
 		c.Request.Context(),
 		userID,
 		"user",
@@ -52,7 +52,6 @@ func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 		if err == mongo.ErrNoDocuments {
 
 			c.JSON(http.StatusOK, gin.H{
-				"serviceId":     "",
 				"notifications": []any{},
 			})
 
@@ -64,7 +63,6 @@ func (h *NotificationHandler) ListUserLatestService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"serviceId":     serviceID.Hex(),
 		"notifications": res,
 	})
 }
@@ -85,7 +83,7 @@ func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 
 	limit, skip := parsePagination(c)
 
-	serviceID, res, err := h.svc.ListLatestServiceNotifications(
+    res, err := h.svc.ListLatestServiceNotifications(
 		c.Request.Context(),
 		providerID,
 		"provider",
@@ -99,7 +97,6 @@ func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 		if err == mongo.ErrNoDocuments {
 
 			c.JSON(http.StatusOK, gin.H{
-				"serviceId":     "",
 				"notifications": []any{},
 			})
 
@@ -111,7 +108,6 @@ func (h *NotificationHandler) ListProviderLatestService(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"serviceId":     serviceID.Hex(),
 		"notifications": res,
 	})
 }

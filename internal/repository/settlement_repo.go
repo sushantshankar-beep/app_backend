@@ -22,27 +22,40 @@ func NewSettlementHistoryRepository(db *mongo.Database) *SettlementHistoryReposi
 func (r *SettlementHistoryRepository) GetProviderSettledRecords(
 	ctx context.Context,
 	providerID primitive.ObjectID,
-) ([]domain.SettlementRecord, error) {
+	skip, limit int64,
+) ([]domain.SettlementRecord,int64, error) {
 
 	filter := bson.M{
 		"providerId": providerID,
 		"settlementStatus": "settled",
 	}
 
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().SetSort(bson.M{"createdAt": -1}).SetSkip(skip).
+	SetLimit(limit)
 
 	var records []domain.SettlementRecord
 
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil, 0,err
 	}
+
+	defer cursor.Close(ctx)
 
 	if err := cursor.All(ctx, &records); err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	return records, nil
+	if records == nil {
+		return []domain.SettlementRecord{}, total, nil
+	}
+
+	return records, total, nil
 }
 
 

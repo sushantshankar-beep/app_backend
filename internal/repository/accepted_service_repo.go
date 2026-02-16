@@ -546,7 +546,8 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 	providerID primitive.ObjectID,
 	start time.Time,
 	end time.Time,
-) ([]domain.AcceptedService, error) {
+	skip, limit int64,
+) ([]domain.AcceptedService, int64, error) {
 
 	filter := bson.M{
 		"provider": providerID,
@@ -557,17 +558,30 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 		},
 	}
 
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	total, err := r.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+
+	opts := options.Find().SetSort(bson.M{"createdAt": -1}).SetSkip(skip).
+	SetLimit(limit)
 
 	var bookings []domain.AcceptedService
 	cursor, err := r.col.Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
+
+	defer cursor.Close(ctx)
 
 	if err := cursor.All(ctx, &bookings); err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	return bookings, nil
+	if bookings == nil {
+		return []domain.AcceptedService{}, total, nil
+	}
+
+	return bookings, total, nil
 }

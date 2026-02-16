@@ -197,13 +197,33 @@ func (h *BookingHandler) GetProviderEarnings(c *gin.Context) {
 		return
 	}
 
-	earnings, err := h.svc.GetProviderEarnings(c.Request.Context(), providerID)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	earnings, total, err := h.svc.GetProviderEarnings(c.Request.Context(), providerID, page, limit)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, earnings)
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"earnings":   earnings.Earnings,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
+	
 }
 
 func (h *BookingHandler) GetProviderTodayEarnings(c *gin.Context) {
@@ -214,13 +234,32 @@ func (h *BookingHandler) GetProviderTodayEarnings(c *gin.Context) {
 		return
 	}
 
-	earnings, err := h.svc.GetProviderTodayEarnings(c.Request.Context(), providerID)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	earnings, count, err := h.svc.GetProviderTodayEarnings(c.Request.Context(), providerID, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, earnings)
+	totalPages := int(math.Ceil(float64(count) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"total":      earnings.Total,
+		"earnings":   earnings.Earnings,
+		"page":       page,
+		"limit":      limit,
+		"count":      count,
+		"totalPages": totalPages,
+	})
 }
 
 func (h *BookingHandler) GetProviderSettledEarnings(c *gin.Context) {
@@ -231,11 +270,30 @@ func (h *BookingHandler) GetProviderSettledEarnings(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.GetProviderSettledEarnings(c.Request.Context(), providerID)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	resp, count, err := h.svc.GetProviderSettledEarnings(c.Request.Context(), providerID,page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	totalPages := int(math.Ceil(float64(count) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"total":       resp.Total,
+		"settlements": resp.Settlements,
+		"page":        page,
+		"limit":       limit,
+		"count":       count,
+		"totalPages":  totalPages,
+	})
 }

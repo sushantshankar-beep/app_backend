@@ -11,7 +11,7 @@ type ProviderStatus string
 const (
 	PROVIDER_ACTIVE  ProviderStatus = "active"
 	PROVIDER_SUSPENDED ProviderStatus = "suspended"
-	PROVIDER_BLACKLIST ProviderStatus = "blacklist"
+	PROVIDER_BLACKLIST ProviderStatus = "blacklisted"
 	PROVIDER_DELETED   ProviderStatus = "delete"
 )
 

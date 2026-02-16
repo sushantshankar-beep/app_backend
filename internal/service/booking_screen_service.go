@@ -193,11 +193,21 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			cancelledAt = r.CancelledAt
 		}
 
+		providerRaisedComplaint := false
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, r.ID)
+		if err == nil && complaint != nil && complaint.ProviderComplaint != nil {
+			providerRaisedComplaint = true
+		}
+
 		dtoItem := dto.UserBookingDTO{
 			ID:                 r.ID,
 			UserID:             string(user.ID),
 			ProfileURL:         user.ImageUrl,
 			ServiceNumber:      r.ServiceNumber,
+			VehicleNumber:      r.VehicleNumber,
+			Brand:              r.Brand,
+			Model:              r.Model,
+			ModelYear:          r.ModelYear,
 			Status:             string(r.Status),
 			FinalPrice:         tx.Amount,
 			UserName:           user.Name,
@@ -210,6 +220,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			UpdatedAt:          r.UpdatedAt,
 			Cancelled:          cancelled,
 			CancelledAt:        cancelledAt,
+			ProviderRaisedComplaint: providerRaisedComplaint,
 		}
 
 		result = append(result, dtoItem)
@@ -489,6 +500,12 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			}
 		}
 
+		userRaisedComplaint := false
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceData.ID)
+		if err == nil && complaint != nil && complaint.UserComplaint != nil {
+			userRaisedComplaint = true
+		}
+
 		dtoItem := dto.ProviderBookingDTO{
 			ID:             serviceData.ID,
 			ProviderID:     providerIDStr,
@@ -510,6 +527,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			CancelledAt:    cancelledAt,
 			CreatedAt:      serviceData.CreatedAt,
 			UpdatedAt:      serviceData.UpdatedAt,
+			UserRaisedComplaint: userRaisedComplaint, 
 		}
 
 		result = append(result, dtoItem)

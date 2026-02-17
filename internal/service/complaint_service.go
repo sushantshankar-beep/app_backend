@@ -146,14 +146,18 @@ func (s *ComplaintService) RaiseComplaint(
 	return complaint, nil
 }
 
-func (s *ComplaintService) GetUserComplaints(ctx context.Context, uid string) ([]domain.Complaint, error) {
+func (s *ComplaintService) GetUserComplaints(ctx context.Context, uid string, page, limit int64) ([]domain.Complaint, int64, error) {
 	id, _ := primitive.ObjectIDFromHex(uid)
-	return s.repo.FindByUser(ctx, id)
+
+	skip := int64((page - 1) * limit)
+
+	return s.repo.FindByUser(ctx, id, skip, int64(limit))
 }
 
-func (s *ComplaintService) GetProviderComplaints(ctx context.Context, pid string) ([]domain.Complaint, error) {
+func (s *ComplaintService) GetProviderComplaints(ctx context.Context, pid string, page, limit int64) ([]domain.Complaint, int64, error) {
 	id, _ := primitive.ObjectIDFromHex(pid)
-	return s.repo.FindByProvider(ctx, id)
+	skip := int64((page - 1) * limit)
+	return s.repo.FindByProvider(ctx, id,skip, int64(limit))
 }
 
 func getString(req map[string]any, key string) (string, bool) {

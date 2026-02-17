@@ -414,33 +414,23 @@ func (s *BookingService) GetUserBookingDetails(
 	}, nil
 }
 
-func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string) (*dto.ProviderBookingResponse, error) {
+func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, status string, page, limit int) (*dto.ProviderBookingResponse,int64, error) {
 	sStatus, err := mapStatus(status)
 	if err != nil {
-		return nil, err
+		return nil,0,err
 	}
 
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	raw, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus)
+	skip := int64((page - 1) * limit)
+
+	raw, _ , err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus, skip,int64(limit))
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
-
-	snaps, _ := s.snapshotRepo.GetByProviderAndStatus(
-		ctx,
-		providerObjID,
-		sStatus,
-	)
-
-	for _, snap := range snaps {
-		raw = append(raw, snap.Service)
-	}
-	log.Println("RAW COUNT:", len(raw))
-	log.Println("SNAP COUNT:", len(snaps))
 
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
 
@@ -566,7 +556,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		response.Count = len(result)
 	}
 
-	return response, nil
+	return response,int64(len(result)), nil
 }
 
 
@@ -718,20 +708,22 @@ func (s *BookingService) GetProviderBookingDetails(
 	}, nil
 }
 
-func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]dto.UserExpenseDTO, float64, error) {
+func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, page, limit int) ([]dto.UserExpenseDTO, float64,int64, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0,0, err
 	}
 
 	_, err = s.userRepo.GetByID(ctx, userObjID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 
-	services, err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID)
+	skip := int64((page - 1) * limit)
+
+	services, _ ,err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID,skip,int64(limit))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0,err
 	}
 
 	result := make([]dto.UserExpenseDTO, 0, len(services))
@@ -749,7 +741,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 
 		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(service.Provider.Hex()))
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, 0,err
 		}
 
 		expense := dto.UserExpenseDTO{
@@ -769,7 +761,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string) ([]
 		totalExpense += transaction.Amount
 	}
 
-	return result, totalExpense, nil
+	return result, totalExpense, int64(len(result)),nil
 }
 
 func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID string) (*dto.DashboardStats, error) {
@@ -781,11 +773,11 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 	if err != nil {
 		return nil, err
 	}
-	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted})
+	completedBookings,_, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},0,0)
 	if err != nil {
 		return nil, err
 	}
-	cancelledBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCancelled})
+	cancelledBookings, _, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCancelled},0,0)
 	if err != nil {
 		return nil, err
 	}
@@ -817,19 +809,21 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 	return stats, nil
 }
 
-func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID string) (*dto.EarningsResponse, error) {
+func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID string, page, limit int) (*dto.EarningsResponse, int64, error) {
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	completedBookings, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted})
+	skip := int64((page - 1) * limit)
+
+	completedBookings,_, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},skip, int64(limit))
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
@@ -852,21 +846,22 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
-	return &dto.EarningsResponse{Earnings: earnings}, nil
+	return &dto.EarningsResponse{Earnings: earnings},int64(len(earnings)), nil
 }
 func (s *BookingService) GetProviderTodayEarnings(
 	ctx context.Context,
 	providerID string,
-) (*dto.TodayEarningsResponse, error) {
+	page , limit int,
+) (*dto.TodayEarningsResponse, int64, error) {
 
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	_, err = s.providerRepo.FindByID(ctx, domain.ProviderID(providerObjID.Hex()))
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	now := time.Now()
@@ -876,15 +871,19 @@ func (s *BookingService) GetProviderTodayEarnings(
 	)
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
-	completedBookings, err := s.acceptedRepo.
+	skip := int64((page - 1) * limit)
+
+	completedBookings,_, err := s.acceptedRepo.
 		GetProviderCompletedBookingsByDate(
 			ctx,
 			providerObjID,
 			startOfDay,
 			endOfDay,
+			skip,
+			int64(limit),
 		)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	var total float64
@@ -915,22 +914,25 @@ func (s *BookingService) GetProviderTodayEarnings(
 	return &dto.TodayEarningsResponse{
 		Total:    utils.RoundTo2(total),
 		Earnings: earnings,
-	}, nil
+	}, int64(len(earnings)), nil
 }
 
 func (s *BookingService) GetProviderSettledEarnings(
 	ctx context.Context,
 	providerID string,
-) (*dto.ProviderSettlementResponse, error) {
+	page, limit int,
+) (*dto.ProviderSettlementResponse, int64, error) {
 
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	records, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID)
+	skip := int64((page - 1) * limit)
+
+	records,_, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID, skip , int64(limit))
 	if err != nil {
-		return nil, err
+		return nil, 0,err
 	}
 
 	var total float64
@@ -956,5 +958,6 @@ func (s *BookingService) GetProviderSettledEarnings(
 	return &dto.ProviderSettlementResponse{
 		Total:       utils.RoundTo2(total),
 		Settlements: settlements,
-	}, nil
+	}, int64(len(settlements)), nil
 }
+

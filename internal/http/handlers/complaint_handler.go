@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-
+   "strconv"
+   "math"
 	"github.com/gin-gonic/gin"
 )
 
@@ -82,23 +83,68 @@ func getString(req map[string]any, key string) (string, bool) {
 func (h *ComplaintHandler) GetMyComplaints(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)
 
-	list, err := h.svc.GetUserComplaints(c, userID)
+	pageInt, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limitInt, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if pageInt <= 0 {
+		pageInt = 1
+	}
+	if limitInt <= 0 {
+		limitInt = 20
+	}
+
+	page := int64(pageInt)
+	limit := int64(limitInt)
+
+	list, total, err := h.svc.GetUserComplaints(c, userID, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, list)
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       list,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (h *ComplaintHandler) GetProviderComplaints(c *gin.Context) {
 	providerID := c.GetString(middleware.ContextKeyProviderID)
-	list, err := h.svc.GetProviderComplaints(c, providerID)
+
+	pageInt, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limitInt, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	if pageInt <= 0 {
+		pageInt = 1
+	}
+	if limitInt <= 0 {
+		limitInt = 20
+	}
+
+	page := int64(pageInt)
+	limit := int64(limitInt)
+
+	list, total, err := h.svc.GetProviderComplaints(c, providerID,page,limit)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, list)
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       list,
+		"page":       page,
+		"limit":      limit,
+		"total":      total,
+		"totalPages": totalPages,
+	})
 }
 
 func (h *ComplaintHandler) GetUserComplaintByBooking(c *gin.Context) {

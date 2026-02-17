@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"errors"
+	"github.com/redis/go-redis/v9"
 )
 
 
@@ -151,7 +152,7 @@ func (s *BiddingService) AcceptOffer(
 func (s *BiddingService) stopAllDiscovery(
 	ctx context.Context,
 	serviceID string,
-	winnerProviderID string,
+	providerID string,
 ) {
 
 	stopKey := "service:stop:" + serviceID
@@ -163,33 +164,80 @@ func (s *BiddingService) stopAllDiscovery(
 	s.rdb.Set(ctx, lockKey, "1", 45*time.Minute)
 
 	// ===================================
-	// Notify ALL bidding providers
+	// Load service
 	// ===================================
 
-	providers, err := s.rdb.SMembers(ctx, providersKey).Result()
-	if err == nil {
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		log.Println("invalid serviceID:", err)
+		return
+	}
 
-		for _, pid := range providers {
+	var svc domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc); err != nil {
 
-			// Skip winner
-			if pid == winnerProviderID {
+		log.Println("❌ load service failed:", err)
+		return
+	}
+
+	// ===================================
+	// Notify ALL nearby providers
+	// ===================================
+
+	if svc.UserLocation != nil {
+
+		radiusSteps := []float64{10, 25, 50, 100}
+		sent := make(map[string]struct{})
+
+		for _, radius := range radiusSteps {
+
+			res, err := s.rdb.GeoRadius(
+				ctx,
+				"providers:geo",
+				svc.UserLocation.Long,
+				svc.UserLocation.Lat,
+				&redis.GeoRadiusQuery{
+					Radius: radius,
+					Unit:   "km",
+				},
+			).Result()
+
+			if err != nil {
+				log.Println("geo radius error:", err)
 				continue
 			}
 
-			s.socket.Emit(
-				"provider:"+pid,
-				"job_accepted",
-				map[string]any{
-					"serviceId": serviceID,
-					"providerId":  winnerProviderID,
-				},
-			)
+			for _, loc := range res {
+
+				pid := loc.Name
+
+				// skip winner
+				if pid == providerID {
+					continue
+				}
+
+				// dedupe
+				if _, ok := sent[pid]; ok {
+					continue
+				}
+				sent[pid] = struct{}{}
+
+				s.socket.Emit(
+					"provider:"+pid,
+					"job_accepted",
+					map[string]any{
+						"serviceId":  serviceID,
+						"providerId": providerID,
+					},
+				)
+			}
 		}
 	}
 
-	// Cleanup set
+	// cleanup
 	s.rdb.Del(ctx, providersKey)
-
 	cleanupServiceKeys(ctx, s.rdb, serviceID)
 
 	log.Println("🛑 discovery stopped for service:", serviceID)

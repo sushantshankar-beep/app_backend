@@ -8,21 +8,31 @@ import (
 	"github.com/redis/go-redis/v9"
 	"app_backend/internal/repository"
 	"app_backend/internal/domain"
+	"app_backend/internal/service"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"context"
+	"log"
 )
 
 type ProviderStatusHandler struct {
 	redis *redis.Client
 	providerRepo *repository.ProviderRepo
+	acceptedRepo  *repository.AcceptedServiceRepo
+	biddingSvc    *service.BiddingService
 }
 
 func NewProviderStatusHandler(
 	r *redis.Client,
 	providerRepo *repository.ProviderRepo,
+	acceptedRepo  *repository.AcceptedServiceRepo,
+	biddingSvc    *service.BiddingService,
 ) *ProviderStatusHandler {
 
 	return &ProviderStatusHandler{
 		redis:        r,
 		providerRepo: providerRepo,
+		acceptedRepo: acceptedRepo,
+		biddingSvc: biddingSvc,
 	}
 }
 
@@ -120,27 +130,47 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
 	ctx := c.Request.Context()
-	// 🔍 Optional: block offline if active service
-	busy, _ := h.redis.Exists(ctx, "provider:busy:"+providerID).Result()
-	if busy == 1 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "You Already Have Active Service",
-		})
+
+	providerOID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid provider"})
 		return
 	}
 
-	// ===========================
+	// ============================================
+	// 🔍 CHECK ACTIVE SERVICE IN MONGO
+	// ============================================
+
+	activeSvc, err := h.acceptedRepo.FindActiveServiceByProvider(ctx, providerOID)
+
+	if err == nil && activeSvc != nil {
+
+		// 🚨 Cancel service automatically
+		err := h.biddingSvc.ProviderCancelService(
+			context.Background(),
+			activeSvc.ID.Hex(),
+			providerID,
+			"provider_went_offline",
+		)
+
+		if err != nil {
+			log.Println("❌ auto cancel failed:", err)
+		}
+	}
+
+	// ============================================
 	// 🧹 REDIS CLEANUP
-	// ===========================
+	// ============================================
 
 	h.redis.Del(ctx, "provider:online:"+providerID)
 	h.redis.ZRem(ctx, "providers:geo", providerID)
 	h.redis.Del(ctx, "provider:busy:"+providerID)
 
-	// ===========================
+	// ============================================
 	// 🗄 UPDATE MONGO
-	// ===========================
+	// ============================================
 
 	if err := h.providerRepo.SetOnlineStatus(
 		ctx,
@@ -154,11 +184,12 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 		return
 	}
 
-	// ===========================
+	// ============================================
 	// ✅ RESPONSE
-	// ===========================
+	// ============================================
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "offline",
 	})
 }
+

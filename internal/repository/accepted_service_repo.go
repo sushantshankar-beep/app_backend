@@ -584,3 +584,25 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 
 	return bookings, total, nil
 }
+func (r *AcceptedServiceRepo) FindActiveServiceByProvider(
+	ctx context.Context,
+	providerID primitive.ObjectID,
+) (*domain.AcceptedService, error) {
+
+	filter := bson.M{
+		"provider": providerID,
+		"status": bson.M{
+			"$in": []string{
+				string(domain.StatusConfirmed),
+			},
+		},
+	}
+	var svc domain.AcceptedService
+	err := r.col.FindOne(ctx, filter).Decode(&svc)
+	if err != nil {
+		return nil, err
+	}
+
+	return &svc, nil
+}
+

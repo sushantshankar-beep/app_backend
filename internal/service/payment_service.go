@@ -141,6 +141,8 @@ func (s *PaymentService) InitiatePayment(
 	hashStr := fmt.Sprintf(
 		"%s|%s|%s|%s|%s|%s|||||||||||%s",
 		PAYU_KEY,
+		txnid,
+		amount,
 		productinfo,
 		firstname,
 		email,

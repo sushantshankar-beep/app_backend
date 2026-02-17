@@ -260,7 +260,7 @@ func main() {
 	kycHandler := handlers.NewKYCHandler(kycService)
 
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
-	providerStatusHandler := handlers.NewProviderStatusHandler(rdb,providerRepo)
+	providerStatusHandler := handlers.NewProviderStatusHandler(rdb,providerRepo,acceptedServiceRepo,biddingSvc)
 	metaHandler := handlers.NewMetaHandler(metaSvc)
 	imageUploadS3Handler := handlers.NewUploadHandler(imageUploadS3)
 	deviceHandler := handlers.NewDeviceHandler(deviceTokenRepo)

@@ -43,6 +43,7 @@ type Provider struct {
 	AgreementUrl         string             `bson:"agreementUrl" json:"agreementUrl"`
 	CommissionPercentage float64            `bson:"commissionPercentage,omitempty" json:"commissionPercentage,omitempty"`
 	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`
+	ComplaintsCount      int                `bson:"complaintsCount" json:"complaintsCount"`
 	Rating               string             `bson:"rating" json:"rating"`
 	KycStatus            KYCStatus          `bson:"-" json:"kycStatus"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`

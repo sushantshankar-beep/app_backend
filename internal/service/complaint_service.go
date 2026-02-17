@@ -96,9 +96,11 @@ func (s *ComplaintService) RaiseComplaint(
 		if raisedBy == "user" {
 			existing.UserComplaint = side
 			_ = s.acceptedSvcRepo.UpdateComplaintByUser(ctx, acceptedServiceID, existing.ID)
+			_ = s.userRepo.IncrementComplaintCount(ctx, userID)
 		} else {
 			existing.ProviderComplaint = side
 			_ = s.acceptedSvcRepo.UpdateComplaintByProvider(ctx, acceptedServiceID, existing.ID)
+			_ = s.providerRepo.IncrementComplaintCount(ctx, providerID)
 		}
 
 		existing.UpdatedAt = time.Now()
@@ -139,8 +141,10 @@ func (s *ComplaintService) RaiseComplaint(
 
 	if raisedBy == "user" {
 		_ = s.acceptedSvcRepo.UpdateComplaintByUser(ctx, acceptedServiceID, complaint.ID)
+		_ = s.userRepo.IncrementComplaintCount(ctx, userID)
 	} else {
 		_ = s.acceptedSvcRepo.UpdateComplaintByProvider(ctx, acceptedServiceID, complaint.ID)
+		_ = s.providerRepo.IncrementComplaintCount(ctx, providerID)
 	}
 
 	return complaint, nil

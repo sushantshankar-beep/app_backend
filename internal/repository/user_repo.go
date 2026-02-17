@@ -254,3 +254,10 @@ func (r *UserRepo) UpdateRating(ctx context.Context, userID domain.UserID, ratin
 
 	return nil
 }
+
+func (r *UserRepo) IncrementComplaintCount(ctx context.Context, userID primitive.ObjectID) error {
+    filter := bson.M{"_id": userID}
+    update := bson.M{"$inc": bson.M{"complaintsCount": 1}}
+    _, err := r.col.UpdateOne(ctx, filter, update)
+    return err
+}

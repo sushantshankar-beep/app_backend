@@ -332,7 +332,13 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 		"status": bson.M{"$in": status},
 	}
 
-	total, err := r.col.CountDocuments(ctx, filter)
+	countFilter := bson.M{
+		"user":     userID,
+		"status":   bson.M{"$in": status},
+		"provider": bson.M{"$ne": primitive.NilObjectID},
+	}
+
+	total, err := r.col.CountDocuments(ctx, countFilter)
 	if err != nil {
 		return nil, 0, err
 	}

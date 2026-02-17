@@ -364,7 +364,7 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 	return bookings,total, nil
 }
 
-func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus) ([]domain.AcceptedService, error) {
+func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService,int64, error) {
 
 	filter := bson.M{
 		"$or": []bson.M{
@@ -373,18 +373,32 @@ func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context
 		"status": bson.M{"$in": status},
 	}
 
+	total, err := r.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	var bookings []domain.AcceptedService
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
 	cursor, err := r.col.Find(ctx, filter, opts)
 
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 	if err := cursor.All(ctx, &bookings); err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	return bookings, nil
+	if bookings == nil {
+		return []domain.AcceptedService{}, total, nil
+	}
+
+	return bookings, total, nil
 }
 
 func (r *AcceptedServiceRepo) UpdateComplaintByUser(
@@ -425,10 +439,10 @@ func (r *AcceptedServiceRepo) UpdateComplaintByProvider(
 	return err
 }
 
-func (r *AcceptedServiceRepo) GetCompletedServicesByUser(ctx context.Context, userID string) ([]domain.AcceptedService, error) {
+func (r *AcceptedServiceRepo) GetCompletedServicesByUser(ctx context.Context, userID string, skip, limit int64) ([]domain.AcceptedService, int64, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
 	filter := bson.M{
@@ -436,18 +450,34 @@ func (r *AcceptedServiceRepo) GetCompletedServicesByUser(ctx context.Context, us
 		"status": domain.StatusCompleted,
 	}
 
-	cursor, err := r.col.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}))
+	total, err := r.col.CountDocuments(ctx, filter)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	opts := options.Find().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+		SetSkip(skip).
+		SetLimit(limit)
+
+
+	cursor, err := r.col.Find(ctx, filter,opts)
+
+	if err != nil {
+		return nil, 0,err
 	}
 	defer cursor.Close(ctx)
 
 	var services []domain.AcceptedService
 	if err := cursor.All(ctx, &services); err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	return services, nil
+	if services == nil {
+		return []domain.AcceptedService{}, total, nil
+	}
+
+	return services, total, nil
 }
 
 func (r *AcceptedServiceRepo) GetProviderExpensesByDate(
@@ -515,7 +545,8 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 	providerID primitive.ObjectID,
 	start time.Time,
 	end time.Time,
-) ([]domain.AcceptedService, error) {
+	skip, limit int64,
+) ([]domain.AcceptedService, int64, error) {
 
 	filter := bson.M{
 		"provider": providerID,
@@ -526,17 +557,30 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 		},
 	}
 
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	total, err := r.col.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+
+	opts := options.Find().SetSort(bson.M{"createdAt": -1}).SetSkip(skip).
+	SetLimit(limit)
 
 	var bookings []domain.AcceptedService
 	cursor, err := r.col.Find(ctx, filter, opts)
 	if err != nil {
-		return nil, err
+		return nil,0, err
 	}
+
+	defer cursor.Close(ctx)
 
 	if err := cursor.All(ctx, &bookings); err != nil {
-		return nil, err
+		return nil,0, err
 	}
 
-	return bookings, nil
+	if bookings == nil {
+		return []domain.AcceptedService{}, total, nil
+	}
+
+	return bookings, total, nil
 }

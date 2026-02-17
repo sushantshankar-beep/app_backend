@@ -69,7 +69,7 @@ func (s *BiddingService) AcceptOffer(
 	}
 
 	// 🛑 winner freezes discovery + notifies others
-	go s.stopAllDiscovery(ctx, serviceID)
+	go s.stopAllDiscovery(ctx, serviceID,providerID)
 
 	// ---------------- LOAD SERVICE ----------------
 
@@ -148,33 +148,46 @@ func (s *BiddingService) AcceptOffer(
 	return nil
 }
 
-func (s *BiddingService) stopAllDiscovery(ctx context.Context, serviceID string) {
+func (s *BiddingService) stopAllDiscovery(
+	ctx context.Context,
+	serviceID string,
+	winnerProviderID string,
+) {
 
 	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
 	providersKey := "service:providers:" + serviceID
 
+	// Freeze service
 	s.rdb.Set(ctx, stopKey, "1", 45*time.Minute)
 	s.rdb.Set(ctx, lockKey, "1", 45*time.Minute)
 
-	// ---------------- EMIT CANCEL TO ALL PROVIDERS ----------------
+	// ===================================
+	// Notify ALL bidding providers
+	// ===================================
 
 	providers, err := s.rdb.SMembers(ctx, providersKey).Result()
 	if err == nil {
 
 		for _, pid := range providers {
 
+			// Skip winner
+			if pid == winnerProviderID {
+				continue
+			}
+
 			s.socket.Emit(
 				"provider:"+pid,
-				"service:cancelled",
+				"job_accepted",
 				map[string]any{
 					"serviceId": serviceID,
-					"reason":    "accepted_by_other_provider",
+					"providerId":  winnerProviderID,
 				},
 			)
 		}
 	}
 
+	// Cleanup set
 	s.rdb.Del(ctx, providersKey)
 
 	cleanupServiceKeys(ctx, s.rdb, serviceID)

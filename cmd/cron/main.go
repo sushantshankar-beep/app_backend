@@ -20,10 +20,6 @@ import (
 
 func main() {
 
-	// =============================
-	// 🌱 ENV (same as API)
-	// =============================
-
 	if err := godotenv.Load(); err != nil {
 		log.Println(".env not found, using system env")
 	} else {
@@ -34,10 +30,6 @@ func main() {
 
 	ctx := context.Background()
 
-	// =============================
-	// 🍃 MONGO (same as API)
-	// =============================
-
 	client, err := db.Connect(cfg.MongoURI)
 	if err != nil {
 		log.Fatal("Mongo connect:", err)
@@ -47,10 +39,6 @@ func main() {
 
 	log.Println("✅ Mongo connected:", cfg.DBName)
 
-	// =============================
-	// 🔴 REDIS (same as API)
-	// =============================
-
 	rdb := redis.NewRedis()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
@@ -59,42 +47,21 @@ func main() {
 
 	log.Println("✅ Redis connected")
 
-	// =============================
-	// 🔌 SOCKET (same as API)
-	// =============================
-
 	hub := socket.NewHub()
 	emitter := socket.NewEmitter(hub)
 
-	// =============================
-	// 📦 REPOSITORIES
-	// =============================
-
 	acceptedServiceRepo := repository.NewAcceptedServiceRepo(dbConn)
 	// providerRepo := repository.NewProviderRepo(dbConn)
-
-	// =============================
-	// ⏰ TIMEOUT CRON SERVICE
-	// =============================
 
 	timeoutCron := service.NewProviderAssignmentTimeoutCron(
 		rdb,
 		emitter,
 		acceptedServiceRepo,
 	)
-	
-
-	// =============================
-	// ▶ START CRON LOOP
-	// =============================
 
 	go timeoutCron.Run(ctx)
 
 	log.Println("⏰ Provider-assignment timeout cron started")
-
-	// =============================
-	// 🛑 Graceful Shutdown
-	// =============================
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

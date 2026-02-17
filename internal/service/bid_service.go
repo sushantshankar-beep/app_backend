@@ -537,30 +537,33 @@ func (s *BiddingService) AcceptBid(
 		busyKey := "provider:busy:" + providerID
 		stopKey := "service:stop:" + serviceID
 
-		// =====================================================
-		// 🔐 REDIS ATOMIC LOCK (SERVICE + PROVIDER)
-		// =====================================================
-
+		online, err := s.rdb.Get(ctx, "provider:online:"+providerID).Result()
+		if err != nil || online != "1" {
+			return map[string]string{
+				"message": "Mechanic not available",
+				"bidId":   bidID,
+			}, errors.New("Mechanic not available")
+		}
 		ok, err := s.rdb.Eval(ctx, `
-	-- ARGV[1] = serviceID
-	-- ARGV[2] = providerID
+		-- ARGV[1] = serviceID
+		-- ARGV[2] = providerID
 
-	local serviceLock = "service:locked:"..ARGV[1]
-	local providerBusy = "provider:busy:"..ARGV[2]
+		local serviceLock = "service:locked:"..ARGV[1]
+		local providerBusy = "provider:busy:"..ARGV[2]
 
-	if redis.call("EXISTS", serviceLock) == 1 then
-		return 0
-	end
+		if redis.call("EXISTS", serviceLock) == 1 then
+			return 0
+		end
 
-	if redis.call("EXISTS", providerBusy) == 1 then
-		return 0
-	end
+		if redis.call("EXISTS", providerBusy) == 1 then
+			return 0
+		end
 
-	redis.call("SET", serviceLock, "1", "EX", 1800)
-	redis.call("SET", providerBusy, ARGV[1], "EX", 7200)
+		redis.call("SET", serviceLock, "1", "EX", 1800)
+		redis.call("SET", providerBusy, ARGV[1], "EX", 7200)
 
-	return 1
-	`, []string{}, serviceID, providerID).Int()
+		return 1
+		`, []string{}, serviceID, providerID).Int()
 
 		if err != nil || ok != 1 {
 			return map[string]string{
@@ -568,7 +571,6 @@ func (s *BiddingService) AcceptBid(
 				"bidId":   bidID,
 			}, ErrServiceAlreadyAssigned
 		}
-
 		// stop provider search loops immediately
 		s.rdb.Set(ctx, stopKey, "1", 5*time.Minute)
 

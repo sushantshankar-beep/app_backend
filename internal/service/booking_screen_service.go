@@ -15,7 +15,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	
+	"log"
 	// "fmt"
 )
 
@@ -193,11 +193,21 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			cancelledAt = r.CancelledAt
 		}
 
+		providerRaisedComplaint := false
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, r.ID)
+		if err == nil && complaint != nil && complaint.ProviderComplaint != nil {
+			providerRaisedComplaint = true
+		}
+
 		dtoItem := dto.UserBookingDTO{
 			ID:                 r.ID,
 			UserID:             string(user.ID),
 			ProfileURL:         user.ImageUrl,
 			ServiceNumber:      r.ServiceNumber,
+			VehicleNumber:      r.VehicleNumber,
+			Brand:              r.Brand,
+			Model:              r.Model,
+			ModelYear:          r.ModelYear,
 			Status:             string(r.Status),
 			FinalPrice:         tx.Amount,
 			UserName:           user.Name,
@@ -210,6 +220,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			UpdatedAt:          r.UpdatedAt,
 			Cancelled:          cancelled,
 			CancelledAt:        cancelledAt,
+			ProviderRaisedComplaint: providerRaisedComplaint,
 		}
 
 		result = append(result, dtoItem)
@@ -425,16 +436,30 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 
 	for _, r := range raw {
 
+		// ------------------------------------------------
+		// pick snapshot if provider-cancelled
+		// ------------------------------------------------
+		log.Println("----- ITER START -----")
+		log.Println("service:", r.ID.Hex())
+		log.Println("user:", r.User.Hex())
+		log.Println("provider:", r.Provider.Hex())
+		log.Println("cancelledByProvider:", r.CancelledByProvider)
+		log.Println("cancelledProviderID:", r.CancelledProviderID)
+		log.Println("status:", r.Status)
 		serviceData := &r
-		useSnapshot := false
+		cancelledByProvider := false
 
-		if r.CancelledProviderID == providerID {
+		if r.CancelledProviderID != "" || r.CancelledByProvider {
 			snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
 			if err == nil && snap != nil {
 				serviceData = &snap.Service
-				useSnapshot = true
+				cancelledByProvider = true
 			}
 		}
+
+		// ------------------------------------------------
+		// USER
+		// ------------------------------------------------
 
 		userObjID, err := primitive.ObjectIDFromHex(serviceData.User.Hex())
 		if err != nil {
@@ -445,6 +470,10 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		if err != nil {
 			continue
 		}
+
+		// ------------------------------------------------
+		// PROVIDER
+		// ------------------------------------------------
 
 		providerIDStr := serviceData.Provider.Hex()
 		if providerIDStr == "" {
@@ -459,31 +488,42 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
+		// ------------------------------------------------
+		// FINAL PRICE
+		// ------------------------------------------------
+
 		finalPrice := serviceData.FinalPrice
 
-		if !useSnapshot {
+		if !cancelledByProvider {
 			tx, err := s.transactionRepo.GetTransactionByServiceID(
 				ctx,
 				serviceData.ID.Hex(),
 			)
-			if err == nil {
-				finalPrice = tx.Amount
+			if err != nil {
+				continue
 			}
+			finalPrice = tx.Amount
 		}
+
+		// ------------------------------------------------
+		// CANCEL INFO
+		// ------------------------------------------------
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
 
-		if useSnapshot && serviceData.Cancelled != nil {
+		if serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
 			cancelled = serviceData.Cancelled
-			if serviceData.CancelledAt != nil {
-				cancelledAt = serviceData.CancelledAt
-			}
+			cancelledAt = serviceData.CancelledAt
 		}
-
+		userRaisedComplaint := false
+		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceData.ID)
+		if err == nil && complaint != nil && complaint.UserComplaint != nil {
+			userRaisedComplaint = true
+		}
 		dtoItem := dto.ProviderBookingDTO{
 			ID:             serviceData.ID,
-			ProviderID:     providerIDStr,
+			ProviderID:     providerID,
 			ProfileURL:     user.ImageUrl,
 			ServiceNumber:  serviceData.ServiceNumber,
 			Status:         string(serviceData.Status),
@@ -502,6 +542,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			CancelledAt:    cancelledAt,
 			CreatedAt:      serviceData.CreatedAt,
 			UpdatedAt:      serviceData.UpdatedAt,
+			UserRaisedComplaint: userRaisedComplaint, 
 		}
 
 		result = append(result, dtoItem)
@@ -518,6 +559,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 	return response,int64(len(result)), nil
 }
 
+
 func containsStatus(statuses []domain.ServiceStatus, target domain.ServiceStatus) bool {
 	for _, s := range statuses {
 		if s == target {
@@ -533,7 +575,20 @@ func (s *BookingService) GetProviderBookingDetails(
 	serviceID string,
 ) (*dto.ProviderBookingDetailDTO, error) {
 
+	providerObjID, err := primitive.ObjectIDFromHex(providerID)
+	if err != nil {
+		return nil, err
+	}
+
 	serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	provider, err := s.providerRepo.FindByID(
+		ctx,
+		domain.ProviderID(providerObjID.Hex()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -543,29 +598,7 @@ func (s *BookingService) GetProviderBookingDetails(
 		return nil, err
 	}
 
-	serviceData := r
-	targetProviderID := providerID
-	useSnapshot := false
-
-	if r.CancelledProviderID == providerID {
-		snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
-		if err == nil && snap != nil {
-			serviceData = &snap.Service
-			useSnapshot = true
-		}
-	} else if r.Provider.Hex() == providerID {
-		targetProviderID = r.Provider.Hex()
-	}
-
-	provider, err := s.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(targetProviderID),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := s.userRepo.GetByID(ctx, serviceData.User)
+	user, err := s.userRepo.GetByID(ctx, r.User)
 	if err != nil {
 		return nil, err
 	}
@@ -610,75 +643,68 @@ func (s *BookingService) GetProviderBookingDetails(
 
 	const gstPercent = 18.0
 
-	serviceCharge := serviceData.FinalPrice
-	gstAmount := (serviceCharge * gstPercent) / 100
-	totalPayable := serviceCharge + gstAmount
+	serviceCharge := r.FinalPrice
+	gstOnCommission := (serviceCharge * gstPercent) / 100
+	providerPayout := serviceCharge + gstOnCommission
 
 	var userLoc dto.UserLocation
-	if serviceData.UserLocation != nil {
+	if r.UserLocation != nil {
 		userLoc = dto.UserLocation{
-			Lat:  serviceData.UserLocation.Lat,
-			Long: serviceData.UserLocation.Long,
+			Lat:  r.UserLocation.Lat,
+			Long: r.UserLocation.Long,
 		}
 	}
 
 	var providerLoc dto.ProviderLocation
-	if serviceData.ProviderLocation != nil {
+	if r.ProviderLocation != nil {
 		providerLoc = dto.ProviderLocation{
-			Lat:  serviceData.ProviderLocation.Lat,
-			Long: serviceData.ProviderLocation.Long,
+			Lat:  r.ProviderLocation.Lat,
+			Long: r.ProviderLocation.Long,
 		}
 	}
 
 	var cancelled *domain.CancelInfo
 	var cancelledAt *time.Time
 
-	if useSnapshot && serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
-		cancelled = serviceData.Cancelled
-		cancelledAt = serviceData.CancelledAt
-	}
-
-	timestamps := serviceData.Timestamps
-	if !useSnapshot && r.Timestamps.CancelledAt != nil {
-		ts := r.Timestamps
-		ts.CancelledAt = nil
-		timestamps = ts
+	if r.Cancelled != nil && r.CancelledAt != nil {
+		cancelled = r.Cancelled
+		cancelledAt = r.CancelledAt
 	}
 
 	return &dto.ProviderBookingDetailDTO{
-		ID:             serviceData.ID,
-		ProviderID:     targetProviderID,
+		ID:             r.ID,
+		ProviderID:     string(provider.ID),
 		ProfileURL:     user.ImageUrl,
-		ServiceNumber:  serviceData.ServiceNumber,
-		Status:         string(serviceData.Status),
-		FinalPrice:     serviceData.FinalPrice,
+		ServiceNumber:  r.ServiceNumber,
+		Status:         string(r.Status),
+		FinalPrice:     r.FinalPrice,
 		UserProfileUrl: user.ImageUrl,
-		VehicleNumber:  serviceData.VehicleNumber,
-		Brand:          serviceData.Brand,
-		Model:          serviceData.Model,
-		ModelYear:      serviceData.ModelYear,
-		FuelType:       serviceData.FuelType,
+		VehicleNumber:  r.VehicleNumber,
+		Brand:          r.Brand,
+		Model:          r.Model,
+		ModelYear:      r.ModelYear,
+		FuelType:       r.FuelType,
 		Rating:         user.Rating,
-		VehicleType:    serviceData.VehicleType,
-		Issues:         serviceData.Issues,
-		Timestamps:     timestamps,
+		VehicleType:    r.VehicleType,
+		Issues:         r.Issues,
+		Timestamps:     r.Timestamps,
 		ProviderName:   provider.Name,
 		UserName:       user.Name,
 		Complaint:      complaintDTO,
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:  utils.RoundTo2(serviceCharge),
 			GSTPercent:     gstPercent,
-			GSTAmount:      utils.RoundTo2(gstAmount),
+			GSTAmount:      utils.RoundTo2(gstOnCommission),
 			TotalPayable:   serviceCharge,
-			ProviderPayout: utils.RoundTo2(totalPayable),
-			PaymentStatus:  string(serviceData.PaymentStatus),
+			ProviderPayout: utils.RoundTo2(providerPayout),
+			PaymentStatus:  string(r.PaymentStatus),
 		},
 		Cancelled:        cancelled,
 		CancelledAt:      cancelledAt,
 		UserLocation:     userLoc,
 		ProviderLocation: providerLoc,
-		CreatedAt:        serviceData.CreatedAt,
-		UpdatedAt:        serviceData.UpdatedAt,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
 	}, nil
 }
 
@@ -934,3 +960,4 @@ func (s *BookingService) GetProviderSettledEarnings(
 		Settlements: settlements,
 	}, int64(len(settlements)), nil
 }
+

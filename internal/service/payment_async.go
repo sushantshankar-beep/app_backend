@@ -21,7 +21,7 @@ AFTER PAYMENT SUCCESS
 */
 func (s *PaymentService) afterPaymentSuccess(txnID string) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
 	// ---------------- LOAD TXN ----------------
@@ -36,16 +36,23 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	}
 
 	// ---------------- UPDATE FIRST ----------------
-	_ = s.acceptedServiceRepo.UpdatePaymentStatus(
+	err = s.acceptedServiceRepo.UpdatePaymentStatus(
 		ctx,
 		serviceOID,
 		domain.PaymentPaid,
 		"confirmed",
 	)
+	if err != nil {
+		log.Println("failed to update payment status:", err)
+		return
+	}
+
+
 
 	// ---------------- LOAD SERVICE ----------------
 	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
+		log.Println("failed to load service:", err)
 		return
 	}
 
@@ -153,14 +160,16 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"serviceId": svc.ID.Hex(),
 		},
 	)
+	job := domain.InvoiceJob{
+		TxnID:     txnID,
+		UserID:    txn.UserID,
+		ServiceID: txn.ServiceID,
+	}
+	if err := s.invoiceQueue.Publish(context.Background(), job); err != nil {
+		log.Println("❌ failed to push invoice job:", err)
+	}
 
 	// ---------------- SIDE EFFECTS ----------------
-
-	go s.invoiceSvc.GenerateInvoice(
-		context.Background(),
-		txn.UserID,
-		txn.ServiceID,
-	)
 
 	s.events.Publish("payment.success", events.PaymentEvent{
 		TxnID:     txnID,

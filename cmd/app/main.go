@@ -20,6 +20,7 @@ import (
 	"app_backend/internal/sms"
 	"app_backend/internal/socket"
 	"app_backend/internal/worker"
+	"app_backend/internal/queue"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -133,6 +134,18 @@ func main() {
 	worker.NewPaymentConsumer(ports.AcceptedServiceRepository(acceptedServiceRepo))
 
 	worker.NewProviderConsumer(ports.AcceptedServiceRepository(acceptedServiceRepo))
+	invoiceQueue := queue.NewInvoiceQueue(rdb)
+
+	invoiceWorker := worker.NewInvoiceWorker(
+		rdb,          // redis
+		invoiceSvc,   // invoice service
+		paymentRepo,  // payment repository
+	)
+
+	ctx := context.Background()
+
+	go invoiceWorker.Start(ctx)
+
 	paymentSvc := service.NewPaymentService(
 	paymentRepo,
 	invoiceRepo,
@@ -149,20 +162,20 @@ func main() {
 	rdb,
 	refundRepo,
 	invoiceUploader,
+	invoiceQueue, // 🔥 ADD THIS
 )
+
 
 
 
 	//Refund async worker
 	refundWorker := worker.NewRefundWorker(
 		rdb,
-		paymentSvc,   // implements RefundProcessor
+		paymentSvc,
 		refundRepo,
 	)
 
 	refundWorker.Start()
-
-	// Auth + OTP
 	var smsClient ports.SMSClient = sms.SmsTrigger()
 	var tokenSvc ports.TokenService = auth.NewJWT(cfg.JWTSecret)
 
@@ -195,7 +208,6 @@ func main() {
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
-	// AMC validation
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
 
@@ -237,6 +249,7 @@ func main() {
 		biddingSvc,
 	)
 	timeoutWorker.Start()
+
 
 	amcValidationHandler := handlers.NewAMCValidationHandler(amcValidationSvc)
 	biddingHandler := handlers.NewBiddingHandler(biddingSvc)

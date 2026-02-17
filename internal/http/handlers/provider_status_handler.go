@@ -86,10 +86,15 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 			Latitude:  req.Lat,
 		},
 	).Err(); err != nil {
-
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "geo error"})
 		return
 	}
+	if err := h.providerRepo.SetOnlineStatus(ctx,domain.ProviderID(providerID),true,req.Lat,req.Lng); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db update failed"})
+		return
+	}
+
+
 
 	// ===========================
 	// ✅ RESPONSE
@@ -109,13 +114,49 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 POST /provider/offline
 */
 func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
+
 	providerID := c.GetString("providerId")
 	if providerID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	ctx := c.Request.Context()
+	// 🔍 Optional: block offline if active service
+	busy, _ := h.redis.Exists(ctx, "provider:busy:"+providerID).Result()
+	if busy == 1 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "You Already Have Active Service",
+		})
+		return
+	}
 
-	h.redis.Del(c.Request.Context(), "provider:online:"+providerID)
+	// ===========================
+	// 🧹 REDIS CLEANUP
+	// ===========================
+
+	h.redis.Del(ctx, "provider:online:"+providerID)
+	h.redis.ZRem(ctx, "providers:geo", providerID)
+	h.redis.Del(ctx, "provider:busy:"+providerID)
+
+	// ===========================
+	// 🗄 UPDATE MONGO
+	// ===========================
+
+	if err := h.providerRepo.SetOnlineStatus(
+		ctx,
+		domain.ProviderID(providerID),
+		false,
+		0,
+		0,
+	); err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db update failed"})
+		return
+	}
+
+	// ===========================
+	// ✅ RESPONSE
+	// ===========================
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "offline",

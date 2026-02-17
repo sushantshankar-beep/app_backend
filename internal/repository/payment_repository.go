@@ -125,3 +125,30 @@ func (r *PaymentRepository) GetLatestPaidTransactionByServiceID(
 
 	return &txn, nil
 }
+func (r *PaymentRepository) MarkInvoiceGenerated(
+	ctx context.Context,
+	txnid string,
+) (bool, error) {
+
+	res, err := r.txnCol.UpdateOne(
+		ctx,
+		bson.M{
+			"txnid":           txnid,
+			"invoiceGenerated": false,
+			"status":          "paid", // safety
+		},
+		bson.M{
+			"$set": bson.M{
+				"invoiceGenerated":   true,
+				"invoiceGeneratedAt": time.Now(),
+				"updatedAt":          time.Now(),
+			},
+		},
+	)
+
+	if err != nil {
+		return false, err
+	}
+
+	return res.ModifiedCount == 1, nil
+}

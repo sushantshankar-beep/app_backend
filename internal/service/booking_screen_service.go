@@ -164,7 +164,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	skip := int64((page - 1) * limit)
 
-	raw,_, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userObjID, sStatus,skip,int64(limit))
+	raw,total, err := s.acceptedRepo.GetBookingsByUserAndStatus(ctx, userObjID, sStatus,skip,int64(limit))
 	if err != nil {
 		return nil,0, err
 	}
@@ -227,7 +227,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 
 	}
 
-	return result,int64(len(result)), nil
+	return result,total, nil
 }
 
 func mapStatus(status string) ([]domain.ServiceStatus, error) {
@@ -427,7 +427,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 
 	skip := int64((page - 1) * limit)
 
-	raw, _ , err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus, skip,int64(limit))
+	raw, total , err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus, skip,int64(limit))
 	if err != nil {
 		return nil,0, err
 	}
@@ -556,7 +556,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		response.Count = len(result)
 	}
 
-	return response,int64(len(result)), nil
+	return response,total, nil
 }
 
 
@@ -721,7 +721,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, pag
 
 	skip := int64((page - 1) * limit)
 
-	services, _ ,err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID,skip,int64(limit))
+	services, total ,err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID,skip,int64(limit))
 	if err != nil {
 		return nil, 0, 0,err
 	}
@@ -758,10 +758,10 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, pag
 		}
 
 		result = append(result, expense)
-		totalExpense += transaction.Amount
+		totalExpense += utils.RoundTo2(transaction.Amount)
 	}
 
-	return result, totalExpense, int64(len(result)),nil
+	return result, totalExpense, total,nil
 }
 
 func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID string) (*dto.DashboardStats, error) {
@@ -821,7 +821,7 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 
 	skip := int64((page - 1) * limit)
 
-	completedBookings,_, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},skip, int64(limit))
+	completedBookings,totalCount, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, []domain.ServiceStatus{domain.StatusCompleted},skip, int64(limit))
 	if err != nil {
 		return nil,0, err
 	}
@@ -846,7 +846,7 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
-	return &dto.EarningsResponse{Earnings: earnings},int64(len(earnings)), nil
+	return &dto.EarningsResponse{Earnings: earnings},totalCount, nil
 }
 func (s *BookingService) GetProviderTodayEarnings(
 	ctx context.Context,
@@ -873,7 +873,7 @@ func (s *BookingService) GetProviderTodayEarnings(
 
 	skip := int64((page - 1) * limit)
 
-	completedBookings,_, err := s.acceptedRepo.
+	completedBookings,totalCount, err := s.acceptedRepo.
 		GetProviderCompletedBookingsByDate(
 			ctx,
 			providerObjID,
@@ -914,7 +914,7 @@ func (s *BookingService) GetProviderTodayEarnings(
 	return &dto.TodayEarningsResponse{
 		Total:    utils.RoundTo2(total),
 		Earnings: earnings,
-	}, int64(len(earnings)), nil
+	}, totalCount, nil
 }
 
 func (s *BookingService) GetProviderSettledEarnings(
@@ -930,7 +930,7 @@ func (s *BookingService) GetProviderSettledEarnings(
 
 	skip := int64((page - 1) * limit)
 
-	records,_, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID, skip , int64(limit))
+	records,totalCount, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID, skip , int64(limit))
 	if err != nil {
 		return nil, 0,err
 	}
@@ -958,6 +958,6 @@ func (s *BookingService) GetProviderSettledEarnings(
 	return &dto.ProviderSettlementResponse{
 		Total:       utils.RoundTo2(total),
 		Settlements: settlements,
-	}, int64(len(settlements)), nil
+	}, totalCount, nil
 }
 

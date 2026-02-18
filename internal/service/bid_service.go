@@ -419,6 +419,24 @@ func (s *BiddingService) PlaceBid(
 		return "", errors.New("service is no longer available")
 	}
 
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return "",err
+	}
+	var svc1 domain.AcceptedService
+	if err := s.acceptedRepo.Col().
+		FindOne(ctx, bson.M{"_id": serviceOID}).
+		Decode(&svc1); err != nil {
+		return "",err
+	}
+	if svc1.Status == domain.StatusConfirmed||
+	   svc1.Status == domain.StatusStarted ||
+	   svc1.Status == domain.StatusCompleted {
+
+		return "",errors.New("service is no longer available")
+	}
+
+
 	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 1 {
 		return "", errors.New("service is no longer available")
 	}
@@ -446,7 +464,6 @@ func (s *BiddingService) PlaceBid(
 	if started {
 		log.Println("⏸ bid window started for service:", serviceID)
 	}
-	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
 	providerOID, _ := primitive.ObjectIDFromHex(providerID)
 
 	bid := &domain.BidLog{
@@ -865,7 +882,6 @@ func (s *BiddingService) ProviderCancelService(
 ) error {
 
 	serviceOID, _ := primitive.ObjectIDFromHex(serviceID)
-
 	// fetch service
 	var svc domain.AcceptedService
 	if err := s.acceptedRepo.Col().
@@ -878,9 +894,6 @@ func (s *BiddingService) ProviderCancelService(
 	}
 
 	// only assigned provider can cancel
-	if svc.Provider.Hex() != providerID {
-		return errors.New("not assigned provider")
-	}
 	now := time.Now()
 
 	snap := svc // full copy
@@ -928,7 +941,7 @@ func (s *BiddingService) ProviderCancelService(
 	// 🗑️ put provider back to geo (optional)
 	pos, _ := s.rdb.GeoPos(ctx, "providers:geo", providerID).Result()
 	if len(pos) == 0 || pos[0] == nil {
-		if svc.ProviderLocation != nil {
+		if svc.ProviderLocation != nil && svc.CancelledProviderID == ""{
 			s.rdb.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
 				Name:      providerID,
 				Longitude: svc.ProviderLocation.Long,

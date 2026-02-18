@@ -55,6 +55,15 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		log.Println("failed to load service:", err)
 		return
 	}
+	providerMissing := false
+
+	if svc.Provider == primitive.NilObjectID &&
+		svc.CancelledProviderID != "" {
+
+		providerMissing = true
+		log.Println("⚠ provider is nil but cancelledProviderID exists")
+	}
+
 
 	// ---------------- PARALLEL FETCH USER + DIST ----------------
 	var (
@@ -176,6 +185,17 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		ServiceID: svc.ID.Hex(),
 		Status:    "paid",
 	})
+	if providerMissing{
+
+		log.Println("⚠ provider missing after payment, auto cancelling service")
+
+		go s.biddingSvc.ProviderCancelService(
+			context.Background(),
+			svc.ID.Hex(),
+			svc.CancelledProviderID,
+			"provider_went_offline_after_payment",
+		)
+	}
 
 	log.Println("DONEEEEE payment success")
 }

@@ -104,6 +104,7 @@ func main() {
 	refundRepo := repository.NewRefundRepo(db)
 	notificationRepo := repository.NewNotificationRepo(db)
 	refundWebhookRepo := repository.NewRefundWebhookRepo(db)
+	zoneRepo := repository.NewZoneRepository(db.Collection("zones"))
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -190,7 +191,7 @@ func main() {
 		paymentRepo,
 		refundRepo,
 	)
-
+	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
 	ctx := context.Background()
@@ -244,6 +245,7 @@ func main() {
 		paymentRepo,
 		refundWebhookRepo,
 	)
+	zoneHandler := handlers.NewZoneHandler(zoneSvc)
 	timeoutWorker := worker.NewProviderTimeoutWorker(
 		ports.AcceptedServiceRepository(acceptedServiceRepo),
 		biddingSvc,
@@ -273,7 +275,7 @@ func main() {
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler,zoneHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

@@ -117,9 +117,6 @@ func (w *InvoiceWorker) process(ctx context.Context, job domain.InvoiceJob) {
 	log.Println("✅ invoice generated:", invoice.InvoiceNumber)
 }
 
-//////////////////////////////////////////////////////////
-// RETRY
-//////////////////////////////////////////////////////////
 
 func (w *InvoiceWorker) retry(ctx context.Context, job domain.InvoiceJob) {
 

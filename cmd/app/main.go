@@ -204,7 +204,7 @@ func main() {
 	)
 	snapshotRepo := repository.NewSnapshotRepo(db)
 	locationSvc := service.NewLocationService(locationRepo)
-	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo)
+	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo,notificationSvc)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)

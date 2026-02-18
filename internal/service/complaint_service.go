@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"app_backend/internal/domain"
+	"app_backend/internal/ports"
 	"app_backend/internal/repository"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -17,14 +18,16 @@ type ComplaintService struct {
 	userRepo     *repository.UserRepo
 	providerRepo *repository.ProviderRepo
 	acceptedSvcRepo *repository.AcceptedServiceRepo
+	notify          ports.NotificationService
 }
 
-func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo,acceptedSvcRepo *repository.AcceptedServiceRepo) *ComplaintService {
+func NewComplaintService(repo *repository.ComplaintRepo, u *repository.UserRepo, p *repository.ProviderRepo,acceptedSvcRepo *repository.AcceptedServiceRepo,notify ports.NotificationService,) *ComplaintService {
 	return &ComplaintService{
 		repo:         repo,
 		userRepo:     u,
 		providerRepo: p,
 		acceptedSvcRepo: acceptedSvcRepo,
+		notify: notify,
 	}
 }
 
@@ -105,6 +108,7 @@ func (s *ComplaintService) RaiseComplaint(
 
 		existing.UpdatedAt = time.Now()
 		_ = s.repo.Update(ctx, existing)
+		go s.sendComplaintNotification(existing, raisedBy)
 		return existing, nil
 	}
 
@@ -146,6 +150,8 @@ func (s *ComplaintService) RaiseComplaint(
 		_ = s.acceptedSvcRepo.UpdateComplaintByProvider(ctx, acceptedServiceID, complaint.ID)
 		_ = s.providerRepo.IncrementComplaintCount(ctx, providerID)
 	}
+
+	go s.sendComplaintNotification(complaint, raisedBy)
 
 	return complaint, nil
 }
@@ -324,4 +330,34 @@ func (s *ComplaintService) GetProviderComplaintByAcceptedService(ctx context.Con
 	}
 
 	return complaintMap, nil
+}
+
+func (s *ComplaintService) sendComplaintNotification( complaint *domain.Complaint, raisedBy string ) {
+	serviceID := complaint.AcceptedService.Hex()
+
+	if raisedBy == "provider" {
+		go s.notify.SendToUser(
+			context.Background(),
+			complaint.UserID.Hex(),
+			serviceID,
+			"Complaint Raised",
+			fmt.Sprintf("Provider raised a complaint for service %s", complaint.ServiceNumber),
+			map[string]string{
+				"serviceId": serviceID,
+				"type":      "complaint",
+			},
+		)
+	} else {
+		go s.notify.SendToProvider(
+			context.Background(),
+			complaint.ProviderID.Hex(),
+			serviceID,
+			"Complaint Raised",
+			fmt.Sprintf("User raised a complaint for service %s", complaint.ServiceNumber),
+			map[string]string{
+				"serviceId": serviceID,
+				"type":      "complaint",
+			},
+		)
+	}
 }

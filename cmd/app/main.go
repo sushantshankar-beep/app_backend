@@ -141,41 +141,6 @@ func main() {
 		invoiceSvc,   // invoice service
 		paymentRepo,  // payment repository
 	)
-
-	ctx := context.Background()
-
-	go invoiceWorker.Start(ctx)
-
-	paymentSvc := service.NewPaymentService(
-	paymentRepo,
-	invoiceRepo,
-	emitter,
-	ports.AcceptedServiceRepository(acceptedServiceRepo),
-	userRepo,
-	ports.ProviderRepo(providerRepo),
-	ports.NotificationService(notificationSvc),
-	bus,
-	cfg.PayUKey,
-	cfg.PayUSalt,
-	cfg.PayUBaseURL,
-	cfg.BaseURL,
-	rdb,
-	refundRepo,
-	invoiceUploader,
-	invoiceQueue, // 🔥 ADD THIS
-)
-
-
-
-
-	//Refund async worker
-	refundWorker := worker.NewRefundWorker(
-		rdb,
-		paymentSvc,
-		refundRepo,
-	)
-
-	refundWorker.Start()
 	var smsClient ports.SMSClient = sms.SmsTrigger()
 	var tokenSvc ports.TokenService = auth.NewJWT(cfg.JWTSecret)
 
@@ -225,8 +190,43 @@ func main() {
 		paymentRepo,
 		refundRepo,
 	)
+
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
+	ctx := context.Background()
+
+	go invoiceWorker.Start(ctx)
+
+	paymentSvc := service.NewPaymentService(
+	paymentRepo,
+	invoiceRepo,
+	emitter,
+	ports.AcceptedServiceRepository(acceptedServiceRepo),
+	userRepo,
+	ports.ProviderRepo(providerRepo),
+	ports.NotificationService(notificationSvc),
+	bus,
+	cfg.PayUKey,
+	cfg.PayUSalt,
+	cfg.PayUBaseURL,
+	cfg.BaseURL,
+	rdb,
+	refundRepo,
+	invoiceUploader,
+	invoiceQueue, 
+	biddingSvc,
+)
+
+
+
+
+	//Refund async worker
+	refundWorker := worker.NewRefundWorker(
+		rdb,
+		paymentSvc,
+		refundRepo,
+	)
+	refundWorker.Start()
 
 	serviceTrackingSvc := service.NewServiceTrackingService(acceptedServiceRepo, userRepo, providerRepo, emitter,notificationSvc,rdb,complaintRepo,invoiceRepo)
 	imageUploadS3 := service.NewImageUploadS3Service()

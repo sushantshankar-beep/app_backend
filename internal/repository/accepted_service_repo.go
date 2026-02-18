@@ -600,6 +600,7 @@ func (r *AcceptedServiceRepo) FindActiveServiceByProvider(
 		"status": bson.M{
 			"$in": []string{
 				string(domain.StatusConfirmed),
+				string(domain.StatusProviderAssigned),
 			},
 		},
 	}

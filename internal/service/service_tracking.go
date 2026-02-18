@@ -14,6 +14,7 @@ import (
 	"math"
 	"app_backend/internal/ports"
 	"github.com/redis/go-redis/v9"
+	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -233,19 +234,44 @@ func (s *ServiceTrackingService) ProviderTrackingScreen(ctx context.Context,serv
 }
 
 
-func (s *ServiceTrackingService) sendStatusNotification(svc *domain.AcceptedService,newStatus domain.ServiceStatus){
+func (s *ServiceTrackingService) sendStatusNotification(
+	svc *domain.AcceptedService,
+	newStatus domain.ServiceStatus,
+) {
+
 	title := ""
 	message := ""
+
+	// ===============================
+	// LOAD PROVIDER NAME
+	// ===============================
+
+	providerName := "Mechanic"
+
+	if svc.Provider != primitive.NilObjectID {
+		provider, err := s.providerRepo.FindByID(
+			context.Background(),
+			domain.ProviderID(svc.Provider.Hex()),
+		)
+		if err == nil && provider != nil {
+			providerName = provider.Name
+		}
+	}
+
+	// ===============================
+	// STATUS SWITCH
+	// ===============================
 
 	switch newStatus {
 
 	case domain.StatusStarted:
-		title = "Mechanic On The Way"
-		message = "Mechanic has started your service."
+		title = fmt.Sprintf("%s Is On The Way", providerName)
+		message = fmt.Sprintf("%s has started and is on the way.", providerName)
 
 	case domain.StatusReachedLocation:
 		title = "Mechanic Reached"
 		message = "Mechanic has reached your location."
+		message = fmt.Sprintf("%s has reached your location.", providerName)
 
 	case domain.StatusOTPVerified:
 		title = "OTP Verified"
@@ -264,10 +290,46 @@ func (s *ServiceTrackingService) sendStatusNotification(svc *domain.AcceptedServ
 		message = "Your service status has been updated."
 	}
 
-	go s.notify.SendToUser(context.Background(),svc.User.Hex(),svc.ID.Hex(),title,message,map[string]string{"type": "SERVICE_STATUS_UPDATE","serviceId": svc.ID.Hex(),"status": string(newStatus)})
+	// ============================================
+	// 🔔 ALWAYS SEND TO USER
+	// ============================================
 
-	go s.notify.SendToProvider(context.Background(),svc.Provider.Hex(),svc.ID.Hex(),title,message,map[string]string{"type": "SERVICE_STATUS_UPDATE","serviceId": svc.ID.Hex(),"status":string(newStatus)})
+	go s.notify.SendToUser(
+		context.Background(),
+		svc.User.Hex(),
+		svc.ID.Hex(),
+		title,
+		message,
+		map[string]string{
+			"type":      "SERVICE_STATUS_UPDATE",
+			"serviceId": svc.ID.Hex(),
+			"status":    string(newStatus),
+		},
+	)
+
+	// ============================================
+	// 🔔 SEND TO PROVIDER ONLY FOR STARTED + COMPLETED
+	// ============================================
+
+	if svc.Provider != primitive.NilObjectID &&
+		(newStatus == domain.StatusStarted ||
+			newStatus == domain.StatusCompleted) {
+
+		go s.notify.SendToProvider(
+			context.Background(),
+			svc.Provider.Hex(),
+			svc.ID.Hex(),
+			title,
+			message,
+			map[string]string{
+				"type":      "SERVICE_STATUS_UPDATE",
+				"serviceId": svc.ID.Hex(),
+				"status":    string(newStatus),
+			},
+		)
+	}
 }
+
 
 
 func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID string,newStatus domain.ServiceStatus,lat float64,long float64) (map[string]any, error) {
@@ -388,6 +450,12 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		// fallback for distance
 		distanceKm = distanceKmHaversine(lat,long,userLat,userLong)
 	}
+	if distanceKm > 0 {
+		eta = estimateETA(distanceKm)
+	}else{
+		eta = 5
+	}
+	distanceKmRound := math.Round(distanceKm*100) / 100
 	gst := svc.FinalPrice * 18 / 100
 	totalAmount := gst + svc.FinalPrice
 
@@ -406,7 +474,6 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 			"lon":   userLong,
 			"profileUrl": user.ImageUrl,
 		},
-
 		"provider": map[string]any{
 			"id":     provider.ID,
 			"name":   provider.Name,
@@ -414,7 +481,6 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 			"phone":  provider.Phone,
 			"profileUrl" : provider.ProfileURL,
 		},
-
 		"vehicle": map[string]any{
 			"fuelType":      svc.FuelType,
 			"vehicleType":   svc.VehicleType,
@@ -423,7 +489,6 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 			"modelYear":     svc.ModelYear,
 			"model":         svc.Model,
 		},
-
 		"issues": svc.Issues,
 
 		"billing": map[string]any{
@@ -436,17 +501,13 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		"timestamps": svc.Timestamps,
 	}
 
-	if distanceKm > 0 {
+	payload["distanceKm"] = distanceKmRound
+	payload["eta"] = eta
 
-		payload["distanceKm"] = distanceKm
-		payload["eta"] = eta
-
-		payload["providerLocation"] = map[string]any{
-			"lat":  lat,
-			"long": long,
-		}
+	payload["providerLocation"] = map[string]any{
+		"lat":  lat,
+		"long": long,
 	}
-
 	userRoom := "user:" + svc.ID.Hex()
 	providerRoom := "provider:" + svc.Provider.Hex()
 	socketPayload := map[string]any{"serviceId": svc.ID.Hex(),"status":  newStatus}

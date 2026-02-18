@@ -10,8 +10,10 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/service"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"context"
+	// "context"
 	"log"
+	"go.mongodb.org/mongo-driver/bson"
+	"time"
 )
 
 type ProviderStatusHandler struct {
@@ -140,28 +142,39 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 	}
 
 	// ============================================
-	// 🔍 CHECK ACTIVE SERVICE IN MONGO
+	// 🔍 CHECK ACTIVE SERVICE
 	// ============================================
 
 	activeSvc, err := h.acceptedRepo.FindActiveServiceByProvider(ctx, providerOID)
 
 	if err == nil && activeSvc != nil {
 
-		// 🚨 Cancel service automatically
-		err := h.biddingSvc.ProviderCancelService(
-			context.Background(),
-			activeSvc.ID.Hex(),
-			providerID,
-			"provider_went_offline",
-		)
+		if activeSvc.Status == domain.StatusProviderAssigned {
 
-		if err != nil {
-			log.Println("❌ auto cancel failed:", err)
+			_, err := h.acceptedRepo.Col().UpdateByID(
+				ctx,
+				activeSvc.ID,
+				bson.M{
+					"$set": bson.M{
+						"provider":            primitive.NilObjectID,
+						"cancelledProviderID": providerID,
+						"updatedAt":           time.Now(),
+					},
+				},
+			)
+
+			if err != nil {
+				log.Println("❌ remove provider failed:", err)
+			}
 		}
+
+		// 🔓 Clean service redis keys SAFELY
+		h.redis.Del(ctx, "service:locked:"+activeSvc.ID.Hex())
+		h.redis.Del(ctx, "service:stop:"+activeSvc.ID.Hex())
 	}
 
 	// ============================================
-	// 🧹 REDIS CLEANUP
+	// 🧹 REDIS CLEANUP (Provider level)
 	// ============================================
 
 	h.redis.Del(ctx, "provider:online:"+providerID)
@@ -184,12 +197,7 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 		return
 	}
 
-	// ============================================
-	// ✅ RESPONSE
-	// ============================================
-
 	c.JSON(http.StatusOK, gin.H{
 		"status": "offline",
 	})
 }
-

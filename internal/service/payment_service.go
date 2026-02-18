@@ -48,6 +48,7 @@ type PaymentService struct {
 	http                *resty.Client
 	refundRepo *repository.RefundRepo
 	invoiceQueue        *queue.InvoiceQueue
+	biddingSvc           *BiddingService
 }
 
 func NewPaymentService(
@@ -64,6 +65,7 @@ func NewPaymentService(
 	refundRepo *repository.RefundRepo,
 	s3Uploader *s3.InvoiceUploader,
 	invoiceQueue        *queue.InvoiceQueue,
+	biddingSvc          *BiddingService,
 ) *PaymentService {
 
 	return &PaymentService{
@@ -83,6 +85,7 @@ func NewPaymentService(
 		http:                resty.New().SetTimeout(30 * time.Second),
 		refundRepo: refundRepo,
 		invoiceQueue:invoiceQueue,
+		biddingSvc: biddingSvc,
 
 	}
 }

@@ -18,9 +18,9 @@ func NewRedis() *redis.Client {
 	once.Do(func() {
 
 		rdb = redis.NewClient(&redis.Options{
-			Addr:     "redis-17033.c100.us-east-1-4.ec2.cloud.redislabs.com:17033",
+			Addr:     "redis-14463.crce263.ap-south-1-1.ec2.cloud.redislabs.com:14463",
 			Username: "default",
-			Password: "KjamvTB1QVUDah3JbGAqr2iBhEuo9guO",
+			Password: "rc41Sw43abL0swVqpEWapvgHfyMvocIo",
 			DB:       0,
 
 			// 🔥 VERY IMPORTANT

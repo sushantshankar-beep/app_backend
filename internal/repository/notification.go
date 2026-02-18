@@ -125,6 +125,7 @@ func (r *NotificationRepo) FindByService(
 				"Booking Cancelled By Provider",
 				"Booking Cancelled",
 				"Payment Completed",
+				"Complaint Raised",
 			},
 		},
 	}

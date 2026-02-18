@@ -267,3 +267,10 @@ func (r *ProviderRepo)SetOnlineStatus(ctx context.Context,providerID domain.Prov
 	_, err = r.col.UpdateByID(ctx, providerOID, update)
 	return err
 }
+
+func (r *ProviderRepo) IncrementComplaintCount(ctx context.Context, providerID primitive.ObjectID) error {
+    filter := bson.M{"_id": providerID}
+    update := bson.M{"$inc": bson.M{"complaintsCount": 1}}
+    _, err := r.col.UpdateOne(ctx, filter, update)
+    return err
+}

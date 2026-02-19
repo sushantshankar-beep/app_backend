@@ -176,6 +176,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
+	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 
 
 	// Bidding service
@@ -190,8 +191,8 @@ func main() {
 		notificationSvc,
 		paymentRepo,
 		refundRepo,
+		zoneSvc,
 	)
-	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
 	ctx := context.Background()

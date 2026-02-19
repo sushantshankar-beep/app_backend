@@ -31,7 +31,8 @@ type BiddingService struct {
 	counterRepo  *repository.CounterRepo
 	notify       ports.NotificationService
 	paymentRepo *repository.PaymentRepository
-	refundRepo   *repository.RefundRepo 
+	refundRepo   *repository.RefundRepo
+	zoneService  *ZoneService 
 	
 }
 
@@ -45,7 +46,8 @@ func NewBiddingService(
 	counterRepo *repository.CounterRepo,
 	notify ports.NotificationService,
 	paymentRepo *repository.PaymentRepository,
-	refundRepo   *repository.RefundRepo, 
+	refundRepo   *repository.RefundRepo,
+	zoneService *ZoneService, 
 ) *BiddingService {
 	return &BiddingService{
 		rdb:          rdb,
@@ -58,6 +60,7 @@ func NewBiddingService(
 		notify:       notify,
 		paymentRepo: paymentRepo,
 		refundRepo: refundRepo,
+		zoneService:  zoneService,
 	}
 }
 var ErrServiceAlreadyAssigned = errors.New("service already assigned")
@@ -74,6 +77,14 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		domain.StatusOTPVerified,
 		domain.StatusInProgress,
 		domain.StatusNotStarted,
+	}
+	zone, err := s.zoneService.CheckServiceable(ctx, lat, lng)
+	if err != nil {
+		return "", err
+	}
+
+	if zone == nil {
+		return "", errors.New("We are  not available in your area")
 	}
 
 	cnt, err := s.acceptedRepo.Count(ctx, bson.M{

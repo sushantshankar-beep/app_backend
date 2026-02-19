@@ -173,12 +173,11 @@ func main() {
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo,notificationSvc)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
 	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo)
-
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc)
 	// Bidding service
 	biddingSvc := service.NewBiddingService(
 		rdb,
@@ -217,6 +216,7 @@ func main() {
 	invoiceUploader,
 	invoiceQueue, 
 	biddingSvc,
+	couponSvc,
 )
 
 

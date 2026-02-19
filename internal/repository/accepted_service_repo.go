@@ -613,3 +613,13 @@ func (r *AcceptedServiceRepo) FindActiveServiceByProvider(
 	return &svc, nil
 }
 
+
+func (r *AcceptedServiceRepo) Update(ctx context.Context, serviceID string, fields bson.M) error {
+	oid, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+	fields["updatedAt"] = time.Now()
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": fields})
+	return err
+}

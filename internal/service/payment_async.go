@@ -6,7 +6,7 @@ import (
 
 	"app_backend/internal/domain"
 	"app_backend/internal/events"
-
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	// "go.mongodb.org/mongo-driver/bson"
@@ -34,6 +34,38 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	if err != nil {
 		return
 	}
+
+	if txn.AppliedPromo != nil && txn.AppliedPromo.PromoID != "" {
+        if err := s.couponSvc.ConfirmPromoUsage(ctx, txn.AppliedPromo.PromoID); err != nil {
+            log.Println("❌ ConfirmPromoUsage failed:", err)
+        }
+    }
+
+    couponFields := bson.M{}
+    if txn.ServiceAmount > 0 {
+        couponFields["serviceAmount"] = txn.ServiceAmount
+    }
+    if txn.AppliedPromo != nil {
+        couponFields["appliedPromo"] = txn.AppliedPromo
+    }
+	if txn.TotalDiscount > 0 {
+		couponFields["totalDiscount"] = txn.TotalDiscount
+	}
+	if txn.Amount > 0 {
+		couponFields["discountedAmount"] = txn.Amount
+	}
+    if txn.AppliedDiscount != nil {
+        couponFields["appliedDiscount"] = txn.AppliedDiscount
+    }
+
+	couponFields["pendingCoupon"] = nil
+	
+    if len(couponFields) > 0 {
+        if err := s.acceptedServiceRepo.Update(ctx, serviceOID.Hex(), couponFields); err != nil {
+            log.Println("⚠ failed to persist coupon to service:", err)
+        }
+    }
+
 
 	// ---------------- UPDATE FIRST ----------------
 	err = s.acceptedServiceRepo.UpdatePaymentStatus(

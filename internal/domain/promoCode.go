@@ -105,9 +105,9 @@ type AppliedPromoSummary struct {
 }
 
 type CouponApplyResult struct {
-	OriginalAmount   float64
-	DiscountedAmount float64
-	TotalDiscount    float64
-	AppliedPromo     *AppliedPromoSummary
-	AppliedDiscount  *AppliedDiscountSummary
+    ServiceAmount   float64                 `bson:"serviceAmount"   json:"serviceAmount"`
+    DiscountedAmount float64                 `bson:"discountedAmount" json:"discountedAmount"`
+    TotalDiscount    float64                 `bson:"totalDiscount"   json:"totalDiscount"`
+    AppliedPromo     *AppliedPromoSummary    `bson:"appliedPromo"    json:"appliedPromo"`
+    AppliedDiscount  *AppliedDiscountSummary `bson:"appliedDiscount" json:"appliedDiscount"`
 }

@@ -19,7 +19,18 @@ func NewCouponHandler(couponSvc *service.CouponService) *CouponHandler {
 }
 
 func (h *CouponHandler) GetAvailableCoupons(c *gin.Context) {
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+        return
+    }
 
+    userObjID, ok := userObjIDAny.(primitive.ObjectID)
+
+    if !ok {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
+        return
+    }
 	serviceID := c.Query("serviceId")
 	if serviceID == "" {
 		c.JSON(400, gin.H{"error": "serviceId required"})
@@ -39,9 +50,11 @@ func (h *CouponHandler) GetAvailableCoupons(c *gin.Context) {
 	data, total, err := h.couponSvc.GetAvailableCoupons(
 		c.Request.Context(),
 		serviceID,
+		userObjID.Hex(),
 		page,
 		limit,
 	)
+
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -58,49 +71,94 @@ func (h *CouponHandler) GetAvailableCoupons(c *gin.Context) {
 	})
 }
 
-func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
-
-    userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+func (h *CouponHandler) GetAutoDiscount(c *gin.Context) {
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
     if !exists {
         c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
         return
     }
 
     userObjID, ok := userObjIDAny.(primitive.ObjectID)
+
+    if !ok {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
+        return
+    }
+
+	serviceID := c.Query("serviceId")
+	if serviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "serviceId required"})
+		return
+	}
+
+	isNewUser := c.GetBool("isNew")
+
+	result, err := h.couponSvc.ApplyAutoDiscount(
+		c.Request.Context(),
+		serviceID,
+		isNewUser,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	_ = userObjID
+
+	c.JSON(http.StatusOK, gin.H{
+		"originalAmount":      result.ServiceAmount,
+		"discountedAmount":    result.DiscountedAmount,
+		"totalDiscount":       result.TotalDiscount,
+		"appliedDiscount":     result.AppliedDiscount,
+	})
+}
+
+func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+        return
+    }
+
+    userObjID, ok := userObjIDAny.(primitive.ObjectID)
+
     if !ok {
         c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
         return
     }
 
     var req struct {
-        Code          string `json:"code"`
-        ServiceID     string `json:"serviceId"`
+        ServiceID string `json:"serviceId"`
+        Code      string `json:"code"`
     }
-
-    if err := c.ShouldBindJSON(&req); err != nil || req.ServiceID == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(400, gin.H{"error": "invalid request"})
         return
     }
 
     isNewUser := c.GetBool("isNew")
 
-    result, err := h.couponSvc.ValidateAndApply(
-        c.Request.Context(),
-        userObjID.Hex(),
-        req.Code,
-        req.ServiceID,
-        isNewUser,
+    autoResult, _ := h.couponSvc.ApplyAutoDiscount(c, req.ServiceID, isNewUser)
+
+    result, err := h.couponSvc.ApplyPromoCode(
+        c, userObjID.Hex(), req.Code, req.ServiceID, isNewUser, autoResult,
     )
     if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(400, gin.H{"error": err.Error()})
         return
     }
 
-    c.JSON(http.StatusOK, gin.H{
-        "originalAmount":   result.OriginalAmount,
-        "discountedAmount": result.DiscountedAmount,
-        "totalDiscount":    result.TotalDiscount,
-        "appliedPromo":     result.AppliedPromo,
-        "appliedDiscount":  result.AppliedDiscount,
+    gst := result.DiscountedAmount * 18 / 100
+    c.JSON(200, gin.H{
+        "valid":            true,
+        "serviceAmount":   result.ServiceAmount,
+        "discount":         result.TotalDiscount,
+        "gst":              gst,
+        "totalAmount":     result.DiscountedAmount + gst,
+        "appliedPromo": gin.H{
+            "code":        result.AppliedPromo.Code,
+            "discountAmt": result.AppliedPromo.DiscountAmt,
+			"amountAfterDiscount": result.DiscountedAmount,
+        },
     })
 }

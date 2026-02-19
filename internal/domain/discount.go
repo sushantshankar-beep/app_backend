@@ -78,6 +78,6 @@ func IsValidDiscountApplicableOn(a DiscountApplicableOn) bool {
 
 type AppliedDiscountSummary struct {
 	DiscountID  string  `bson:"discountId,omitempty" json:"discountId,omitempty"`
-	Name        string  `bson:"name,omitempty" json:"name,omitempty"`
+	Code        string  `bson:"code,omitempty" json:"code,omitempty"`
 	DiscountAmt float64 `bson:"discountAmt" json:"discountAmt"`
 }

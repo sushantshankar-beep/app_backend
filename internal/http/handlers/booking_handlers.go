@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"app_backend/internal/http/middleware"
 	"app_backend/internal/service"
-	"strconv"
+	"log"
+	"math"
 	"net/http"
-    "math"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type BookingHandler struct {
@@ -17,11 +21,28 @@ func NewBookingHandler(svc *service.BookingService) *BookingHandler {
 }
 
 func (h *BookingHandler) GetBookingDetails(c *gin.Context) {
+
+	userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userObjID, ok := userObjIDAny.(primitive.ObjectID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
+		return
+	}
+
 	serviceID := c.Param("serviceId")
+	isNewUser := c.GetBool("isNew")
+
+	log.Println("dscbjsdhjcbjhdc",isNewUser)
 
 	resp, err := h.svc.BuildBookingScreen(
 		c.Request.Context(),
 		serviceID,
+		userObjID.Hex(),
+		isNewUser,
 	)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})

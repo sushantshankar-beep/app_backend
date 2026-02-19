@@ -1,21 +1,18 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"time"
-
 	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
+	"context"
+	"errors"
 	"fmt"
-
-	"go.mongodb.org/mongo-driver/mongo"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	// "fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type BookingService struct {
@@ -27,6 +24,7 @@ type BookingService struct {
 	settlementRepo  *repository.SettlementHistoryRepository
 	complaintRepo   *repository.ComplaintRepo
 	snapshotRepo *repository.SnapshotRepo
+	couponSvc *CouponService
 }
 
 func NewBookingService(
@@ -38,6 +36,7 @@ func NewBookingService(
 	settlementRepo *repository.SettlementHistoryRepository,
 	complaintRepo *repository.ComplaintRepo,
 	snapshotRepo *repository.SnapshotRepo,
+	couponSvc *CouponService,
 
 ) *BookingService {
 	return &BookingService{
@@ -49,12 +48,15 @@ func NewBookingService(
 		settlementRepo:  settlementRepo,
 		complaintRepo:   complaintRepo,
 		snapshotRepo:    snapshotRepo,
+		couponSvc: couponSvc,
 	}
 }
 
 func (s *BookingService) BuildBookingScreen(
 	ctx context.Context,
 	serviceID string,
+	userID string,
+	isNewUser bool,
 ) (map[string]any, error) {
 
 	/* ---------------- Load Accepted Service ---------------- */
@@ -91,11 +93,20 @@ func (s *BookingService) BuildBookingScreen(
 
 	/* ---------------- Price Calculation ---------------- */
 
-	gst := svc.FinalPrice * 18 / 100
-	total := svc.FinalPrice + gst
+	pricing, err := s.couponSvc.ApplyAutoDiscount(ctx, serviceID, isNewUser)
+
+	if err != nil {
+		pricing = &domain.CouponApplyResult{
+			ServiceAmount:   svc.FinalPrice,
+			DiscountedAmount: svc.FinalPrice,
+		}
+	}
+
+	gst := pricing.DiscountedAmount * 18 / 100
+	total := pricing.DiscountedAmount + gst
+
 
 	/* ---------------- Build Screen Payload ---------------- */
-
 	return map[string]any{
 		"screen": "BOOKING_DETAILS",
 
@@ -134,11 +145,22 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"billing": map[string]any{
-			"serviceAmount": svc.FinalPrice,
-			"gst":           gst,
-			"totalAmount":   total,
-			"currency":      "INR",
-		},
+        "serviceAmount":       pricing.ServiceAmount,
+        "discount":            pricing.TotalDiscount,     
+        "gst":                 gst,                
+        "totalAmount":         total,
+        "currency":            "INR",
+        "appliedDiscount": func() any {
+            if pricing.AppliedDiscount != nil {
+                return map[string]any{
+                    "code":        pricing.AppliedDiscount.Code,
+                    "discountAmt": pricing.AppliedDiscount.DiscountAmt,
+				    "amountAfterDiscount": pricing.DiscountedAmount,
+                }
+            }
+            return nil
+        }(),
+    },
 	}, nil
 }
 

@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
+	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
-    "time"
-	"app_backend/internal/domain"
+    "go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -24,158 +26,13 @@ func NewCouponService(
 ) *CouponService {
 	return &CouponService{
 		promoRepo:           promoRepo,
-		discountRepo: discountRepo,
+		discountRepo:        discountRepo,
 		acceptedServiceRepo: acceptedServiceRepo,
 	}
 }
 
-func (s *CouponService) GetAvailableCoupons(
-	ctx context.Context,
-	serviceID string,
-	page, limit int,
-) ([]dto.PromoCodeListResponse, int64, error) {
-
-	svcOID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		return nil, 0, errors.New("invalid serviceId")
-	}
-
-	svc, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
-	if err != nil {
-		return nil, 0, errors.New("service not found")
-	}
-
-	promos, total, err := s.promoRepo.GetActiveForService(
-		ctx,
-		svc.ServiceType,
-		page,
-		limit,
-	)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	var response []dto.PromoCodeListResponse
-
-	for _, p := range promos {
-		response = append(response, dto.PromoCodeListResponse{
-			ID:           p.ID.Hex(),
-			Code:         p.Code,
-			Title:        p.Title,
-			ServiceType:  svc.ServiceType,
-			Status:       p.Status,
-			CreatedBy:    p.CreatedBy,
-			ValidityStart: p.StartAt.Format(time.RFC3339),
-			ValidityEnd: p.EndAt.Format(time.RFC3339),
-			CreatedAt:    p.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:    p.UpdatedAt.Format(time.RFC3339),
-		})
-	}
-
-	return response, total, nil
-}
-
-func (s *CouponService) ValidateAndApply(
-	ctx context.Context,
-	userID string,
-	code string,
-	serviceID string,
-	isNewUser bool,
-) (*domain.CouponApplyResult, error) {
-
-	svcOID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		return nil, errors.New("invalid serviceId")
-	}
-	svc, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
-	if err != nil {
-		return nil, errors.New("service not found")
-	}
-
-	amount := svc.FinalPrice
-	serviceType := "All Services"
-
-	result := &domain.CouponApplyResult{
-		OriginalAmount:   amount,
-		DiscountedAmount: amount,
-	}
-
-	discounts, err := s.discountRepo.GetActiveForService(ctx, serviceType, "","")
-	if err == nil {
-		for _, d := range discounts {
-			if !discountUserEligible(d.UserEligibility, isNewUser) {
-				continue
-			}
-			disc := calcDiscount(d.Type, d.Value, d.MaxDiscount, result.DiscountedAmount)
-			if disc > 0 {
-				result.TotalDiscount += disc
-				result.DiscountedAmount -= disc
-				result.AppliedDiscount = &domain.AppliedDiscountSummary{
-					DiscountID:  d.ID.Hex(),
-					Name:        d.Name,
-					DiscountAmt: disc,
-				}
-				break
-			}
-		}
-	}
-
-	if code == "" {
-		return result, nil
-	}
-
-	promo, err := s.promoRepo.GetByCode(ctx, code)
-	if err != nil {
-		return nil, errors.New("invalid promo code")
-	}
-
-	now := time.Now()
-	if promo.Status != domain.PromoStatusActive {
-		return nil, errors.New("promo code is not active")
-	}
-	if promo.EndAt != nil && now.After(*promo.EndAt) {
-		return nil, errors.New("promo code has expired")
-	}
-	if now.Before(promo.StartAt) {
-		return nil, errors.New("promo code is not yet valid")
-	}
-	if !promoUserEligible(promo.UserEligibility, isNewUser) {
-		return nil, errors.New("you are not eligible for this promo")
-	}
-	if promo.MinOrderValue > 0 && amount < promo.MinOrderValue {
-		return nil, errors.New("order value too low for this promo")
-	}
-
-	validService := false
-	for _, st := range promo.ServiceTypes {
-		if st == domain.PromoServiceAll || string(st) == serviceType {
-			validService = true
-			break
-		}
-	}
-	if !validService {
-		return nil, errors.New("promo not valid for this service type")
-	}
-
-	if result.AppliedDiscount != nil && !promo.AllowStacking {
-		result.TotalDiscount -= result.AppliedDiscount.DiscountAmt
-		result.DiscountedAmount = result.OriginalAmount
-		result.AppliedDiscount = nil
-	}
-
-	disc := calcDiscount(promo.DiscountType, promo.Value, promo.MaxDiscount, result.DiscountedAmount)
-	result.TotalDiscount += disc
-	result.DiscountedAmount -= disc
-	result.AppliedPromo = &domain.AppliedPromoSummary{
-		PromoID:     promo.ID.Hex(),
-		Code:        promo.Code,
-		DiscountAmt: disc,
-	}
-
-	return result, nil
-}
-
 func calcDiscount(dtype domain.DiscountType, value, maxDiscount, amount float64) float64 {
+	log.Println("calculating discount", dtype, value, maxDiscount, amount)
 	var disc float64
 	if dtype == domain.DiscountPercent {
 		disc = amount * value / 100
@@ -190,7 +47,6 @@ func calcDiscount(dtype domain.DiscountType, value, maxDiscount, amount float64)
 	}
 	return disc
 }
-
 
 func promoUserEligible(eligibility domain.UserEligibility, isNewUser bool) bool {
 	switch eligibility {
@@ -212,6 +68,193 @@ func discountUserEligible(eligibility domain.UserEligibility, isNewUser bool) bo
 	default:
 		return true
 	}
+}
+
+func (s *CouponService) GetAvailableCoupons(
+	ctx context.Context,
+	userID string,
+	serviceID string,
+	page, limit int,
+) ([]dto.PromoCodeListResponse, int64, error) {
+
+	svcOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, 0, errors.New("invalid serviceId")
+	}
+
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
+	if err != nil {
+		return nil, 0, errors.New("service not found")
+	}
+
+	promos, total, err := s.promoRepo.GetActiveForService(ctx, svc.ServiceType, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var response []dto.PromoCodeListResponse
+	for _, p := range promos {
+		validityEnd := ""
+		if p.EndAt != nil {
+			validityEnd = p.EndAt.Format(time.RFC3339)
+		}
+		response = append(response, dto.PromoCodeListResponse{
+			ID:            p.ID.Hex(),
+			Code:          p.Code,
+			Title:         p.Title,
+			ServiceType:   svc.ServiceType,
+			Status:        p.Status,
+			CreatedBy:     p.CreatedBy,
+			ValidityStart: p.StartAt.Format(time.RFC3339),
+			ValidityEnd:   validityEnd,
+			CreatedAt:     p.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:     p.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return response, total, nil
+}
+
+func (s *CouponService) ApplyAutoDiscount(
+	ctx context.Context,
+	serviceID string,
+	isNewUser bool,
+) (*domain.CouponApplyResult, error) {
+
+	svcOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, errors.New("invalid serviceId")
+	}
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
+	if err != nil {
+		return nil, errors.New("service not found")
+	}
+
+	result := &domain.CouponApplyResult{
+		ServiceAmount:   svc.FinalPrice,
+		DiscountedAmount: svc.FinalPrice,
+	}
+
+	discounts, err := s.discountRepo.GetActiveForService(ctx, "Services", "", "")
+	if err != nil {
+		return result, nil
+	}
+
+	for _, d := range discounts {
+		if !discountUserEligible(d.UserEligibility, isNewUser) {
+			continue
+		}
+		disc := calcDiscount(d.Type, d.Value, d.MaxDiscount, result.DiscountedAmount)
+
+		if disc > 0 {
+			result.TotalDiscount += disc
+			result.DiscountedAmount -= disc
+			result.AppliedDiscount = &domain.AppliedDiscountSummary{
+				DiscountID:  d.ID.Hex(),
+				Code:        d.Code,
+				DiscountAmt: disc,
+			}
+			break
+		}
+	}
+
+	if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
+        log.Println("⚠ failed to save pending coupon:", err)
+    }
+	return result, nil
+}
+
+func (s *CouponService) ApplyPromoCode(
+	ctx context.Context,
+	userID string,
+	code string,
+	serviceID string,
+	isNewUser bool,
+	autoResult *domain.CouponApplyResult,
+) (*domain.CouponApplyResult, error) {
+
+	svcOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, errors.New("invalid serviceId")
+	}
+	svc, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
+	if err != nil {
+		return nil, errors.New("service not found")
+	}
+
+	if code == "" {
+		return nil, errors.New("promo code is required")
+	}
+
+	promo, err := s.promoRepo.GetByCode(ctx, code)
+	if err != nil {
+		return nil, errors.New("invalid promo code")
+	}
+
+	now := time.Now()
+	if promo.Status != domain.PromoStatusActive {
+		return nil, errors.New("promo code is not active")
+	}
+	if promo.EndAt != nil && now.After(*promo.EndAt) {
+		return nil, errors.New("promo code has expired")
+	}
+	if now.Before(promo.StartAt) {
+		return nil, errors.New("promo code is not yet valid")
+	}
+	if !promoUserEligible(promo.UserEligibility, isNewUser) {
+		return nil, errors.New("you are not eligible for this promo")
+	}
+	if promo.MinOrderValue > 0 && svc.FinalPrice < promo.MinOrderValue {
+		return nil, errors.New("order value too low for this promo")
+	}
+
+	// validService := false
+	// for _, st := range promo.ServiceTypes {
+	// 	if st == domain.PromoServiceAll || string(st) == svc.ServiceType {
+	// 		validService = true
+	// 		break
+	// 	}
+	// }
+	// if !validService {
+	// 	return nil, errors.New("promo not valid for this service type")
+	// }
+
+	result := &domain.CouponApplyResult{
+		ServiceAmount:   svc.FinalPrice,
+		DiscountedAmount: svc.FinalPrice,
+	}
+
+	if promo.AllowStacking && autoResult != nil && autoResult.AppliedDiscount != nil {
+		result.TotalDiscount += autoResult.AppliedDiscount.DiscountAmt
+		result.DiscountedAmount -= autoResult.AppliedDiscount.DiscountAmt
+		result.AppliedDiscount = autoResult.AppliedDiscount
+	}
+
+	disc := calcDiscount(promo.DiscountType, promo.Value, promo.MaxDiscount, result.DiscountedAmount)
+	result.TotalDiscount += disc
+	result.DiscountedAmount -= disc
+	result.AppliedPromo = &domain.AppliedPromoSummary{
+		PromoID:     promo.ID.Hex(),
+		Code:        promo.Code,
+		DiscountAmt: disc,
+	}
+
+	if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
+        log.Println("⚠ failed to save pending coupon:", err)
+
+    }
+	return result, nil
+}
+
+
+func (s *CouponService) savePendingCoupon(
+    ctx context.Context,
+    svcOID primitive.ObjectID,
+    result *domain.CouponApplyResult,
+) error {
+    return s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
+        "pendingCoupon": result,
+    })
 }
 
 func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string) error {

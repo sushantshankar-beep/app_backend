@@ -104,6 +104,7 @@ func main() {
 	refundRepo := repository.NewRefundRepo(db)
 	notificationRepo := repository.NewNotificationRepo(db)
 	refundWebhookRepo := repository.NewRefundWebhookRepo(db)
+	promoRepo := repository.NewPromoRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -175,7 +176,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
-
+	couponSvc := service.NewCouponService(promoRepo,acceptedServiceRepo)
 
 	// Bidding service
 	biddingSvc := service.NewBiddingService(
@@ -267,13 +268,14 @@ func main() {
 	ratingHandler := handlers.NewRatingHandler(ratingService)
 	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)
 	notificationHandler := handlers.NewNotificationHandler(notificationQuerySvc)
+	couponHandler := handlers.NewCouponHandler(couponSvc)
 
 
 
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler,couponHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

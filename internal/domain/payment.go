@@ -18,6 +18,9 @@ type PaymentTransaction struct {
 	InvoiceGenerated bool `bson:"invoiceGenerated" json:"invoiceGenerated"`
 	FailReason string `bson:"failReason,omitempty" json:"failReason,omitempty"`
 	InvoiceGeneratedAt time.Time `bson:"invoiceGeneratedAt,omitempty"`
+	TotalDiscount    float64 `bson:"totalDiscount" json:"totalDiscount"` 
+    AmountPaidByUser float64 `bson:"amountPaidByUser" json:"amountPaidByUser"`
+    PromoCode        string  `bson:"promoCode,omitempty" json:"promoCode,omitempty"` 
 }
 
 type PaymentWebhook struct {

@@ -105,6 +105,7 @@ func main() {
 	notificationRepo := repository.NewNotificationRepo(db)
 	refundWebhookRepo := repository.NewRefundWebhookRepo(db)
 	promoRepo := repository.NewPromoRepo(db)
+	discountRepo := repository.NewDiscountRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -176,7 +177,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
-	couponSvc := service.NewCouponService(promoRepo,acceptedServiceRepo)
+	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo)
 
 	// Bidding service
 	biddingSvc := service.NewBiddingService(

@@ -31,13 +31,12 @@ func NewInvoiceWorker(
 	}
 }
 
-//////////////////////////////////////////////////////////
-// START WORKER
-//////////////////////////////////////////////////////////
-
 func (w *InvoiceWorker) Start(ctx context.Context) {
 
 	log.Println("🚀 Invoice Worker Started")
+
+	// 🔥 Warmup Chrome (fix first booking issue)
+	go w.warmup()
 
 	for {
 		select {
@@ -46,30 +45,32 @@ func (w *InvoiceWorker) Start(ctx context.Context) {
 			return
 		default:
 			w.consume(ctx)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 }
 
-//////////////////////////////////////////////////////////
-// CONSUME JOB
-//////////////////////////////////////////////////////////
+func (w *InvoiceWorker) warmup() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 
-func (w *InvoiceWorker) consume(ctx context.Context) {
+	_, _ = w.invoiceGen.GenerateInvoice(ctx, "000000000000000000000000", "000000000000000000000000")
+}
+
+func (w *InvoiceWorker) consume(parentCtx context.Context) {
 
 	result, err := w.redis.BRPop(
-		ctx,
+		parentCtx,
 		5*time.Second,
 		"invoice:queue",
 	).Result()
 
 	if err != nil {
-		if err == redis.Nil {
-			return
-		}
-		if ctx.Err() != nil {
+		if err == redis.Nil || parentCtx.Err() != nil {
 			return
 		}
 		log.Println("❌ redis error:", err)
+		time.Sleep(1 * time.Second)
 		return
 	}
 
@@ -80,55 +81,88 @@ func (w *InvoiceWorker) consume(ctx context.Context) {
 		return
 	}
 
-	w.process(ctx, job)
+	log.Println("📥 received invoice job:", job.TxnID)
+
+	w.process(job)
 }
 
-//////////////////////////////////////////////////////////
-// PROCESS JOB
-//////////////////////////////////////////////////////////
+func (w *InvoiceWorker) process(job domain.InvoiceJob) {
 
-func (w *InvoiceWorker) process(ctx context.Context, job domain.InvoiceJob) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
 
-	// 🔒 Atomic Guard
-	ok, err := w.paymentRepo.MarkInvoiceGenerated(ctx, job.TxnID)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("🔥 panic during invoice generation:", r)
+			w.retry(ctx, job)
+		}
+	}()
+
+	// 1️⃣ Fetch transaction directly (no race condition)
+	txn, err := w.paymentRepo.GetByTxnID(ctx, job.TxnID)
 	if err != nil {
-		log.Println("❌ mark invoice failed:", err)
+		log.Println("❌ failed to fetch txn:", err)
+		w.retry(ctx, job)
 		return
 	}
 
-	if !ok {
+	if txn.InvoiceGenerated {
 		log.Println("⛔ invoice already generated:", job.ServiceID)
 		return
 	}
 
-	// 🧾 Generate Invoice
+	// 2️⃣ Generate invoice FIRST
 	invoice, err := w.invoiceGen.GenerateInvoice(
 		ctx,
 		job.UserID,
 		job.ServiceID,
 	)
-
 	if err != nil {
 		log.Println("❌ invoice generation failed:", err)
 		w.retry(ctx, job)
 		return
 	}
 
-	log.Println("✅ invoice generated:", invoice.InvoiceNumber)
-}
-
-//////////////////////////////////////////////////////////
-// RETRY
-//////////////////////////////////////////////////////////
-
-func (w *InvoiceWorker) retry(ctx context.Context, job domain.InvoiceJob) {
-
-	data, _ := json.Marshal(job)
-
-	if err := w.redis.LPush(ctx, "invoice:retry", data).Err(); err != nil {
-		log.Println("❌ failed to push retry job:", err)
+	if invoice == nil {
+		log.Println("❌ invoice returned nil")
+		w.retry(ctx, job)
 		return
 	}
 
-	log.Println("🔁 moved to retry queue:", job.ServiceID)
+	// 3️⃣ Mark AFTER success
+	ok, err := w.paymentRepo.MarkInvoiceGenerated(ctx, job.TxnID)
+	if err != nil {
+		log.Println("❌ mark invoice failed:", err)
+		w.retry(ctx, job)
+		return
+	}
+
+	if !ok {
+		log.Println("⛔ invoice already marked by another worker")
+		return
+	}
+
+	log.Println("✅ invoice generated successfully:", invoice.InvoiceNumber)
+}
+
+func (w *InvoiceWorker) retry(ctx context.Context, job domain.InvoiceJob) {
+
+	if job.Retry >= 5 {
+		log.Println("💀 max retry reached:", job.ServiceID)
+		return
+	}
+
+	job.Retry++
+
+	data, _ := json.Marshal(job)
+
+	backoff := time.Duration(job.Retry*5) * time.Second
+	time.Sleep(backoff)
+
+	if err := w.redis.LPush(ctx, "invoice:queue", data).Err(); err != nil {
+		log.Println("❌ failed to requeue job:", err)
+		return
+	}
+
+	log.Println("🔁 requeued invoice job:", job.ServiceID, "retry:", job.Retry)
 }

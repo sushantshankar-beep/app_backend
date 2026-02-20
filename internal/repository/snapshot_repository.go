@@ -43,8 +43,6 @@ func (r *SnapshotRepo) GetByProviderAndStatus(
 	providerID primitive.ObjectID,
 	statuses []domain.ServiceStatus,
 ) ([]domain.ActiveServiceSnapshot, error) {
-
-	// convert status enums -> strings
 	vals := make([]string, 0, len(statuses))
 	for _, s := range statuses {
 		vals = append(vals, string(s))

@@ -28,7 +28,8 @@ type UserBookingDTO struct {
 	CreatedAt     time.Time          `json:"createdAt"`
 	UpdatedAt     time.Time          `json:"updatedAt"`
 	ProviderRaisedComplaint bool                `json:"providerRaisedComplaint"`
-}
+	EtaMinutes    int64               `json:"etaMinutes"`
+} 
 
 type UserBookingDetailDTO struct {
 	ID               primitive.ObjectID `json:"id"`
@@ -59,6 +60,8 @@ type UserBookingDetailDTO struct {
 	Complaint        *ComplaintDTO      `json:"complaint"`
 	Rating               string             `json:"rating"`
 	Refund *RefundDTO `json:"refund"`
+	DistanceKm    float64              `json:"distanceKm"`
+	EtaMinutes    int64               `json:"etaMinutes"`
 }
 
 type BillingDetailsDTO struct {

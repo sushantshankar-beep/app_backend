@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	// "fmt"
+	"math"
 )
 
 type BookingService struct {
@@ -86,6 +87,29 @@ func (s *BookingService) BuildBookingScreen(
 	if err != nil {
 		return nil, errors.New("provider not found")
 	}
+	var distanceKm float64
+	var etaSeconds int64
+	var etaMinutes int64
+
+	if svc.UserLocation != nil &&
+		svc.ProviderLocation != nil &&
+		svc.UserLocation.Lat != 0 &&
+		svc.UserLocation.Long != 0 &&
+		svc.ProviderLocation.Lat != 0 &&
+		svc.ProviderLocation.Long != 0 {
+
+		distanceKm = distanceKmHaversine(
+			svc.ProviderLocation.Lat,
+			svc.ProviderLocation.Long,
+			svc.UserLocation.Lat,
+			svc.UserLocation.Long,
+		)
+
+		distanceKm = math.Round(distanceKm*100) / 100
+		etaSeconds = estimateETASeconds(distanceKm)
+		etaMinutes = etaSeconds/60
+	}
+
 
 	/* ---------------- Load Service Catalog ---------------- */
 	fmt.Println("this is service type", svc.ServiceType)
@@ -123,9 +147,11 @@ func (s *BookingService) BuildBookingScreen(
 			"id":         provider.ID,
 			"name":       provider.Name,
 			"rating":     provider.Rating,
-			"etaMinutes": 6,
+			"etaMinutes": etaMinutes,
+			"distanceKm": distanceKm,
 			"profileUrl": provider.ProfileURL,
 		},
+
 
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
@@ -142,6 +168,7 @@ func (s *BookingService) BuildBookingScreen(
 			"gst":           gst,
 			"totalAmount":   total,
 			"currency":      "INR",
+			
 		},
 	}, nil
 }
@@ -259,6 +286,24 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 		return nil, errors.New("invalid status")
 	}
 }
+// func distanceKmHaversine(lat1, lon1, lat2, lon2 float64) float64 {
+// 	const R = 6371
+
+// 	dLat := (lat2 - lat1) * math.Pi / 180
+// 	dLon := (lon2 - lon1) * math.Pi / 180
+
+// 	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+// 		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
+// 			math.Sin(dLon/2)*math.Sin(dLon/2)
+
+// 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+// 	return R * c
+// }
+// func estimateETASeconds(distanceKm float64) int64 {
+// 	const avgSpeed = 30.0
+// 	return int64((distanceKm / avgSpeed) * 3600)
+// }
 
 func (s *BookingService) GetUserBookingDetails(
 	ctx context.Context,
@@ -379,6 +424,26 @@ func (s *BookingService) GetUserBookingDetails(
 		cancelled = r.Cancelled
 		cancelledAt = r.CancelledAt
 	}
+	var distanceKm float64
+	var etaMinutes int64
+	if r.UserLocation != nil &&
+		r.ProviderLocation != nil &&
+		r.UserLocation.Lat != 0 &&
+		r.UserLocation.Long != 0 &&
+		r.ProviderLocation.Lat != 0 &&
+		r.ProviderLocation.Long != 0 {
+
+		distanceKm = distanceKmHaversine(
+			r.ProviderLocation.Lat,
+			r.ProviderLocation.Long,
+			r.UserLocation.Lat,
+			r.UserLocation.Long,
+		)
+
+		distanceKm = math.Round(distanceKm*100) / 100
+
+		etaMinutes = estimateETASeconds(distanceKm) / 60
+	}
 
 	var refundDTO *dto.RefundDTO
 
@@ -415,6 +480,8 @@ func (s *BookingService) GetUserBookingDetails(
 		FuelType:           r.FuelType,
 		VehicleType:        r.VehicleType,
 		Issues:             r.Issues,
+		DistanceKm:         distanceKm,
+		EtaMinutes:         etaMinutes,
 		Timestamps:         r.Timestamps,
 		UserName:           user.Name,
 		ProviderID:         providerID,

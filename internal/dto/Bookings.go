@@ -204,8 +204,6 @@ type UserComplaintDTO struct {
 
 
 type RefundDTO struct {
-	TxnID     string    `json:"txnId"`
-	MihPayID  string    `json:"mihPayId"`
 	Amount    float64   `json:"amount"`
 	Status    string    `json:"status"`
 	Reason    string    `json:"reason"`

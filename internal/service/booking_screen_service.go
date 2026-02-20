@@ -454,8 +454,6 @@ func (s *BookingService) GetUserBookingDetails(
 		}
 		if refund != nil {
 			refundDTO = &dto.RefundDTO{
-				TxnID:     refund.TxnID,
-				MihPayID:  refund.MihPayID,
 				Amount:    refund.Amount,
 				Status:    refund.Status,
 				Reason:    refund.Reason,

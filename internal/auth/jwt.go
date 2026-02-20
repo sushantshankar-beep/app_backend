@@ -30,7 +30,7 @@ func (j *JWTService) generateToken(id, typ string) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":  id,
 		"type": typ,
-		"exp":  time.Now().Add( 5* time.Minute).Unix(),
+		"exp":  time.Now().Add(720 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(j.secret)

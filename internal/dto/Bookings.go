@@ -59,6 +59,7 @@ type UserBookingDetailDTO struct {
 	CancelledAt   *time.Time         `json:"cancelledAt"`
 	Complaint        *ComplaintDTO      `json:"complaint"`
 	Rating               string             `json:"rating"`
+	Refund *RefundDTO `json:"refund"`
 	DistanceKm    float64              `json:"distanceKm"`
 	EtaMinutes    int64               `json:"etaMinutes"`
 }
@@ -215,4 +216,12 @@ type AppliedPromoDTO struct {
 	PromoID     string  `json:"promoId"`
 	Code        string  `json:"code"`
 	DiscountAmt float64 `json:"discountAmt"`
+}
+
+type RefundDTO struct {
+	Amount    float64   `json:"amount"`
+	Status    string    `json:"status"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

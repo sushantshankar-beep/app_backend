@@ -27,6 +27,7 @@ type BookingService struct {
 	complaintRepo   *repository.ComplaintRepo
 	snapshotRepo *repository.SnapshotRepo
 	couponSvc *CouponService
+	refundRepo *repository.RefundRepo
 }
 
 func NewBookingService(
@@ -39,6 +40,8 @@ func NewBookingService(
 	complaintRepo *repository.ComplaintRepo,
 	snapshotRepo *repository.SnapshotRepo,
 	couponSvc *CouponService,
+	refundRepo *repository.RefundRepo,
+
 
 ) *BookingService {
 	return &BookingService{
@@ -51,6 +54,7 @@ func NewBookingService(
 		complaintRepo:   complaintRepo,
 		snapshotRepo:    snapshotRepo,
 		couponSvc: couponSvc,
+		refundRepo: refundRepo,
 	}
 }
 
@@ -493,6 +497,25 @@ func (s *BookingService) GetUserBookingDetails(
 		etaMinutes = estimateETASeconds(distanceKm) / 60
 	}
 
+	var refundDTO *dto.RefundDTO
+
+	if r.Status == domain.StatusCancelled && r.PaymentStatus == "paid" {
+		refund, err := s.refundRepo.FindByServiceID(ctx, serviceID)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
+		}
+		if refund != nil {
+			refundDTO = &dto.RefundDTO{
+				Amount:    refund.Amount,
+				Status:    refund.Status,
+				Reason:    refund.Reason,
+				CreatedAt: refund.CreatedAt,
+				UpdatedAt: refund.UpdatedAt,
+			}
+		}
+	}
+
+
 	return &dto.UserBookingDetailDTO{
 		ID:                 r.ID,
 		UserID:             string(user.ID),
@@ -531,6 +554,7 @@ func (s *BookingService) GetUserBookingDetails(
 		Complaint:        complaintDTO,
 		UserLocation:     userLoc,
 		ProviderLocation: providerLoc,
+		Refund:           refundDTO,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 	}, nil

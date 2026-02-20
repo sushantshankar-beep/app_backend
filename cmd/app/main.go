@@ -178,7 +178,7 @@ func main() {
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
 	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc)
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc,refundRepo)
 	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 
 

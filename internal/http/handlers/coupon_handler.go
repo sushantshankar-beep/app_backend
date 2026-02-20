@@ -1,12 +1,13 @@
 package handlers
 
 import (
-	"net/http"
-	"app_backend/internal/service"
-    "strconv"
-	"math"
-	"github.com/gin-gonic/gin"
 	"app_backend/internal/http/middleware"
+	"app_backend/internal/service"
+	"math"
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -127,6 +128,8 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
         return
     }
 
+	
+
     var req struct {
         ServiceID string `json:"serviceId"`
         Code      string `json:"code"`
@@ -136,7 +139,7 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
         return
     }
 
-    isNewUser := c.GetBool("isNew")
+	isNewUser := c.GetBool("isNew")
 
     autoResult, _ := h.couponSvc.ApplyAutoDiscount(c, req.ServiceID, isNewUser)
 
@@ -160,5 +163,49 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
             "discountAmt": result.AppliedPromo.DiscountAmt,
 			"amountAfterDiscount": result.DiscountedAmount,
         },
+    })
+}
+
+func (h *CouponHandler) RemoveCoupon(c *gin.Context) {
+    userObjIDAny, exists := c.Get(middleware.ContextKeyUserObjectID)
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+        return
+    }
+
+    _, ok := userObjIDAny.(primitive.ObjectID)
+    if !ok {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user id"})
+        return
+    }
+
+    var req struct {
+        ServiceID string `json:"serviceId"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(400, gin.H{"error": "invalid request"})
+        return
+    }
+
+    isNewUser := c.GetBool("isNew")
+
+    result, err := h.couponSvc.RemoveCoupon(
+        c.Request.Context(),
+        req.ServiceID,
+        isNewUser,
+    )
+    if err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+
+    gst := result.DiscountedAmount * 18 / 100
+
+    c.JSON(200, gin.H{
+        "couponRemoved": true,
+        "serviceAmount": result.ServiceAmount,
+        "discount":      result.TotalDiscount,
+        "gst":           gst,
+        "totalAmount":   result.DiscountedAmount + gst,
     })
 }

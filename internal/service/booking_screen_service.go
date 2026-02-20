@@ -370,9 +370,39 @@ func (s *BookingService) GetUserBookingDetails(
 
 	const gstPercent = 18.0
 
-	serviceCharge := r.FinalPrice
-	gstAmount := (serviceCharge * gstPercent) / 100
-	totalPayable := serviceCharge + gstAmount
+	var serviceCharge, totalDiscount, amountAfterDiscount, gstAmount, totalPayable float64
+
+    hasDiscount := r.TotalDiscount > 0 || r.AppliedPromo != nil || r.AppliedDiscount != nil
+
+	if r.FinalPrice > 0 && hasDiscount {
+		serviceCharge = r.FinalPrice
+		totalDiscount = r.TotalDiscount
+		amountAfterDiscount = serviceCharge - totalDiscount
+		gstAmount = (amountAfterDiscount * gstPercent) / 100
+		totalPayable = amountAfterDiscount + gstAmount
+	} else {
+		serviceCharge = r.FinalPrice
+		gstAmount = (serviceCharge * gstPercent) / 100
+		totalPayable = serviceCharge + gstAmount
+	}
+
+	var appliedPromo *dto.AppliedPromoDTO
+    if r.AppliedPromo != nil {
+      appliedPromo = &dto.AppliedPromoDTO{
+        PromoID:     r.AppliedPromo.PromoID,
+        Code:        r.AppliedPromo.Code,
+        DiscountAmt: r.AppliedPromo.DiscountAmt,
+      }
+    }
+
+   var appliedDiscount *dto.AppliedDiscountDTO
+    if r.AppliedDiscount != nil {
+       appliedDiscount = &dto.AppliedDiscountDTO{
+        DiscountID:  r.AppliedDiscount.DiscountID,
+        Code:        r.AppliedDiscount.Code,
+        DiscountAmt: r.AppliedDiscount.DiscountAmt,
+    }
+   }
 
 	var userLoc dto.UserLocation
 	if r.UserLocation != nil {
@@ -424,6 +454,10 @@ func (s *BookingService) GetUserBookingDetails(
 			GSTAmount:     utils.RoundTo2(gstAmount),
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
+			TotalDiscount:       utils.RoundTo2(totalDiscount),
+			AmountAfterDiscount: utils.RoundTo2(amountAfterDiscount),
+			AppliedPromo:        appliedPromo,
+			AppliedDiscount:     appliedDiscount,
 		},
 		Cancelled:        cancelled,
 		CancelledAt:      cancelledAt,

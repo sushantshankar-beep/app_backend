@@ -51,8 +51,8 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		user.GET("/expenses/:userID", bookingHandler.GetUserExpenses)
 		user.GET("/notifications/latest-service",userAuth,notificationHandler.ListUserLatestService)
 		user.GET("/provider-services-reviews/:providerID", providerHandler.GetProviderServicesAndReviews)
-
 	}
+
 	device := r.Group("/devices", userAuth)
 	{
 		device.POST("/register", deviceHandler.Register)
@@ -180,6 +180,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
     {
         coupon.GET("/available", userAuth, couponHandler.GetAvailableCoupons)
 		coupon.POST("/validate", userAuth, couponHandler.ValidateCoupon)
+		coupon.POST("/remove", userAuth, couponHandler.RemoveCoupon)
     }
 
 	if homepageHandler != nil {

@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 	"time"
-   
+    "errors"
 	"app_backend/internal/domain"
      "go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson"
@@ -29,15 +29,34 @@ func (r *PromoRepo) GetByCode(ctx context.Context, code string) (*domain.PromoCo
 }
 
 func (r *PromoRepo) IncrementUsage(ctx context.Context, promoID primitive.ObjectID) error {
-	_, err := r.col.UpdateOne(
-		ctx,
-		bson.M{"_id": promoID},
-		bson.M{
-			"$inc": bson.M{"usageCount": 1},
-			"$set": bson.M{"updatedAt": time.Now()},
+
+	filter := bson.M{
+		"_id": promoID,
+		"$or": []bson.M{
+			{"globalRedemptionCap": 0}, // unlimited
+			{
+				"$expr": bson.M{
+					"$lt": []interface{}{"$usageCount", "$globalRedemptionCap"},
+				},
+			},
 		},
-	)
-	return err
+	}
+
+	update := bson.M{
+		"$inc": bson.M{"usageCount": 1},
+		"$set": bson.M{"updatedAt": time.Now()},
+	}
+
+	res, err := r.col.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if res.MatchedCount == 0 {
+		return errors.New("promo redemption limit reached")
+	}
+
+	return nil
 }
 
 func (r *PromoRepo) GetActiveForService(

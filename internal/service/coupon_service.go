@@ -208,6 +208,11 @@ func (s *CouponService) ApplyPromoCode(
 		return nil, errors.New("order value too low for this promo")
 	}
 
+	if promo.GlobalRedemptionCap > 0 &&
+       promo.UsageCount >= promo.GlobalRedemptionCap {
+       return nil, errors.New("promo code redemption limit reached")
+    }
+
 	// validService := false
 	// for _, st := range promo.ServiceTypes {
 	// 	if st == domain.PromoServiceAll || string(st) == svc.ServiceType {
@@ -263,4 +268,26 @@ func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string) e
 		return err
 	}
 	return s.promoRepo.IncrementUsage(ctx, oid)
+}
+
+func (s *CouponService) RemoveCoupon( ctx context.Context, serviceID string, isNewUser bool) (*domain.CouponApplyResult, error) {
+
+    svcOID, err := primitive.ObjectIDFromHex(serviceID)
+    if err != nil {
+        return nil, errors.New("invalid serviceId")
+    }
+
+    err = s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
+        "pendingCoupon": nil,
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    autoResult, err := s.ApplyAutoDiscount(ctx, serviceID, isNewUser)
+    if err != nil {
+        return nil, err
+    }
+
+    return autoResult, nil
 }

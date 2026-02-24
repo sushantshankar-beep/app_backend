@@ -1,20 +1,18 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"time"
-
 	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/repository"
 	"app_backend/internal/utils"
+	"context"
+	"errors"
 	"fmt"
-
-	"go.mongodb.org/mongo-driver/mongo"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	// "fmt"
 	"math"
 )
@@ -28,6 +26,7 @@ type BookingService struct {
 	settlementRepo  *repository.SettlementHistoryRepository
 	complaintRepo   *repository.ComplaintRepo
 	snapshotRepo *repository.SnapshotRepo
+	couponSvc *CouponService
 	refundRepo *repository.RefundRepo
 }
 
@@ -40,6 +39,7 @@ func NewBookingService(
 	settlementRepo *repository.SettlementHistoryRepository,
 	complaintRepo *repository.ComplaintRepo,
 	snapshotRepo *repository.SnapshotRepo,
+	couponSvc *CouponService,
 	refundRepo *repository.RefundRepo,
 
 
@@ -53,6 +53,7 @@ func NewBookingService(
 		settlementRepo:  settlementRepo,
 		complaintRepo:   complaintRepo,
 		snapshotRepo:    snapshotRepo,
+		couponSvc: couponSvc,
 		refundRepo: refundRepo,
 	}
 }
@@ -60,9 +61,9 @@ func NewBookingService(
 func (s *BookingService) BuildBookingScreen(
 	ctx context.Context,
 	serviceID string,
+	userID string,
+	isNewUser bool,
 ) (map[string]any, error) {
-
-	/* ---------------- Load Accepted Service ---------------- */
 
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
@@ -76,10 +77,6 @@ func (s *BookingService) BuildBookingScreen(
 		return nil, errors.New("service not found")
 	}
 
-	/* ---------------- Load User ---------------- */
-
-	/* ---------------- Load Provider ---------------- */
-
 	provider, err := s.providerRepo.FindByID(
 		ctx,
 		domain.ProviderID(svc.Provider.Hex()),
@@ -87,6 +84,7 @@ func (s *BookingService) BuildBookingScreen(
 	if err != nil {
 		return nil, errors.New("provider not found")
 	}
+
 	var distanceKm float64
 	var etaSeconds int64
 	var etaMinutes int64
@@ -107,22 +105,47 @@ func (s *BookingService) BuildBookingScreen(
 
 		distanceKm = math.Round(distanceKm*100) / 100
 		etaSeconds = estimateETASeconds(distanceKm)
-		etaMinutes = etaSeconds/60
+		etaMinutes = etaSeconds / 60
 	}
 
-
-	/* ---------------- Load Service Catalog ---------------- */
 	fmt.Println("this is service type", svc.ServiceType)
 	if len(svc.Issues) == 0 {
 		return nil, errors.New("no issues attached to service")
 	}
 
-	/* ---------------- Price Calculation ---------------- */
+	pricing, err := s.couponSvc.ApplyAutoDiscount(ctx, serviceID, isNewUser, false)
+	if err != nil {
+		pricing = &domain.CouponApplyResult{
+			ServiceAmount:    svc.FinalPrice,
+			DiscountedAmount: svc.FinalPrice,
+		}
+	}
 
-	gst := svc.FinalPrice * 18 / 100
-	total := svc.FinalPrice + gst
+	source := pricing
+	if svc.PaymentStatus == "pending" && svc.PendingCoupon != nil && svc.PendingCoupon.TotalDiscount > 0 {
+		source = svc.PendingCoupon
+	}
 
-	/* ---------------- Build Screen Payload ---------------- */
+	gst := source.DiscountedAmount * 18 / 100
+	total := source.DiscountedAmount + gst
+
+	var appliedDiscount any
+	if source.AppliedDiscount != nil {
+		appliedDiscount = map[string]any{
+			"code":                source.AppliedDiscount.Code,
+			"discountAmt":         source.AppliedDiscount.DiscountAmt,
+			"amountAfterDiscount": source.DiscountedAmount,
+		}
+	}
+
+	var appliedPromo any
+	if source.AppliedPromo != nil {
+		appliedPromo = map[string]any{
+			"code":                source.AppliedPromo.Code,
+			"discountAmt":         source.AppliedPromo.DiscountAmt,
+			"amountAfterDiscount": source.DiscountedAmount,
+		}
+	}
 
 	return map[string]any{
 		"screen": "BOOKING_DETAILS",
@@ -152,7 +175,6 @@ func (s *BookingService) BuildBookingScreen(
 			"profileUrl": provider.ProfileURL,
 		},
 
-
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
 			"date":          time.Now().Format("2006-01-02 03:04 PM"),
@@ -164,11 +186,13 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"billing": map[string]any{
-			"serviceAmount": svc.FinalPrice,
-			"gst":           gst,
-			"totalAmount":   total,
-			"currency":      "INR",
-			
+			"serviceAmount":   source.ServiceAmount,
+			"discount":        source.TotalDiscount,
+			"gst":             gst,
+			"totalAmount":     total,
+			"currency":        "INR",
+			"appliedDiscount": appliedDiscount,
+			"appliedPromo":    appliedPromo,
 		},
 	}, nil
 }
@@ -397,9 +421,39 @@ func (s *BookingService) GetUserBookingDetails(
 
 	const gstPercent = 18.0
 
-	serviceCharge := r.FinalPrice
-	gstAmount := (serviceCharge * gstPercent) / 100
-	totalPayable := serviceCharge + gstAmount
+	var serviceCharge, totalDiscount, amountAfterDiscount, gstAmount, totalPayable float64
+
+    hasDiscount := r.TotalDiscount > 0 || r.AppliedPromo != nil || r.AppliedDiscount != nil
+
+	if r.FinalPrice > 0 && hasDiscount {
+		serviceCharge = r.FinalPrice
+		totalDiscount = r.TotalDiscount
+		amountAfterDiscount = serviceCharge - totalDiscount
+		gstAmount = (amountAfterDiscount * gstPercent) / 100
+		totalPayable = amountAfterDiscount + gstAmount
+	} else {
+		serviceCharge = r.FinalPrice
+		gstAmount = (serviceCharge * gstPercent) / 100
+		totalPayable = serviceCharge + gstAmount
+	}
+
+	var appliedPromo *dto.AppliedPromoDTO
+    if r.AppliedPromo != nil {
+      appliedPromo = &dto.AppliedPromoDTO{
+        PromoID:     r.AppliedPromo.PromoID,
+        Code:        r.AppliedPromo.Code,
+        DiscountAmt: r.AppliedPromo.DiscountAmt,
+      }
+    }
+
+   var appliedDiscount *dto.AppliedDiscountDTO
+    if r.AppliedDiscount != nil {
+       appliedDiscount = &dto.AppliedDiscountDTO{
+        DiscountID:  r.AppliedDiscount.DiscountID,
+        Code:        r.AppliedDiscount.Code,
+        DiscountAmt: r.AppliedDiscount.DiscountAmt,
+    }
+   }
 
 	var userLoc dto.UserLocation
 	if r.UserLocation != nil {
@@ -492,6 +546,10 @@ func (s *BookingService) GetUserBookingDetails(
 			GSTAmount:     utils.RoundTo2(gstAmount),
 			TotalPayable:  utils.RoundTo2(totalPayable),
 			PaymentStatus: string(r.PaymentStatus),
+			TotalDiscount:       utils.RoundTo2(totalDiscount),
+			AmountAfterDiscount: utils.RoundTo2(amountAfterDiscount),
+			AppliedPromo:        appliedPromo,
+			AppliedDiscount:     appliedDiscount,
 		},
 		Cancelled:        cancelled,
 		CancelledAt:      cancelledAt,

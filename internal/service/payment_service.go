@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	// "log"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -23,10 +23,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	// "github.com/aws/aws-sdk-go/service/s3/s3manager"
 	// 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"app_backend/internal/s3"
 	"app_backend/internal/queue"
+	"app_backend/internal/s3"
 )
 
 type PaymentService struct {
@@ -49,6 +50,7 @@ type PaymentService struct {
 	refundRepo *repository.RefundRepo
 	invoiceQueue        *queue.InvoiceQueue
 	biddingSvc           *BiddingService
+	couponSvc 		  *CouponService
 }
 
 func NewPaymentService(
@@ -66,6 +68,7 @@ func NewPaymentService(
 	s3Uploader *s3.InvoiceUploader,
 	invoiceQueue        *queue.InvoiceQueue,
 	biddingSvc          *BiddingService,
+	couponSvc 		  *CouponService,
 ) *PaymentService {
 
 	return &PaymentService{
@@ -86,6 +89,7 @@ func NewPaymentService(
 		refundRepo: refundRepo,
 		invoiceQueue:invoiceQueue,
 		biddingSvc: biddingSvc,
+		couponSvc:couponSvc,
 
 	}
 }
@@ -97,44 +101,55 @@ func sha512Hash(input string) string {
 }
 
 /* ---------------- INITIATE PAYMENT ---------------- */
+var paymentLuaScript = redis.NewScript(`
+	local online = redis.call("GET", KEYS[1])
+	if online ~= ARGV[1] then
+	    return 0
+	end
+
+	if redis.call("EXISTS", KEYS[2]) == 1 then
+	    return 2
+	end
+
+	redis.call("SET", KEYS[2], ARGV[2], "EX", ARGV[3])
+	return 1
+	`)
 
 func (s *PaymentService) InitiatePayment(
 	parentCtx context.Context,
 	serviceID,
-	userID string, // ← use this
+	userID,
 	name,
 	phone string,
 	price float64,
 ) (map[string]string, error) {
 
 	// -------------------------------
-	// 1️⃣ Validate IDs
+	// Validate IDs
 	// -------------------------------
-	serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, errors.New("invalid serviceId")
 	}
 
-	userObjID, err := primitive.ObjectIDFromHex(userID)
+	userOID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, errors.New("invalid userId")
 	}
 
 	// -------------------------------
-	// 2️⃣ Mongo Read
+	// Mongo Read (4s timeout)
 	// -------------------------------
-	dbReadCtx, cancelRead := context.WithTimeout(parentCtx, 4*time.Second)
-	defer cancelRead()
+	dbCtx, cancel := context.WithTimeout(parentCtx, 4*time.Second)
+	defer cancel()
 
-	svc, err := s.acceptedServiceRepo.GetByID(dbReadCtx, serviceObjID)
+	svc, err := s.acceptedServiceRepo.GetByID(dbCtx, serviceOID)
 	if err != nil || svc == nil {
 		return nil, errors.New("service not found")
 	}
 
-	// -------------------------------
-	// 3️⃣ Ownership Validation (CRITICAL)
-	// -------------------------------
-	if svc.User != userObjID {
+	// Ownership validation (VERY IMPORTANT)
+	if svc.User != userOID {
 		return nil, errors.New("unauthorized payment attempt")
 	}
 
@@ -145,42 +160,57 @@ func (s *PaymentService) InitiatePayment(
 	providerID := svc.Provider.Hex()
 
 	// -------------------------------
-	// 4️⃣ Redis Online Check
+	// Atomic Redis Online + Lock
 	// -------------------------------
-	redisCtx, cancelRedis := context.WithTimeout(parentCtx, 2*time.Second)
-	defer cancelRedis()
-
-	online, err := s.redis.Get(redisCtx, "provider:online:"+providerID).Result()
-	if err != nil || online != "1" {
-		return nil, errors.New("provider is not available")
-	}
-
-	// -------------------------------
-	// 5️⃣ Atomic Lock
-	// -------------------------------
+	providerKey := "provider:online:" + providerID
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
-	lockCtx, cancelLock := context.WithTimeout(parentCtx, 2*time.Second)
-	defer cancelLock()
+	redisCtx, cancelRedis := context.WithTimeout(parentCtx, 6*time.Second)
+	defer cancelRedis()
 
-	ok, err := s.redis.SetNX(lockCtx, lockKey, lockVal, 2*time.Minute).Result()
+	result, err := paymentLuaScript.Run(
+		redisCtx,
+		s.redis,
+		[]string{providerKey, lockKey},
+		"1",
+		lockVal,
+		120,
+	).Result()
+
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+
+	switch result.(int64) {
+	case 0:
+		return nil, errors.New("provider is not available")
+	case 2:
 		return nil, errors.New("payment already in progress")
 	}
 
 	// -------------------------------
-	// 6️⃣ Prepare Payment Data
+	// Coupon Handling
+	// -------------------------------
+	var appliedPromo *domain.AppliedPromoSummary
+	var appliedDiscount *domain.AppliedDiscountSummary
+	var serviceAmount float64
+	var totalDiscount float64
+
+	if svc.PendingCoupon != nil {
+		appliedPromo = svc.PendingCoupon.AppliedPromo
+		appliedDiscount = svc.PendingCoupon.AppliedDiscount
+		serviceAmount = svc.PendingCoupon.ServiceAmount
+		totalDiscount = svc.PendingCoupon.TotalDiscount
+	}
+
+	// -------------------------------
+	// Prepare Payment Data
 	// -------------------------------
 	finalAmount := math.Round(price*100) / 100
 	amountStr := strconv.FormatFloat(finalAmount, 'f', 2, 64)
 
-	nowMillis := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	txnid := "TXN_" + serviceID + "_" + nowMillis
-
+	txnid := "TXN_" + serviceID + "_" + strconv.FormatInt(time.Now().UnixMilli(), 10)
 	productinfo := "vahanwire service"
 	email := "app" + serviceID + "@vahanwire.com"
 
@@ -199,22 +229,21 @@ func (s *PaymentService) InitiatePayment(
 	hashBuilder.WriteString(email)
 	hashBuilder.WriteString("|||||||||||")
 	hashBuilder.WriteString(s.salt)
-
 	hash := sha512Hash(hashBuilder.String())
-
-	// -------------------------------
-	// 7️⃣ Mongo Write
-	// -------------------------------
-	dbWriteCtx, cancelWrite := context.WithTimeout(parentCtx, 6*time.Second)
+	writeCtx, cancelWrite := context.WithTimeout(parentCtx, 8*time.Second)
 	defer cancelWrite()
 
-	err = s.repo.CreateTransaction(dbWriteCtx, &domain.PaymentTransaction{
-		TxnID:         txnid,
-		Amount:        finalAmount,
-		Status:        "pending",
-		UserID:        userID, // ← from request
-		ServiceID:     serviceID,
-		PaymentSource: "payu",
+	err = s.repo.CreateTransaction(writeCtx, &domain.PaymentTransaction{
+		TxnID:          txnid,
+		Amount:         finalAmount,
+		Status:         "pending",
+		UserID:         userID,
+		ServiceID:      serviceID,
+		PaymentSource:  "payu",
+		ServiceAmount:  serviceAmount,
+		AppliedPromo:   appliedPromo,
+		TotalDiscount:  totalDiscount,
+		AppliedDiscount: appliedDiscount,
 	})
 	if err != nil {
 		_ = s.redis.Del(parentCtx, lockKey).Err()
@@ -222,7 +251,7 @@ func (s *PaymentService) InitiatePayment(
 	}
 
 	// -------------------------------
-	// 8️⃣ Return Response
+	// Response
 	// -------------------------------
 	return map[string]string{
 		"txnid":       txnid,
@@ -512,4 +541,3 @@ func (s *PaymentService) GetRefundTracking(
 		"timeline": timeline,
 	}, nil
 }
-

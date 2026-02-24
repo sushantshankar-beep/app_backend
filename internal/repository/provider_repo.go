@@ -118,6 +118,7 @@ func (r *ProviderRepo) Update(ctx context.Context, p *domain.Provider) error {
 			"formSubmitted": p.FormSubmitted,
 			"isActive":      p.IsActive,
 			"agreementUrl": p.AgreementUrl,
+			"commissionPercentage": p.CommissionPercentage,
 			"updatedAt": time.Now(),
 		},
 	}

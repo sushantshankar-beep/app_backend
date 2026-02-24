@@ -73,6 +73,10 @@ type BillingDetailsDTO struct {
 	CommissionPercent float64 `json:"commissionPercent,omitempty"`
 	CommissionAmount  float64 `json:"commissionAmount,omitempty"`
 	ProviderPayout    float64 `json:"providerPayout,omitempty"`
+	AmountAfterDiscount float64 `json:"discountedAmount"`
+    TotalDiscount    float64    `json:"totalDiscount"`
+    AppliedPromo     *AppliedPromoDTO    `json:"appliedPromo"`
+    AppliedDiscount  *AppliedDiscountDTO `json:"appliedDiscount"`
 }
 
 type ProviderBookingDTO struct {
@@ -202,6 +206,17 @@ type UserComplaintDTO struct {
 	RaisedAt time.Time `json:"raisedAt"`
 }
 
+type AppliedDiscountDTO struct {
+    DiscountID  string  `json:"discountId"`
+    Code        string  `json:"code"`
+    DiscountAmt float64 `json:"discountAmt"`
+}
+
+type AppliedPromoDTO struct {
+	PromoID     string  `json:"promoId"`
+	Code        string  `json:"code"`
+	DiscountAmt float64 `json:"discountAmt"`
+}
 
 type RefundDTO struct {
 	Amount    float64   `json:"amount"`

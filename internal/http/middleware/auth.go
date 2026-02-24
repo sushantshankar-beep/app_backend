@@ -89,6 +89,7 @@ func AuthUser(tokenSvc ports.TokenService,userRepo ports.UserRepository) gin.Han
 			return
 		}
 
+		c.Set("isNew", user.IsNew)
 		c.Set(ContextKeyUserID, userIDStr)
 		c.Set(ContextKeyUserObjectID, userObjID)
 

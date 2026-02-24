@@ -51,6 +51,11 @@ type AcceptedService struct {
 	UserLocation          *UserLocation        `bson:"userLocation" json:"userLocation"`
 	CancelledByProvider   bool                 `bson:"cancelledByProvider" json:"cancelledByProvider"`
 	CancelledProviderID   string               `bson:"cancelledProviderID" json:"cancelledProviderID"`
+	PendingCoupon   *CouponApplyResult      `bson:"pendingCoupon,omitempty"   json:"pendingCoupon,omitempty"`
+	AmountPaidByUser float64                   `bson:"amountPaidByUser" json:"amountPaidByUser"`
+    TotalDiscount    float64                   `bson:"totalDiscount" json:"totalDiscount"`
+    AppliedPromo     *AppliedPromoSummary      `bson:"appliedPromo,omitempty" json:"appliedPromo,omitempty"`
+    AppliedDiscount  *AppliedDiscountSummary   `bson:"appliedDiscount,omitempty" json:"appliedDiscount,omitempty"`
 }
 type UserLocation struct {
 	Lat  float64 `bson:"lat"`

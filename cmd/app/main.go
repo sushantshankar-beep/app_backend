@@ -104,6 +104,8 @@ func main() {
 	refundRepo := repository.NewRefundRepo(db)
 	notificationRepo := repository.NewNotificationRepo(db)
 	refundWebhookRepo := repository.NewRefundWebhookRepo(db)
+	promoRepo := repository.NewPromoRepo(db)
+	discountRepo := repository.NewDiscountRepo(db)
 	zoneRepo := repository.NewZoneRepository(db.Collection("zones"))
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
@@ -172,10 +174,11 @@ func main() {
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo,notificationSvc)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
-	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,refundRepo)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
+	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo)
+	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc,refundRepo)
 	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 
 
@@ -217,6 +220,7 @@ func main() {
 	invoiceUploader,
 	invoiceQueue, 
 	biddingSvc,
+	couponSvc,
 )
 
 
@@ -270,13 +274,14 @@ func main() {
 	ratingHandler := handlers.NewRatingHandler(ratingService)
 	providerAgreementHandler := handlers.NewAgreementHandler(agreementSvc)
 	notificationHandler := handlers.NewNotificationHandler(notificationQuerySvc)
+	couponHandler := handlers.NewCouponHandler(couponSvc)
 
 
 
 	//middleware
 	userAuth := middleware.AuthUser(tokenSvc,userRepo)
 	providerAuth := middleware.AuthProvider(tokenSvc,providerRepo)
-	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler,zoneHandler)
+	r := httpServer.SetupRouter(userHandler, providerHandler, userAuth, providerAuth, locationHandler, complaintHandler, homepageHandler, paymentHandler, biddingHandler, amcValidationHandler, hub, bookingHandler, serviceTrackingHandler, kycHandler, invoiceHandler, userVehicleHandler, providerStatusHandler, metaHandler,s3Uploader,imageUploadS3Handler,deviceHandler,ratingHandler,providerAgreementHandler,notificationHandler,zoneHandler,couponHandler)
 	log.Println("Server running on port:", cfg.HTTPPort)
 
 	if err := r.Run(":" + cfg.HTTPPort); err != nil {

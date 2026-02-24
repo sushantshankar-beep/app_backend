@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	// "log"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -23,10 +23,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	// "github.com/aws/aws-sdk-go/service/s3/s3manager"
 	// 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"app_backend/internal/s3"
 	"app_backend/internal/queue"
+	"app_backend/internal/s3"
 )
 
 type PaymentService struct {
@@ -49,6 +50,7 @@ type PaymentService struct {
 	refundRepo *repository.RefundRepo
 	invoiceQueue        *queue.InvoiceQueue
 	biddingSvc           *BiddingService
+	couponSvc 		  *CouponService
 }
 
 func NewPaymentService(
@@ -66,6 +68,7 @@ func NewPaymentService(
 	s3Uploader *s3.InvoiceUploader,
 	invoiceQueue        *queue.InvoiceQueue,
 	biddingSvc          *BiddingService,
+	couponSvc 		  *CouponService,
 ) *PaymentService {
 
 	return &PaymentService{
@@ -86,6 +89,7 @@ func NewPaymentService(
 		refundRepo: refundRepo,
 		invoiceQueue:invoiceQueue,
 		biddingSvc: biddingSvc,
+		couponSvc:couponSvc,
 
 	}
 }
@@ -134,6 +138,19 @@ func (s *PaymentService) InitiatePayment(
 	if !ok {
 		return nil, errors.New("payment already in progress")
 	}
+
+	var appliedPromo    *domain.AppliedPromoSummary
+    var appliedDiscount *domain.AppliedDiscountSummary
+    var serviceAmount  float64
+	var totalDiscount   float64
+
+    if svc.PendingCoupon != nil {
+        appliedPromo    = svc.PendingCoupon.AppliedPromo
+        appliedDiscount = svc.PendingCoupon.AppliedDiscount
+        serviceAmount  = svc.PendingCoupon.ServiceAmount
+		totalDiscount   = svc.PendingCoupon.TotalDiscount 
+    }
+    log.Println("djkcnsjnsjdcbjhsbdj",appliedPromo, appliedDiscount, serviceAmount, totalDiscount)
 	PAYU_KEY := s.key
 	PAYU_SALT := s.salt
 	firstname := name
@@ -159,6 +176,11 @@ func (s *PaymentService) InitiatePayment(
 		UserID:        userID,
 		ServiceID:     serviceID,
 		PaymentSource: "payu",
+		ServiceAmount: serviceAmount,
+		AppliedPromo:    appliedPromo,
+		TotalDiscount:   totalDiscount, 
+        AppliedDiscount: appliedDiscount,
+
 	}); err != nil {
 		_ = s.redis.Del(ctx, lockKey).Err()
 		return nil, err

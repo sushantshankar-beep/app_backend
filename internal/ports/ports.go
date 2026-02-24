@@ -40,6 +40,7 @@ type TokenService interface {
 
 type AcceptedServiceRepository interface {
 	Create(ctx context.Context, svc *domain.AcceptedService) error
+	Update(ctx context.Context, serviceID string, fields bson.M) error
 	GetByID(ctx context.Context, id primitive.ObjectID) (*domain.AcceptedService, error)
 	Find(ctx context.Context, filter bson.M, skip, limit int) ([]domain.AcceptedService, error)
 	Count(ctx context.Context, filter bson.M) (int64, error)

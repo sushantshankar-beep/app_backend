@@ -9,12 +9,13 @@ import (
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
 
+	"app_backend/internal/ports"
+	"fmt"
+	"math"
+
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"math"
-	"app_backend/internal/ports"
-	"github.com/redis/go-redis/v9"
-	"fmt"
 )
 
 type ServiceTrackingService struct {
@@ -118,8 +119,39 @@ func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceI
 	// 💰 Billing
 	// ----------------------------------
 
-	gst := svc.FinalPrice * 18 / 100
-	total := svc.FinalPrice + gst
+	const gstPercent = 18.0
+	var serviceCharge, totalDiscount, amountAfterDiscount, gstAmount, totalAmount float64
+
+	serviceCharge = svc.FinalPrice
+
+	if svc.TotalDiscount > 0 || svc.AppliedPromo != nil || svc.AppliedDiscount != nil {
+		totalDiscount = svc.TotalDiscount
+		amountAfterDiscount = serviceCharge - totalDiscount
+		gstAmount = (amountAfterDiscount * gstPercent) / 100
+		totalAmount = amountAfterDiscount + gstAmount
+	} else {
+		gstAmount = (serviceCharge * gstPercent) / 100
+		totalAmount = serviceCharge + gstAmount
+	}
+
+
+	var appliedPromo any
+	if svc.AppliedPromo != nil {
+		appliedPromo = map[string]any{
+			"promoId":     svc.AppliedPromo.PromoID,
+			"code":        svc.AppliedPromo.Code,
+			"discountAmt": svc.AppliedPromo.DiscountAmt,
+		}
+	}
+
+	var appliedDiscount any
+	if svc.AppliedDiscount != nil {
+		appliedDiscount = map[string]any{
+			"discountId":  svc.AppliedDiscount.DiscountID,
+			"code":        svc.AppliedDiscount.Code,
+			"discountAmt": svc.AppliedDiscount.DiscountAmt,
+		}
+	}
 
 	// ----------------------------------
 	// 📄 Complaint (if any)
@@ -177,10 +209,14 @@ func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceI
 		},
 
 		"billing": map[string]any{
-			"serviceAmount": svc.FinalPrice,
-			"gst":           gst,
-			"totalAmount":   total,
+			"serviceAmount": serviceCharge,
+			"totalDiscount":       totalDiscount,
+			"amountAfterDiscount": amountAfterDiscount,
+			"gst":           gstAmount,
+			"totalAmount":   totalAmount,
 			"currency":      "INR",
+			"appliedPromo":        appliedPromo,
+			"appliedDiscount":     appliedDiscount,
 		},
 
 		"complaintUserId": complaintId,

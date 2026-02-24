@@ -99,83 +99,143 @@ func sha512Hash(input string) string {
 /* ---------------- INITIATE PAYMENT ---------------- */
 
 func (s *PaymentService) InitiatePayment(
-	ctx context.Context,
+	parentCtx context.Context,
 	serviceID,
-	userID,
+	userID string, // ← use this
 	name,
 	phone string,
 	price float64,
 ) (map[string]string, error) {
-	email := fmt.Sprintf("app%s@vahanwire.com",serviceID)
+
+	// -------------------------------
+	// 1️⃣ Validate IDs
+	// -------------------------------
 	serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, errors.New("invalid serviceId")
 	}
-	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceObjID)
+
+	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
+		return nil, errors.New("invalid userId")
+	}
+
+	// -------------------------------
+	// 2️⃣ Mongo Read
+	// -------------------------------
+	dbReadCtx, cancelRead := context.WithTimeout(parentCtx, 4*time.Second)
+	defer cancelRead()
+
+	svc, err := s.acceptedServiceRepo.GetByID(dbReadCtx, serviceObjID)
+	if err != nil || svc == nil {
 		return nil, errors.New("service not found")
 	}
-	userID = svc.User.Hex()
-	providerID := svc.Provider.Hex()
-	online, err := s.redis.Get(ctx, "provider:online:"+providerID).Result()
-	if err != nil || online != "1" {
-		return nil, errors.New("provider is not available")
+
+	// -------------------------------
+	// 3️⃣ Ownership Validation (CRITICAL)
+	// -------------------------------
+	if svc.User != userObjID {
+		return nil, errors.New("unauthorized payment attempt")
 	}
-	lockKey := "payment:reserve:" + serviceID
-	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
+
 	if svc.Provider == primitive.NilObjectID {
 		return nil, errors.New("no provider assigned")
 	}
 
-	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 2*time.Minute).Result()
+	providerID := svc.Provider.Hex()
+
+	// -------------------------------
+	// 4️⃣ Redis Online Check
+	// -------------------------------
+	redisCtx, cancelRedis := context.WithTimeout(parentCtx, 2*time.Second)
+	defer cancelRedis()
+
+	online, err := s.redis.Get(redisCtx, "provider:online:"+providerID).Result()
+	if err != nil || online != "1" {
+		return nil, errors.New("provider is not available")
+	}
+
+	// -------------------------------
+	// 5️⃣ Atomic Lock
+	// -------------------------------
+	lockKey := "payment:reserve:" + serviceID
+	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
+
+	lockCtx, cancelLock := context.WithTimeout(parentCtx, 2*time.Second)
+	defer cancelLock()
+
+	ok, err := s.redis.SetNX(lockCtx, lockKey, lockVal, 2*time.Minute).Result()
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, errors.New("payment already in progress")
 	}
-	PAYU_KEY := s.key
-	PAYU_SALT := s.salt
-	firstname := name
+
+	// -------------------------------
+	// 6️⃣ Prepare Payment Data
+	// -------------------------------
 	finalAmount := math.Round(price*100) / 100
-	amount := fmt.Sprintf("%.2f", finalAmount)
-	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
+	amountStr := strconv.FormatFloat(finalAmount, 'f', 2, 64)
+
+	nowMillis := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	txnid := "TXN_" + serviceID + "_" + nowMillis
+
 	productinfo := "vahanwire service"
-	hashStr := fmt.Sprintf(
-		"%s|%s|%s|%s|%s|%s|||||||||||%s",
-		PAYU_KEY,
-		txnid,
-		amount,
-		productinfo,
-		firstname,
-		email,
-		PAYU_SALT,
-	)
-	hash := sha512Hash(hashStr)
-	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
+	email := "app" + serviceID + "@vahanwire.com"
+
+	var hashBuilder strings.Builder
+	hashBuilder.Grow(200)
+	hashBuilder.WriteString(s.key)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(txnid)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(amountStr)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(productinfo)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(name)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(email)
+	hashBuilder.WriteString("|||||||||||")
+	hashBuilder.WriteString(s.salt)
+
+	hash := sha512Hash(hashBuilder.String())
+
+	// -------------------------------
+	// 7️⃣ Mongo Write
+	// -------------------------------
+	dbWriteCtx, cancelWrite := context.WithTimeout(parentCtx, 6*time.Second)
+	defer cancelWrite()
+
+	err = s.repo.CreateTransaction(dbWriteCtx, &domain.PaymentTransaction{
 		TxnID:         txnid,
 		Amount:        finalAmount,
 		Status:        "pending",
-		UserID:        userID,
+		UserID:        userID, // ← from request
 		ServiceID:     serviceID,
 		PaymentSource: "payu",
-	}); err != nil {
-		_ = s.redis.Del(ctx, lockKey).Err()
+	})
+	if err != nil {
+		_ = s.redis.Del(parentCtx, lockKey).Err()
 		return nil, err
 	}
 
+	// -------------------------------
+	// 8️⃣ Return Response
+	// -------------------------------
 	return map[string]string{
-		"txnid":   txnid,
-		"amount":  amount,
-		"key":     PAYU_KEY,
-		"hash":    hash,
-		"email":      email,
-		"firstname":  firstname,
+		"txnid":       txnid,
+		"amount":      amountStr,
+		"key":         s.key,
+		"hash":        hash,
+		"email":       email,
+		"firstname":   name,
 		"productinfo": productinfo,
-		"phone":      phone,
-		"payuUrl": s.payuURL + "/_payment",
-		"surl":    s.baseURL + "/payment/webhook",
-		"furl":    s.baseURL + "/payment/webhook",
+		"phone":       phone,
+		"payuUrl":     s.payuURL + "/_payment",
+		"surl":        s.baseURL + "/payment/webhook",
+		"furl":        s.baseURL + "/payment/webhook",
 	}, nil
 }
 func classifyPayUFailure(data map[string]string) domain.PaymentFailReason {

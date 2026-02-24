@@ -443,7 +443,7 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 	userLat := svc.UserLocation.Lat
 	userLong := svc.UserLocation.Long
 	var distanceKm float64
-	var eta int
+	var eta int64
 	distKey := "service:dist:" + svc.ID.Hex() + ":" + svc.Provider.Hex()
 	if d, err := s.rdb.Get(ctx, distKey).Float64(); err == nil && d > 0 {
 		distanceKm = d
@@ -451,11 +451,7 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		// fallback for distance
 		distanceKm = distanceKmHaversine(lat,long,userLat,userLong)
 	}
-	if distanceKm > 0 {
-		eta = estimateETA(distanceKm)
-	}else{
-		eta = 5
-	}
+	eta = estimateETA(distanceKm)
 	distanceKmRound := math.Round(distanceKm*100) / 100
 	gst := svc.FinalPrice * 18 / 100
 	totalAmount := gst + svc.FinalPrice

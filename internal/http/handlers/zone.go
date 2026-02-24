@@ -6,6 +6,7 @@ import (
 	"app_backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"os"
 )
 
 type ZoneHandler struct {
@@ -20,6 +21,8 @@ type CheckZoneRequest struct {
 	Latitude  float64 `json:"latitude" binding:"required"`
 	Longitude float64 `json:"longitude" binding:"required"`
 }
+// config.go
+var DisableZoneCheck = true
 
 func (h *ZoneHandler) CheckServiceable(c *gin.Context) {
 
@@ -32,6 +35,16 @@ func (h *ZoneHandler) CheckServiceable(c *gin.Context) {
 		return
 	}
 
+	// 🔥 Temporary bypass using ENV variable
+	if os.Getenv("DISABLE_ZONE_CHECK") == "true" {
+		c.JSON(http.StatusOK, gin.H{
+			"serviceable": true,
+			"zoneName":    "All India (Temporary)",
+		})
+		return
+	}
+
+	// Normal flow
 	zone, err := h.zoneService.CheckServiceable(
 		c.Request.Context(),
 		req.Latitude,

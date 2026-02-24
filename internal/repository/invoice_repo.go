@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type InvoiceRepo struct {
@@ -45,12 +46,24 @@ func (r *InvoiceRepo) FindByServiceID(
 ) (*domain.Invoice, error) {
 
 	var inv domain.Invoice
-	err := r.col.FindOne(ctx, bson.M{"serviceId": serviceID}).Decode(&inv)
+
+	opts := options.FindOne().
+		SetSort(bson.D{{Key: "createdAt", Value: -1}})
+
+	err := r.col.
+		FindOne(ctx,
+			bson.M{"serviceId": serviceID},
+			opts,
+		).
+		Decode(&inv)
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &inv, nil
 }
+
 func (r *InvoiceRepo) FindByNumber(ctx context.Context, no string) (*domain.Invoice, error) {
 	var inv domain.Invoice
 	err := r.col.FindOne(ctx, bson.M{"invoiceNumber": no}).Decode(&inv)

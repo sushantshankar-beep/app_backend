@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -123,10 +122,6 @@ func (s *PaymentService) InitiatePayment(
 	phone string,
 	price float64,
 ) (map[string]string, error) {
-
-	// -------------------------------
-	// Validate IDs
-	// -------------------------------
 	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, errors.New("invalid serviceId")
@@ -136,10 +131,6 @@ func (s *PaymentService) InitiatePayment(
 	if err != nil {
 		return nil, errors.New("invalid userId")
 	}
-
-	// -------------------------------
-	// Mongo Read (4s timeout)
-	// -------------------------------
 	dbCtx, cancel := context.WithTimeout(parentCtx, 4*time.Second)
 	defer cancel()
 
@@ -147,8 +138,6 @@ func (s *PaymentService) InitiatePayment(
 	if err != nil || svc == nil {
 		return nil, errors.New("service not found")
 	}
-
-	// Ownership validation (VERY IMPORTANT)
 	if svc.User != userOID {
 		return nil, errors.New("unauthorized payment attempt")
 	}
@@ -156,12 +145,7 @@ func (s *PaymentService) InitiatePayment(
 	if svc.Provider == primitive.NilObjectID {
 		return nil, errors.New("no provider assigned")
 	}
-
 	providerID := svc.Provider.Hex()
-
-	// -------------------------------
-	// Atomic Redis Online + Lock
-	// -------------------------------
 	providerKey := "provider:online:" + providerID
 	lockKey := "payment:reserve:" + serviceID
 	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)

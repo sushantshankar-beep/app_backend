@@ -4,6 +4,7 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
+	"app_backend/internal/utils"
 	"app_backend/internal/worker"
 	"context"
 	"crypto/rand"
@@ -89,7 +90,7 @@ func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.Object
 		"amcPurchased":        user.AmcPurchased,
 		"complaintsSubmitted": user.ComplaintsSubmitted,
 		"service_otp":         user.ServiceOTP,
-		"totalExpense":        user.TotalExpense,
+		"totalExpense":        utils.RoundTo2(user.TotalExpense),
 		"rating":              user.Rating,
 		"primaryVehicleId":    user.PrimaryVehicleID,
 		"fallbackVehicleIds":  user.FallbackVehicleIDs,

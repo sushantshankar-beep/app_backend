@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -22,10 +23,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	// "github.com/aws/aws-sdk-go/service/s3/s3manager"
 	// 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"app_backend/internal/s3"
 	"app_backend/internal/queue"
+	"app_backend/internal/s3"
 )
 
 type PaymentService struct {
@@ -148,7 +150,7 @@ func (s *PaymentService) InitiatePayment(
         serviceAmount  = svc.PendingCoupon.ServiceAmount
 		totalDiscount   = svc.PendingCoupon.TotalDiscount 
     }
-
+    log.Println("djkcnsjnsjdcbjhsbdj",appliedPromo, appliedDiscount, serviceAmount, totalDiscount)
 	PAYU_KEY := s.key
 	PAYU_SALT := s.salt
 	firstname := name

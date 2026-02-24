@@ -69,7 +69,6 @@ func (r *PromoRepo) GetActiveForService(
 
 	filter := bson.M{
 		"status": "active",
-		"serviceTypes": serviceType,
 		"startAt": bson.M{"$lte": now},
 		"$or": []bson.M{
 			{"endAt": nil},

@@ -50,8 +50,8 @@ func (h *CouponHandler) GetAvailableCoupons(c *gin.Context) {
 
 	data, total, err := h.couponSvc.GetAvailableCoupons(
 		c.Request.Context(),
+        userObjID.Hex(),
 		serviceID,
-		userObjID.Hex(),
 		page,
 		limit,
 	)
@@ -98,6 +98,7 @@ func (h *CouponHandler) GetAutoDiscount(c *gin.Context) {
 		c.Request.Context(),
 		serviceID,
 		isNewUser,
+        true,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -141,7 +142,7 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
 
 	isNewUser := c.GetBool("isNew")
 
-    autoResult, _ := h.couponSvc.ApplyAutoDiscount(c, req.ServiceID, isNewUser)
+    autoResult, _ := h.couponSvc.ApplyAutoDiscount(c, req.ServiceID, isNewUser,false)
 
     result, err := h.couponSvc.ApplyPromoCode(
         c, userObjID.Hex(), req.Code, req.ServiceID, isNewUser, autoResult,

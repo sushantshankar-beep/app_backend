@@ -65,8 +65,6 @@ func (s *BookingService) BuildBookingScreen(
 	isNewUser bool,
 ) (map[string]any, error) {
 
-	/* ---------------- Load Accepted Service ---------------- */
-
 	objID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, errors.New("invalid service id")
@@ -79,10 +77,6 @@ func (s *BookingService) BuildBookingScreen(
 		return nil, errors.New("service not found")
 	}
 
-	/* ---------------- Load User ---------------- */
-
-	/* ---------------- Load Provider ---------------- */
-
 	provider, err := s.providerRepo.FindByID(
 		ctx,
 		domain.ProviderID(svc.Provider.Hex()),
@@ -90,6 +84,7 @@ func (s *BookingService) BuildBookingScreen(
 	if err != nil {
 		return nil, errors.New("provider not found")
 	}
+
 	var distanceKm float64
 	var etaSeconds int64
 	var etaMinutes int64
@@ -110,32 +105,48 @@ func (s *BookingService) BuildBookingScreen(
 
 		distanceKm = math.Round(distanceKm*100) / 100
 		etaSeconds = estimateETASeconds(distanceKm)
-		etaMinutes = etaSeconds/60
+		etaMinutes = etaSeconds / 60
 	}
 
-
-	/* ---------------- Load Service Catalog ---------------- */
 	fmt.Println("this is service type", svc.ServiceType)
 	if len(svc.Issues) == 0 {
 		return nil, errors.New("no issues attached to service")
 	}
 
-	/* ---------------- Price Calculation ---------------- */
-
-	pricing, err := s.couponSvc.ApplyAutoDiscount(ctx, serviceID, isNewUser)
-
+	pricing, err := s.couponSvc.ApplyAutoDiscount(ctx, serviceID, isNewUser, false)
 	if err != nil {
 		pricing = &domain.CouponApplyResult{
-			ServiceAmount:   svc.FinalPrice,
+			ServiceAmount:    svc.FinalPrice,
 			DiscountedAmount: svc.FinalPrice,
 		}
 	}
 
-	gst := pricing.DiscountedAmount * 18 / 100
-	total := pricing.DiscountedAmount + gst
+	source := pricing
+	if svc.PaymentStatus == "pending" && svc.PendingCoupon != nil && svc.PendingCoupon.TotalDiscount > 0 {
+		source = svc.PendingCoupon
+	}
 
+	gst := source.DiscountedAmount * 18 / 100
+	total := source.DiscountedAmount + gst
 
-	/* ---------------- Build Screen Payload ---------------- */
+	var appliedDiscount any
+	if source.AppliedDiscount != nil {
+		appliedDiscount = map[string]any{
+			"code":                source.AppliedDiscount.Code,
+			"discountAmt":         source.AppliedDiscount.DiscountAmt,
+			"amountAfterDiscount": source.DiscountedAmount,
+		}
+	}
+
+	var appliedPromo any
+	if source.AppliedPromo != nil {
+		appliedPromo = map[string]any{
+			"code":                source.AppliedPromo.Code,
+			"discountAmt":         source.AppliedPromo.DiscountAmt,
+			"amountAfterDiscount": source.DiscountedAmount,
+		}
+	}
+
 	return map[string]any{
 		"screen": "BOOKING_DETAILS",
 
@@ -164,7 +175,6 @@ func (s *BookingService) BuildBookingScreen(
 			"profileUrl": provider.ProfileURL,
 		},
 
-
 		"vehicle": map[string]any{
 			"problem":       svc.ServiceType,
 			"date":          time.Now().Format("2006-01-02 03:04 PM"),
@@ -176,22 +186,14 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"billing": map[string]any{
-        "serviceAmount":       pricing.ServiceAmount,
-        "discount":            pricing.TotalDiscount,     
-        "gst":                 gst,                
-        "totalAmount":         total,
-        "currency":            "INR",
-        "appliedDiscount": func() any {
-            if pricing.AppliedDiscount != nil {
-                return map[string]any{
-                    "code":        pricing.AppliedDiscount.Code,
-                    "discountAmt": pricing.AppliedDiscount.DiscountAmt,
-				    "amountAfterDiscount": pricing.DiscountedAmount,
-                }
-            }
-            return nil
-        }(),
-    },
+			"serviceAmount":   source.ServiceAmount,
+			"discount":        source.TotalDiscount,
+			"gst":             gst,
+			"totalAmount":     total,
+			"currency":        "INR",
+			"appliedDiscount": appliedDiscount,
+			"appliedPromo":    appliedPromo,
+		},
 	}, nil
 }
 

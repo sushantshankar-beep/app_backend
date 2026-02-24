@@ -87,7 +87,7 @@ func (s *CouponService) GetAvailableCoupons(
 		return nil, 0, errors.New("service not found")
 	}
 
-	promos, total, err := s.promoRepo.GetActiveForService(ctx, svc.ServiceType, page, limit)
+	promos, total, err := s.promoRepo.GetActiveForService(ctx,"", page, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,6 +119,7 @@ func (s *CouponService) ApplyAutoDiscount(
 	ctx context.Context,
 	serviceID string,
 	isNewUser bool,
+	dryRun bool,
 ) (*domain.CouponApplyResult, error) {
 
 	svcOID, err := primitive.ObjectIDFromHex(serviceID)
@@ -158,9 +159,15 @@ func (s *CouponService) ApplyAutoDiscount(
 		}
 	}
 
-	if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
-        log.Println("⚠ failed to save pending coupon:", err)
-    }
+	if !dryRun {
+		svc2, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
+		if err == nil && svc2.PendingCoupon != nil && svc2.PendingCoupon.AppliedPromo != nil {
+			return result, nil
+		}
+		if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
+			log.Println("⚠ failed to save pending coupon:", err)
+		}
+	}
 	return result, nil
 }
 
@@ -284,7 +291,7 @@ func (s *CouponService) RemoveCoupon( ctx context.Context, serviceID string, isN
         return nil, err
     }
 
-    autoResult, err := s.ApplyAutoDiscount(ctx, serviceID, isNewUser)
+    autoResult, err := s.ApplyAutoDiscount(ctx, serviceID, isNewUser,false)
     if err != nil {
         return nil, err
     }

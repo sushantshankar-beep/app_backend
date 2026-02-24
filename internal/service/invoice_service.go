@@ -86,8 +86,44 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 		return nil, fmt.Errorf("invoice cannot be generated without successful payment: %w", err)
 	}
 
-	finalPrice := service.FinalPrice
-	gst := finalPrice * 0.18
+	const gstPercent = 18.0
+
+    serviceCharge := service.FinalPrice
+    totalDiscount := service.TotalDiscount
+
+	 hasDiscount :=
+        totalDiscount > 0 ||
+            service.AppliedPromo != nil ||
+            service.AppliedDiscount != nil
+
+    var amountAfterDiscount float64
+    var gst float64
+    var total float64
+
+    if hasDiscount {
+        amountAfterDiscount = serviceCharge - totalDiscount
+        gst = (amountAfterDiscount * gstPercent) / 100
+        total = amountAfterDiscount + gst
+    } else {
+        gst = (serviceCharge * gstPercent) / 100
+        total = serviceCharge + gst
+    }
+
+	var appliedPromo *domain.AppliedPromoSummary
+    if service.AppliedPromo != nil {
+        appliedPromo = &domain.AppliedPromoSummary{
+            Code:        service.AppliedPromo.Code,
+            DiscountAmt: service.AppliedPromo.DiscountAmt,
+        }
+    }
+
+    var appliedDiscount *domain.AppliedDiscountSummary
+    if service.AppliedDiscount != nil {
+        appliedDiscount = &domain.AppliedDiscountSummary{
+            Code:        service.AppliedDiscount.Code,
+            DiscountAmt: service.AppliedDiscount.DiscountAmt,
+        }
+    }
 
 	inv := &domain.Invoice{
 		InvoiceNumber: s.generateInvoiceNumber(service.ID),
@@ -122,9 +158,14 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 			PaymentStatus: service.PaymentStatus,
 		},
 		PricingDeatils: domain.PricingInfo{
-			ServiceCharge: utils.RoundTo2(finalPrice),
-			GST:           utils.RoundTo2(gst),
-			Total:         utils.RoundTo2(finalPrice + gst),
+			ServiceCharge:       utils.RoundTo2(serviceCharge),
+            TotalDiscount:       utils.RoundTo2(totalDiscount),
+            AmountAfterDiscount: utils.RoundTo2(amountAfterDiscount),
+            GSTPercent:          gstPercent,
+            GST:                 utils.RoundTo2(gst),
+            Total:               utils.RoundTo2(total),
+            AppliedPromo:        appliedPromo,
+            AppliedDiscount:     appliedDiscount,
 		},
 		Transaction:domain.InvoiceTransaction{
 			PaymentMode: transaction.Method,

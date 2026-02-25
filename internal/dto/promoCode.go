@@ -14,6 +14,8 @@ type PromoCodeListResponse struct {
 	Value         float64             `json:"value"`
 	MaxDiscount   float64             `json:"max_discount"`
 	MinOrderValue float64             `json:"min_order_value"`
+	ImageURL      string              `json:"imageUrl"`
+	Description   string              `json:"description"`
 	CreatedBy     string              `json:"created_by"`
 	CreatedAt     string              `json:"created_at"`
 	UpdatedAt     string              `json:"updated_at"`

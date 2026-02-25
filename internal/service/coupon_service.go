@@ -1,15 +1,17 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"log"
-	"time"
+	"app_backend/internal/constants"
 	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
-    "go.mongodb.org/mongo-driver/bson"
+	"context"
+	"errors"
+	"log"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -105,6 +107,8 @@ func (s *CouponService) GetAvailableCoupons(
 			ID:            p.ID.Hex(),
 			Code:          p.Code,
 			Title:         p.Title,
+			Description: p.Description,
+			ImageURL:     constants.DefaultCouponImageURL,
 			ServiceType:   svc.ServiceType,
 			Status:        p.Status,
 			CreatedBy:     p.CreatedBy,

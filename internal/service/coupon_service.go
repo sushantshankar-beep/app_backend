@@ -1,15 +1,17 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"log"
-	"time"
+	"app_backend/internal/constants"
 	"app_backend/internal/domain"
 	"app_backend/internal/dto"
 	"app_backend/internal/ports"
 	"app_backend/internal/repository"
-    "go.mongodb.org/mongo-driver/bson"
+	"context"
+	"errors"
+	"log"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -18,19 +20,22 @@ type CouponService struct {
 	discountRepo        *repository.DiscountRepo
 	acceptedServiceRepo ports.AcceptedServiceRepository
 	promoUsageRepo      *repository.PromoUsageRepo
+	userRepo            *repository.UserRepo
 }
 
 func NewCouponService(
 	promoRepo *repository.PromoRepo,
 	discountRepo *repository.DiscountRepo,
 	acceptedServiceRepo ports.AcceptedServiceRepository,
-	promoUsageRepo *repository.PromoUsageRepo,  
+	promoUsageRepo *repository.PromoUsageRepo,
+	userRepo *repository.UserRepo,
 ) *CouponService {
 	return &CouponService{
 		promoRepo:           promoRepo,
 		discountRepo:        discountRepo,
 		acceptedServiceRepo: acceptedServiceRepo,
-		promoUsageRepo:      promoUsageRepo,  
+		promoUsageRepo:      promoUsageRepo,
+		userRepo:            userRepo,
 	}
 }
 
@@ -105,6 +110,8 @@ func (s *CouponService) GetAvailableCoupons(
 			ID:            p.ID.Hex(),
 			Code:          p.Code,
 			Title:         p.Title,
+			Description: p.Description,
+			ImageURL:     constants.DefaultCouponImageURL,
 			ServiceType:   svc.ServiceType,
 			Status:        p.Status,
 			CreatedBy:     p.CreatedBy,
@@ -218,14 +225,33 @@ func (s *CouponService) ApplyPromoCode(
 	if !promoUserEligible(promo.UserEligibility, isNewUser) {
 		return nil, errors.New("you are not eligible for this promo")
 	}
+
+	if promo.UserEligibility == domain.UserEligibilityNew {
+		userOID, err := primitive.ObjectIDFromHex(userID)
+		if err != nil {
+			return nil, errors.New("invalid userId")
+		}
+		user, err := s.userRepo.GetByID(ctx, userOID)
+		if err != nil {
+			return nil, errors.New("user not found")
+		}
+		phoneUsage, err := s.promoUsageRepo.CountByPhone(ctx, promo.ID, user.Phone)
+		if err != nil {
+			return nil, errors.New("failed to verify eligibility")
+		}
+		if phoneUsage > 0 {
+			return nil, errors.New("this coupon has already been used")
+		}
+	}
+
 	if promo.MinOrderValue > 0 && svc.FinalPrice < promo.MinOrderValue {
 		return nil, errors.New("order value too low for this promo")
 	}
 
 	if promo.GlobalRedemptionCap > 0 &&
-       promo.UsageCount >= promo.GlobalRedemptionCap {
-       return nil, errors.New("promo code redemption limit reached")
-    }
+		promo.UsageCount >= promo.GlobalRedemptionCap {
+		return nil, errors.New("promo code redemption limit reached")
+	}
 
 	if promo.PerUserLimit > 0 {
 		usageCount, err := s.promoUsageRepo.CountByUser(ctx, promo.ID, userID)
@@ -269,58 +295,59 @@ func (s *CouponService) ApplyPromoCode(
 	}
 
 	if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
-        log.Println("⚠ failed to save pending coupon:", err)
+		log.Println("⚠ failed to save pending coupon:", err)
 
-    }
+	}
 	return result, nil
 }
 
 
 func (s *CouponService) savePendingCoupon(
-    ctx context.Context,
-    svcOID primitive.ObjectID,
-    result *domain.CouponApplyResult,
+	ctx context.Context,
+	svcOID primitive.ObjectID,
+	result *domain.CouponApplyResult,
 ) error {
-    return s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
-        "pendingCoupon": result,
-    })
+	return s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
+		"pendingCoupon": result,
+	})
 }
 
-func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string, userID string) error {
-    oid, err := primitive.ObjectIDFromHex(promoID)
-    if err != nil {
-        return err
-    }
+func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string, userID string, phone string) error {
+	oid, err := primitive.ObjectIDFromHex(promoID)
+	if err != nil {
+		return err
+	}
 
-    if err := s.promoRepo.IncrementUsage(ctx, oid); err != nil {
-        return err
-    }
+	if err := s.promoRepo.IncrementUsage(ctx, oid); err != nil {
+		return err
+	}
 
-    return s.promoUsageRepo.Insert(ctx, domain.PromoUsage{
-        PromoID: oid,
-        UserID:  userID,
-        UsedAt:  time.Now(),
-    })
+	return s.promoUsageRepo.Insert(ctx, domain.PromoUsage{
+		PromoID: oid,
+		UserID:  userID,
+		Phone:   phone,
+		UsedAt:  time.Now(),
+	})
 }
 
 func (s *CouponService) RemoveCoupon( ctx context.Context, serviceID string, isNewUser bool) (*domain.CouponApplyResult, error) {
 
-    svcOID, err := primitive.ObjectIDFromHex(serviceID)
-    if err != nil {
-        return nil, errors.New("invalid serviceId")
-    }
+	svcOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return nil, errors.New("invalid serviceId")
+	}
 
-    err = s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
-        "pendingCoupon": nil,
-    })
-    if err != nil {
-        return nil, err
-    }
+	err = s.acceptedServiceRepo.Update(ctx, svcOID.Hex(), bson.M{
+		"pendingCoupon": nil,
+	})
+	if err != nil {
+		return nil, err
+	}
 
     autoResult, err := s.ApplyAutoDiscount(ctx, serviceID, isNewUser,false)
-    if err != nil {
-        return nil, err
-    }
+	if err != nil {
+		return nil, err
+	}
 
-    return autoResult, nil
+	return autoResult, nil
 }

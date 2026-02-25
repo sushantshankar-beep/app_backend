@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -101,103 +100,156 @@ func sha512Hash(input string) string {
 }
 
 /* ---------------- INITIATE PAYMENT ---------------- */
+var paymentLuaScript = redis.NewScript(`
+	local online = redis.call("GET", KEYS[1])
+	if online ~= ARGV[1] then
+	    return 0
+	end
+
+	if redis.call("EXISTS", KEYS[2]) == 1 then
+	    return 2
+	end
+
+	redis.call("SET", KEYS[2], ARGV[2], "EX", ARGV[3])
+	return 1
+	`)
 
 func (s *PaymentService) InitiatePayment(
-	ctx context.Context,
+	parentCtx context.Context,
 	serviceID,
 	userID,
 	name,
 	phone string,
 	price float64,
 ) (map[string]string, error) {
-	email := fmt.Sprintf("app%s@vahanwire.com",serviceID)
-	serviceObjID, err := primitive.ObjectIDFromHex(serviceID)
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
 	if err != nil {
 		return nil, errors.New("invalid serviceId")
 	}
-	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceObjID)
-	if err != nil {
+	fmt.Println("this is user id",userID)
+
+	// userOID, err := primitive.ObjectIDFromHex(userID)
+	// if err != nil {
+	// 	return nil, errors.New("invalid userId")
+	// }
+	dbCtx, cancel := context.WithTimeout(parentCtx, 4*time.Second)
+	defer cancel()
+
+	svc, err := s.acceptedServiceRepo.GetByID(dbCtx, serviceOID)
+	if err != nil || svc == nil {
 		return nil, errors.New("service not found")
 	}
-	userID = svc.User.Hex()
-	providerID := svc.Provider.Hex()
-	online, err := s.redis.Get(ctx, "provider:online:"+providerID).Result()
-	if err != nil || online != "1" {
-		return nil, errors.New("provider is not available")
-	}
-	lockKey := "payment:reserve:" + serviceID
-	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
+	// if svc.User != userOID {
+	// 	return nil, errors.New("unauthorized payment attempt")
+	// }
+
 	if svc.Provider == primitive.NilObjectID {
 		return nil, errors.New("no provider assigned")
 	}
+	providerID := svc.Provider.Hex()
+	providerKey := "provider:online:" + providerID
+	lockKey := "payment:reserve:" + serviceID
+	lockVal := userID + ":" + strconv.FormatInt(time.Now().Unix(), 10)
 
-	ok, err := s.redis.SetNX(ctx, lockKey, lockVal, 2*time.Minute).Result()
+	redisCtx, cancelRedis := context.WithTimeout(parentCtx, 6*time.Second)
+	defer cancelRedis()
+
+	result, err := paymentLuaScript.Run(
+		redisCtx,
+		s.redis,
+		[]string{providerKey, lockKey},
+		"1",
+		lockVal,
+		120,
+	).Result()
+
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+
+	switch result.(int64) {
+	case 0:
+		return nil, errors.New("provider is not available")
+	case 2:
 		return nil, errors.New("payment already in progress")
 	}
 
-	var appliedPromo    *domain.AppliedPromoSummary
-    var appliedDiscount *domain.AppliedDiscountSummary
-    var serviceAmount  float64
-	var totalDiscount   float64
+	// -------------------------------
+	// Coupon Handling
+	// -------------------------------
+	var appliedPromo *domain.AppliedPromoSummary
+	var appliedDiscount *domain.AppliedDiscountSummary
+	var serviceAmount float64
+	var totalDiscount float64
 
-    if svc.PendingCoupon != nil {
-        appliedPromo    = svc.PendingCoupon.AppliedPromo
-        appliedDiscount = svc.PendingCoupon.AppliedDiscount
-        serviceAmount  = svc.PendingCoupon.ServiceAmount
-		totalDiscount   = svc.PendingCoupon.TotalDiscount 
-    }
-    log.Println("djkcnsjnsjdcbjhsbdj",appliedPromo, appliedDiscount, serviceAmount, totalDiscount)
-	PAYU_KEY := s.key
-	PAYU_SALT := s.salt
-	firstname := name
+	if svc.PendingCoupon != nil {
+		appliedPromo = svc.PendingCoupon.AppliedPromo
+		appliedDiscount = svc.PendingCoupon.AppliedDiscount
+		serviceAmount = svc.PendingCoupon.ServiceAmount
+		totalDiscount = svc.PendingCoupon.TotalDiscount
+	}
+
+	// -------------------------------
+	// Prepare Payment Data
+	// -------------------------------
 	finalAmount := math.Round(price*100) / 100
-	amount := fmt.Sprintf("%.2f", finalAmount)
-	txnid := fmt.Sprintf("TXN_%s_%d", serviceID, time.Now().UnixMilli())
-	productinfo := "vahanwire service"
-	hashStr := fmt.Sprintf(
-		"%s|%s|%s|%s|%s|%s|||||||||||%s",
-		PAYU_KEY,
-		txnid,
-		amount,
-		productinfo,
-		firstname,
-		email,
-		PAYU_SALT,
-	)
-	hash := sha512Hash(hashStr)
-	if err := s.repo.CreateTransaction(ctx, &domain.PaymentTransaction{
-		TxnID:         txnid,
-		Amount:        finalAmount,
-		Status:        "pending",
-		UserID:        userID,
-		ServiceID:     serviceID,
-		PaymentSource: "payu",
-		ServiceAmount: serviceAmount,
-		AppliedPromo:    appliedPromo,
-		TotalDiscount:   totalDiscount, 
-        AppliedDiscount: appliedDiscount,
+	amountStr := strconv.FormatFloat(finalAmount, 'f', 2, 64)
 
-	}); err != nil {
-		_ = s.redis.Del(ctx, lockKey).Err()
+	txnid := "TXN_" + serviceID + "_" + strconv.FormatInt(time.Now().UnixMilli(), 10)
+	productinfo := "vahanwire service"
+	email := "app" + serviceID + "@vahanwire.com"
+
+	var hashBuilder strings.Builder
+	hashBuilder.Grow(200)
+	hashBuilder.WriteString(s.key)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(txnid)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(amountStr)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(productinfo)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(name)
+	hashBuilder.WriteString("|")
+	hashBuilder.WriteString(email)
+	hashBuilder.WriteString("|||||||||||")
+	hashBuilder.WriteString(s.salt)
+	hash := sha512Hash(hashBuilder.String())
+	writeCtx, cancelWrite := context.WithTimeout(parentCtx, 8*time.Second)
+	defer cancelWrite()
+
+	err = s.repo.CreateTransaction(writeCtx, &domain.PaymentTransaction{
+		TxnID:          txnid,
+		Amount:         finalAmount,
+		Status:         "pending",
+		UserID:         userID,
+		ServiceID:      serviceID,
+		PaymentSource:  "payu",
+		ServiceAmount:  serviceAmount,
+		AppliedPromo:   appliedPromo,
+		TotalDiscount:  totalDiscount,
+		AppliedDiscount: appliedDiscount,
+	})
+	if err != nil {
+		_ = s.redis.Del(parentCtx, lockKey).Err()
 		return nil, err
 	}
 
+	// -------------------------------
+	// Response
+	// -------------------------------
 	return map[string]string{
-		"txnid":   txnid,
-		"amount":  amount,
-		"key":     PAYU_KEY,
-		"hash":    hash,
-		"email":      email,
-		"firstname":  firstname,
+		"txnid":       txnid,
+		"amount":      amountStr,
+		"key":         s.key,
+		"hash":        hash,
+		"email":       email,
+		"firstname":   name,
 		"productinfo": productinfo,
-		"phone":      phone,
-		"payuUrl": s.payuURL + "/_payment",
-		"surl":    s.baseURL + "/payment/webhook",
-		"furl":    s.baseURL + "/payment/webhook",
+		"phone":       phone,
+		"payuUrl":     s.payuURL + "/_payment",
+		"surl":        s.baseURL + "/payment/webhook",
+		"furl":        s.baseURL + "/payment/webhook",
 	}, nil
 }
 func classifyPayUFailure(data map[string]string) domain.PaymentFailReason {
@@ -474,4 +526,3 @@ func (s *PaymentService) GetRefundTracking(
 		"timeline": timeline,
 	}, nil
 }
-

@@ -8,6 +8,7 @@ import (
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
+	"app_backend/internal/utils"
 
 	"app_backend/internal/ports"
 	"fmt"
@@ -208,11 +209,11 @@ func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceI
 		},
 
 		"billing": map[string]any{
-			"serviceAmount": serviceCharge,
-			"totalDiscount":       totalDiscount,
-			"amountAfterDiscount": amountAfterDiscount,
-			"gst":           gstAmount,
-			"totalAmount":   totalAmount,
+			"serviceAmount": utils.RoundTo2(serviceCharge),
+			"totalDiscount":       utils.RoundTo2(totalDiscount),
+			"amountAfterDiscount": utils.RoundTo2(amountAfterDiscount),
+			"gst":            utils.RoundTo2(gstAmount),
+			"totalAmount":   utils.RoundTo2(totalAmount),
 			"currency":      "INR",
 			"appliedPromo":        appliedPromo,
 			"appliedDiscount":     appliedDiscount,

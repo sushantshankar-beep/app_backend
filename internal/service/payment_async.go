@@ -6,11 +6,14 @@ import (
 
 	"app_backend/internal/domain"
 	"app_backend/internal/events"
+	"log"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"log"
+
 	// "go.mongodb.org/mongo-driver/bson"
 	"encoding/json"
+
 	"github.com/redis/go-redis/v9"
 	// "strconv"
 	// "fmt"
@@ -36,35 +39,57 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	}
 
 	if txn.AppliedPromo != nil && txn.AppliedPromo.PromoID != "" {
-        if err := s.couponSvc.ConfirmPromoUsage(ctx, txn.AppliedPromo.PromoID,txn.UserID); err != nil {
-            log.Println("❌ ConfirmPromoUsage failed:", err)
-        }
-    }
+		
+		userPhone := ""
 
-    couponFields := bson.M{}
-    if txn.ServiceAmount > 0 {
-        couponFields["serviceAmount"] = txn.ServiceAmount
-    }
-    if txn.AppliedPromo != nil {
-        couponFields["appliedPromo"] = txn.AppliedPromo
-    }
+		userOID, err := primitive.ObjectIDFromHex(txn.UserID)
+		if err != nil {
+			log.Println("invalid user id:", txn.UserID)
+			return
+		}
+
+		if user, err := s.userRepo.GetByID(ctx, userOID); err == nil {
+			userPhone = user.Phone
+		}
+		if err := s.couponSvc.ConfirmPromoUsage(ctx, txn.AppliedPromo.PromoID, txn.UserID, userPhone); err != nil {
+			log.Println("ConfirmPromoUsage failed:", err)
+		}
+	}
+
+	userOID, err := primitive.ObjectIDFromHex(txn.UserID)
+		if err != nil {
+			log.Println("invalid user id:", txn.UserID)
+			return
+	}
+	
+	if _, err := s.userRepo.UpdateByID(ctx, userOID, bson.M{"isNew": false}); err != nil {
+		log.Println("⚠ failed to set isNew=false:", err)
+	}
+
+	couponFields := bson.M{}
+	if txn.ServiceAmount > 0 {
+		couponFields["serviceAmount"] = txn.ServiceAmount
+	}
+	if txn.AppliedPromo != nil {
+		couponFields["appliedPromo"] = txn.AppliedPromo
+	}
 	if txn.TotalDiscount > 0 {
 		couponFields["totalDiscount"] = txn.TotalDiscount
 	}
 	if txn.Amount > 0 {
 		couponFields["discountedAmount"] = txn.Amount
 	}
-    if txn.AppliedDiscount != nil {
-        couponFields["appliedDiscount"] = txn.AppliedDiscount
-    }
+	if txn.AppliedDiscount != nil {
+		couponFields["appliedDiscount"] = txn.AppliedDiscount
+	}
 
 	couponFields["pendingCoupon"] = nil
-	
-    if len(couponFields) > 0 {
-        if err := s.acceptedServiceRepo.Update(ctx, serviceOID.Hex(), couponFields); err != nil {
-            log.Println("⚠ failed to persist coupon to service:", err)
-        }
-    }
+
+	if len(couponFields) > 0 {
+		if err := s.acceptedServiceRepo.Update(ctx, serviceOID.Hex(), couponFields); err != nil {
+			log.Println("⚠ failed to persist coupon to service:", err)
+		}
+	}
 
 
 	// ---------------- UPDATE FIRST ----------------
@@ -414,4 +439,4 @@ func (s *PaymentService) releaseProviderAfterGrace(serviceID, providerID string)
 
 	log.Println("🎯 grace release completed:", providerID)
 }
-// 
+//

@@ -178,7 +178,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
-	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo,promoUsageRepo)
+	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo,promoUsageRepo,userRepo)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc,refundRepo)
 	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 

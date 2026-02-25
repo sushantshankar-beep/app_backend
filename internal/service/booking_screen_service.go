@@ -186,10 +186,10 @@ func (s *BookingService) BuildBookingScreen(
 		},
 
 		"billing": map[string]any{
-			"serviceAmount":   source.ServiceAmount,
-			"discount":        source.TotalDiscount,
-			"gst":             gst,
-			"totalAmount":     total,
+			"serviceAmount":   utils.RoundTo2(source.ServiceAmount),
+			"discount":       utils.RoundTo2(source.TotalDiscount),
+			"gst":             utils.RoundTo2(gst),
+			"totalAmount":     utils.RoundTo2(total),
 			"currency":        "INR",
 			"appliedDiscount": appliedDiscount,
 			"appliedPromo":    appliedPromo,

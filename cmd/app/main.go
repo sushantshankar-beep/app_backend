@@ -107,6 +107,7 @@ func main() {
 	promoRepo := repository.NewPromoRepo(db)
 	discountRepo := repository.NewDiscountRepo(db)
 	zoneRepo := repository.NewZoneRepository(db.Collection("zones"))
+	promoUsageRepo := repository.NewPromoUsageRepo(db)
 
 	// userVehicleRepo := repository.NewUserVehicleRepo(db)
 	//SERVICES
@@ -177,7 +178,7 @@ func main() {
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
 	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
-	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo)
+	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo,promoUsageRepo)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc,refundRepo)
 	zoneSvc := service.NewZoneService(zoneRepo,rdb)
 

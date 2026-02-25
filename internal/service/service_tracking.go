@@ -54,7 +54,7 @@ func NewServiceTrackingService(
 
 
 /* ============================================================
-                     TRACKING SCREENS
+	                    TRACKING SCREENS
 ============================================================ */
 func distanceKmHaversine(lat1, lon1, lat2, lon2 float64) float64 {
 	const R = 6371
@@ -126,14 +126,13 @@ func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceI
 
 	if svc.TotalDiscount > 0 || svc.AppliedPromo != nil || svc.AppliedDiscount != nil {
 		totalDiscount = svc.TotalDiscount
+		gstAmount = (serviceCharge * gstPercent) / 100
 		amountAfterDiscount = serviceCharge - totalDiscount
-		gstAmount = (amountAfterDiscount * gstPercent) / 100
-		totalAmount = amountAfterDiscount + gstAmount
+		totalAmount = serviceCharge + gstAmount - totalDiscount
 	} else {
 		gstAmount = (serviceCharge * gstPercent) / 100
 		totalAmount = serviceCharge + gstAmount
 	}
-
 
 	var appliedPromo any
 	if svc.AppliedPromo != nil {
@@ -161,7 +160,7 @@ func (s *ServiceTrackingService) UserTrackingScreen(ctx context.Context,serviceI
 	if svc.ComplaintUser != nil {
 		complaintId = svc.ComplaintUser.Hex()
 	}
-	
+
 	// ----------------------------------
 	// 📦 Response
 	// ----------------------------------
@@ -453,10 +452,10 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		if err != nil {
 			return nil, err
 		}
-	    userObjID, err := primitive.ObjectIDFromHex(string(user.ID))
-	    if err != nil {
-	    	return nil, err
-    	}
+		userObjID, err := primitive.ObjectIDFromHex(string(user.ID))
+		if err != nil {
+			return nil, err
+		}
 		newTotalExpense := user.TotalExpense + totalAmount
 		if err := s.userRepo.UpdateTotalExpense(ctx,userObjID,newTotalExpense); err != nil {
 			return nil, err
@@ -471,7 +470,7 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 	}
 	var complaintId any = nil
 	if svc.ComplaintProvider != nil && *svc.ComplaintProvider != primitive.NilObjectID {
-    	complaintId = svc.ComplaintProvider.Hex()
+		complaintId = svc.ComplaintProvider.Hex()
 	}
 	user, _ := s.userRepo.GetByID(ctx, svc.User)
 	provider, _ := s.providerRepo.FindByID(ctx, domain.ProviderID(svc.Provider.Hex()))
@@ -497,7 +496,7 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		"oldStatus":     prevStatus,
 		"newStatus":     newStatus,
 		"date":          svc.CreatedAt.Format("2006-01-02"),
-        "complaintProviderId": complaintId,
+		"complaintProviderId": complaintId,
 		"user": map[string]any{
 			"id":    svc.User.Hex(),
 			"name":  user.Name,
@@ -556,7 +555,6 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 			s.socket.CloseRoom(providerRoom)
 		}()
 	}
-
 
 	return payload, nil
 }

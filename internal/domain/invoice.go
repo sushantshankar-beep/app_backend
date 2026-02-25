@@ -1,8 +1,10 @@
 package domain
 
 import (
-	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Invoice struct {
@@ -52,9 +54,14 @@ type ServiceInfo struct {
 }
 
 type PricingInfo struct {
-	ServiceCharge float64 `bson:"serviceCharge" json:"serviceCharge"`
-	GST           float64 `bson:"gst" json:"gst"`
-	Total         float64 `bson:"total" json:"total"`
+    ServiceCharge       float64            `bson:"serviceCharge" json:"serviceCharge"`
+    TotalDiscount       float64            `bson:"totalDiscount,omitempty" json:"totalDiscount,omitempty"`
+    AmountAfterDiscount float64            `bson:"amountAfterDiscount,omitempty" json:"amountAfterDiscount,omitempty"`
+    GSTPercent          float64            `bson:"gstPercent,omitempty" json:"gstPercent,omitempty"`
+    GST                 float64            `bson:"gst" json:"gst"`
+    Total               float64            `bson:"total" json:"total"`
+    AppliedPromo        *AppliedPromoSummary `bson:"appliedPromo" json:"appliedPromo"`
+    AppliedDiscount     *AppliedDiscountSummary   `bson:"appliedDiscount" json:"appliedDiscount"`
 }
 
 type InvoiceTransaction struct {

@@ -17,17 +17,20 @@ type CouponService struct {
 	promoRepo           *repository.PromoRepo
 	discountRepo        *repository.DiscountRepo
 	acceptedServiceRepo ports.AcceptedServiceRepository
+	promoUsageRepo      *repository.PromoUsageRepo
 }
 
 func NewCouponService(
 	promoRepo *repository.PromoRepo,
 	discountRepo *repository.DiscountRepo,
 	acceptedServiceRepo ports.AcceptedServiceRepository,
+	promoUsageRepo *repository.PromoUsageRepo,  
 ) *CouponService {
 	return &CouponService{
 		promoRepo:           promoRepo,
 		discountRepo:        discountRepo,
 		acceptedServiceRepo: acceptedServiceRepo,
+		promoUsageRepo:      promoUsageRepo,  
 	}
 }
 
@@ -109,6 +112,10 @@ func (s *CouponService) GetAvailableCoupons(
 			ValidityEnd:   validityEnd,
 			CreatedAt:     p.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:     p.UpdatedAt.Format(time.RFC3339),
+			DiscountType:  p.DiscountType,
+			Value: p.Value,
+			MaxDiscount: p.MaxDiscount,
+			MinOrderValue: p.MinOrderValue,
 		})
 	}
 
@@ -220,6 +227,16 @@ func (s *CouponService) ApplyPromoCode(
        return nil, errors.New("promo code redemption limit reached")
     }
 
+	if promo.PerUserLimit > 0 {
+		usageCount, err := s.promoUsageRepo.CountByUser(ctx, promo.ID, userID)
+		if err != nil {
+			return nil, errors.New("failed to verify per-user usage limit")
+		}
+		if usageCount >= promo.PerUserLimit {
+			return nil, errors.New("you have already used this promo code the maximum number of times")
+		}
+	}
+
 	// validService := false
 	// for _, st := range promo.ServiceTypes {
 	// 	if st == domain.PromoServiceAll || string(st) == svc.ServiceType {
@@ -269,12 +286,21 @@ func (s *CouponService) savePendingCoupon(
     })
 }
 
-func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string) error {
-	oid, err := primitive.ObjectIDFromHex(promoID)
-	if err != nil {
-		return err
-	}
-	return s.promoRepo.IncrementUsage(ctx, oid)
+func (s *CouponService) ConfirmPromoUsage(ctx context.Context, promoID string, userID string) error {
+    oid, err := primitive.ObjectIDFromHex(promoID)
+    if err != nil {
+        return err
+    }
+
+    if err := s.promoRepo.IncrementUsage(ctx, oid); err != nil {
+        return err
+    }
+
+    return s.promoUsageRepo.Insert(ctx, domain.PromoUsage{
+        PromoID: oid,
+        UserID:  userID,
+        UsedAt:  time.Now(),
+    })
 }
 
 func (s *CouponService) RemoveCoupon( ctx context.Context, serviceID string, isNewUser bool) (*domain.CouponApplyResult, error) {

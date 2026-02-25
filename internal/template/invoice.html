@@ -1,13 +1,16 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>Invoice</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       * {
         box-sizing: border-box;
-        font-family: 'Roboto', sans-serif;
+        font-family: "Roboto", sans-serif;
       }
       body {
         margin: 0;
@@ -79,7 +82,7 @@
       }
 
       .header {
-        background: #266DDF;
+        background: #266ddf;
         color: #fff;
         padding: 30px;
         margin: 30px 30px 0;
@@ -124,7 +127,7 @@
         background: #f8fafc;
         padding: 12px 24px;
         border-radius: 8px;
-        border: 1px solid #EFEFEF;
+        border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       }
 
@@ -180,10 +183,10 @@
 
       .vehicle {
         margin: 0 30px 20px;
-        background: #F8FAFC;
+        background: #f8fafc;
         padding: 24px;
         border-radius: 8px;
-        border: 1px solid #EFEFEF;
+        border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       }
 
@@ -208,7 +211,7 @@
 
       .value {
         font-weight: 600;
-        color: #1E293B;
+        color: #1e293b;
         font-size: 13px;
       }
 
@@ -218,8 +221,8 @@
         border-collapse: separate;
         border-spacing: 0;
         font-size: 12px;
-        background: #F8FAFC;
-        border: 1px solid #E5E7EB;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
         border-radius: 8px;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         overflow: hidden;
@@ -244,7 +247,7 @@
       }
 
       .pricing-row-table {
-        background: #F8FAFC;
+        background: #f8fafc;
         font-size: 12px;
       }
 
@@ -268,7 +271,7 @@
 
       .total-row {
         font-weight: bold;
-        background: #F2F2F2;
+        background: #f2f2f2;
       }
 
       .total-row td {
@@ -279,10 +282,10 @@
 
       .notes {
         margin: 0 30px 20px;
-        background: #F8FAFC;
+        background: #f8fafc;
         padding: 24px;
         border-radius: 8px;
-        border: 1px solid #EFEFEF;
+        border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         font-size: 13px;
         color: #374151;
@@ -339,9 +342,9 @@
       <div class="brand-bar">
         <div class="logo">
           <img
-          src="https://vahanwire-bucket-for-dev-qa.s3.amazonaws.com/app_backend/1769620076723_Group_1171276772_(3).png"
-          alt="Logo"
-        />
+            src="https://vahanwire-bucket-for-dev-qa.s3.amazonaws.com/app_backend/1769620076723_Group_1171276772_(3).png"
+            alt="Logo"
+          />
           <span>Vahanwire</span>
         </div>
       </div>
@@ -434,6 +437,33 @@
             <td colspan="5">Service Charge</td>
             <td>₹ {{.Pricing.ServiceCharge}}</td>
           </tr>
+          {{if .Pricing.AppliedPromo}}
+          <tr class="pricing-row-table" id="promo-row">
+            <td colspan="5">
+              PromoCode Amount (<span id="promo-code"
+                >{{.Pricing.AppliedPromo.Code}}</span
+              >)
+            </td>
+            <td>
+              -₹
+              <span id="promo-amt">{{.Pricing.AppliedPromo.DiscountAmt}}</span>
+            </td>
+          </tr>
+          {{end}} {{if .Pricing.AppliedDiscount}}
+          <tr class="pricing-row-table" id="discount-row">
+            <td colspan="5">
+              Discount Amount (<span id="discount-code"
+                >{{.Pricing.AppliedDiscount.Code}}</span
+              >)
+            </td>
+            <td>
+              -₹
+              <span id="discount-amt"
+                >{{.Pricing.AppliedDiscount.DiscountAmt}}</span
+              >
+            </td>
+          </tr>
+          {{end}}
           <tr class="pricing-row-table">
             <td colspan="5">GST (18%)</td>
             <td>₹ {{.Pricing.GST}}</td>

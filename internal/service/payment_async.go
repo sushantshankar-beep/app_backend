@@ -36,7 +36,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	}
 
 	if txn.AppliedPromo != nil && txn.AppliedPromo.PromoID != "" {
-        if err := s.couponSvc.ConfirmPromoUsage(ctx, txn.AppliedPromo.PromoID); err != nil {
+        if err := s.couponSvc.ConfirmPromoUsage(ctx, txn.AppliedPromo.PromoID,txn.UserID); err != nil {
             log.Println("❌ ConfirmPromoUsage failed:", err)
         }
     }

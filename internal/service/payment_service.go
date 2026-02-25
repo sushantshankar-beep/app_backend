@@ -126,11 +126,12 @@ func (s *PaymentService) InitiatePayment(
 	if err != nil {
 		return nil, errors.New("invalid serviceId")
 	}
+	fmt.Println("this is user id",userID)
 
-	userOID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return nil, errors.New("invalid userId")
-	}
+	// userOID, err := primitive.ObjectIDFromHex(userID)
+	// if err != nil {
+	// 	return nil, errors.New("invalid userId")
+	// }
 	dbCtx, cancel := context.WithTimeout(parentCtx, 4*time.Second)
 	defer cancel()
 
@@ -138,9 +139,9 @@ func (s *PaymentService) InitiatePayment(
 	if err != nil || svc == nil {
 		return nil, errors.New("service not found")
 	}
-	if svc.User != userOID {
-		return nil, errors.New("unauthorized payment attempt")
-	}
+	// if svc.User != userOID {
+	// 	return nil, errors.New("unauthorized payment attempt")
+	// }
 
 	if svc.Provider == primitive.NilObjectID {
 		return nil, errors.New("no provider assigned")

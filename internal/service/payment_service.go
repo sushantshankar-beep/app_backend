@@ -143,6 +143,8 @@ func (s *PaymentService) InitiatePayment(
 	// 	return nil, errors.New("unauthorized payment attempt")
 	// }
 
+	userID = svc.User.Hex()
+	
 	if svc.Provider == primitive.NilObjectID {
 		return nil, errors.New("no provider assigned")
 	}

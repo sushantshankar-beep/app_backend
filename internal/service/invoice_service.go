@@ -3,17 +3,16 @@ package service
 import (
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
+	"app_backend/internal/s3"
 	"app_backend/internal/utils"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"time"
-	"app_backend/internal/s3"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
-
 
 type InvoiceService struct {
 	repo            *repository.InvoiceRepo
@@ -88,42 +87,42 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 
 	const gstPercent = 18.0
 
-    serviceCharge := service.FinalPrice
-    totalDiscount := service.TotalDiscount
+	serviceCharge := service.FinalPrice
+	totalDiscount := service.TotalDiscount
 
-	 hasDiscount :=
-        totalDiscount > 0 ||
-            service.AppliedPromo != nil ||
-            service.AppliedDiscount != nil
+	hasDiscount :=
+		totalDiscount > 0 ||
+			service.AppliedPromo != nil ||
+			service.AppliedDiscount != nil
 
-    var amountAfterDiscount float64
-    var gst float64
-    var total float64
+	var amountAfterDiscount float64
+	var gst float64
+	var total float64
 
-    if hasDiscount {
-        amountAfterDiscount = serviceCharge - totalDiscount
-        gst = (amountAfterDiscount * gstPercent) / 100
-        total = amountAfterDiscount + gst
-    } else {
-        gst = (serviceCharge * gstPercent) / 100
-        total = serviceCharge + gst
-    }
+	if hasDiscount {
+		gst = (serviceCharge * gstPercent) / 100
+		amountAfterDiscount = serviceCharge - totalDiscount
+		total = serviceCharge + gst - totalDiscount
+	} else {
+		gst = (serviceCharge * gstPercent) / 100
+		total = serviceCharge + gst
+	}
 
 	var appliedPromo *domain.AppliedPromoSummary
-    if service.AppliedPromo != nil {
-        appliedPromo = &domain.AppliedPromoSummary{
-            Code:        service.AppliedPromo.Code,
-            DiscountAmt: service.AppliedPromo.DiscountAmt,
-        }
-    }
+	if service.AppliedPromo != nil {
+		appliedPromo = &domain.AppliedPromoSummary{
+			Code:        service.AppliedPromo.Code,
+			DiscountAmt: service.AppliedPromo.DiscountAmt,
+		}
+	}
 
-    var appliedDiscount *domain.AppliedDiscountSummary
-    if service.AppliedDiscount != nil {
-        appliedDiscount = &domain.AppliedDiscountSummary{
-            Code:        service.AppliedDiscount.Code,
-            DiscountAmt: service.AppliedDiscount.DiscountAmt,
-        }
-    }
+	var appliedDiscount *domain.AppliedDiscountSummary
+	if service.AppliedDiscount != nil {
+		appliedDiscount = &domain.AppliedDiscountSummary{
+			Code:        service.AppliedDiscount.Code,
+			DiscountAmt: service.AppliedDiscount.DiscountAmt,
+		}
+	}
 
 	inv := &domain.Invoice{
 		InvoiceNumber: s.generateInvoiceNumber(service.ID),
@@ -131,7 +130,7 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 		ServiceDate:   service.CompletedAt,
 		UserID:        userOID,
 		ServiceID:     service.ID.Hex(),
-        ServiceNumber: service.ServiceNumber,
+		ServiceNumber: service.ServiceNumber,
 		CompanyInfo: domain.CompanyInfo{
 			Name:    "Vahanwire",
 			Address: "B819 Noida One Tower B Noida Sector 62 Uttar Pradesh, 201301",
@@ -159,13 +158,13 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 		},
 		PricingDeatils: domain.PricingInfo{
 			ServiceCharge:       utils.RoundTo2(serviceCharge),
-            TotalDiscount:       utils.RoundTo2(totalDiscount),
-            AmountAfterDiscount: utils.RoundTo2(amountAfterDiscount),
-            GSTPercent:          gstPercent,
-            GST:                 utils.RoundTo2(gst),
-            Total:               utils.RoundTo2(total),
-            AppliedPromo:        appliedPromo,
-            AppliedDiscount:     appliedDiscount,
+			TotalDiscount:       utils.RoundTo2(totalDiscount),
+			AmountAfterDiscount: utils.RoundTo2(amountAfterDiscount),
+			GSTPercent:          gstPercent,
+			GST:                 utils.RoundTo2(gst),
+			Total:               utils.RoundTo2(total),
+			AppliedPromo:        appliedPromo,
+			AppliedDiscount:     appliedDiscount,
 		},
 		Transaction:domain.InvoiceTransaction{
 			PaymentMode: transaction.Method,
@@ -173,18 +172,18 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 		CreatedAt: time.Now(),
 	}
     
-	
+
 	if err := s.repo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to save invoice: %w", err)
 	}
 
-    htmlPath, err := RenderInvoiceHTML(inv)
-    if err != nil {
-	  return nil, err
-    }
-    defer os.Remove(htmlPath)
-  
-    pdfURL, err := s.convertHTMLToPDFAndUpload(htmlPath)
+	htmlPath, err := RenderInvoiceHTML(inv)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(htmlPath)
+
+	pdfURL, err := s.convertHTMLToPDFAndUpload(htmlPath)
 	if err != nil {
 		return nil, err
 	}

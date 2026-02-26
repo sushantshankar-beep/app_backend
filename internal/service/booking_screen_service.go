@@ -226,7 +226,11 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 	result := make([]dto.UserBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
+
 		providerIDStr := r.Provider.Hex()
+		if r.Provider.IsZero() && r.CancelledProviderID != "" {
+			providerIDStr = r.CancelledProviderID
+		}
 
 		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerIDStr))
 

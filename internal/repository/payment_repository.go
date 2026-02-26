@@ -76,7 +76,10 @@ func (r *PaymentRepository) GetTransactionByServiceID(ctx context.Context, servi
 	
 	filter := bson.M{"serviceId": serviceID}
 	
-	err := r.txnCol.FindOne(ctx, filter).Decode(&transaction)
+	opts := options.FindOne().
+	SetSort(bson.D{{Key: "createdAt", Value: -1}})
+
+	err := r.txnCol.FindOne(ctx, filter,opts).Decode(&transaction)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("transaction not found for serviceID: %s", serviceID)

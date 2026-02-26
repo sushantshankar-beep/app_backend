@@ -62,6 +62,7 @@ func (r *PromoRepo) IncrementUsage(ctx context.Context, promoID primitive.Object
 func (r *PromoRepo) GetActiveForService(
 	ctx context.Context,
 	serviceType string,
+	search string,
 	page, limit int,
 ) ([]*domain.PromoCode, int64, error) {
 
@@ -74,6 +75,16 @@ func (r *PromoRepo) GetActiveForService(
 			{"endAt": nil},
 			{"endAt": bson.M{"$gte": now}},
 		},
+	}
+
+	if search != "" {
+		regex := bson.M{"$regex": search, "$options": "i"}
+		filter["$and"] = []bson.M{
+			{"$or": []bson.M{
+				{"code": regex},
+				{"title": regex},
+			}},
+		}
 	}
 
 	total, err := r.col.CountDocuments(ctx, filter)

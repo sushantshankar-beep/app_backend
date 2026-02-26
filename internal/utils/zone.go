@@ -77,8 +77,6 @@ func ReverseGeocode(lat, lon float64) (string, string, error) {
 	if state == "" {
 		state = result.Address.Region
 	}
-
-	// 🔥 FINAL FALLBACK: Parse display_name
 	if state == "" && result.DisplayName != "" {
 		parts := strings.Split(result.DisplayName, ",")
 		if len(parts) >= 3 {

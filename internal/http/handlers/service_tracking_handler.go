@@ -133,3 +133,31 @@ func (h *ServiceTrackingHandler) GetInvoiceUrl(c *gin.Context) {
 		},
 	})
 }
+func (h *ServiceTrackingHandler) UpdateLiveLocation(c *gin.Context) {
+
+	serviceID := c.Param("serviceId")
+
+	var req struct {
+		Lat  float64 `json:"lat"`
+		Long float64 `json:"long"`
+	}
+
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.svc.UpdateLiveLocation(
+		c.Request.Context(),
+		serviceID,
+		req.Lat,
+		req.Long,
+	)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"success": true})
+}

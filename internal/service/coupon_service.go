@@ -176,7 +176,7 @@ func (s *CouponService) ApplyAutoDiscount(
 	if !dryRun {
 		svc2, err := s.acceptedServiceRepo.GetByID(ctx, svcOID)
 		if err == nil && svc2.PendingCoupon != nil && svc2.PendingCoupon.AppliedPromo != nil {
-			return result, nil
+			return svc2.PendingCoupon, nil
 		}
 		if err := s.savePendingCoupon(ctx, svcOID, result); err != nil {
 			log.Println("⚠ failed to save pending coupon:", err)

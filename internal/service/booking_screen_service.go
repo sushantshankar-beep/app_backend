@@ -633,17 +633,11 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 			continue
 		}
 
-		finalPrice := serviceData.FinalPrice
+		const gstPercent = 18.0
 
-		if !useSnapshot {
-			tx, err := s.transactionRepo.GetTransactionByServiceID(
-				ctx,
-				serviceData.ID.Hex(),
-			)
-			if err == nil {
-				finalPrice = tx.Amount
-			}
-		}
+        serviceCharge := serviceData.FinalPrice
+        gstAmount := (serviceCharge * gstPercent) / 100
+        finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time

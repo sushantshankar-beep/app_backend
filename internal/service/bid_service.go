@@ -1565,17 +1565,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 						"reason":    "cancelled_by_user",
 					},
 				)
-
-				go s.notify.SendToProvider(
-					context.Background(),
-					providerID,
-					serviceID,
-					"Service Cancelled",
-					"User cancelled the request.",
-					map[string]string{
-						"serviceId": serviceID,
-					},
-				)
 			}
 		}
 	}

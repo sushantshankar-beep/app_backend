@@ -14,6 +14,7 @@ import (
 	"log"
 	"go.mongodb.org/mongo-driver/bson"
 	"time"
+	"context"
 )
 
 type ProviderStatusHandler struct {
@@ -43,6 +44,8 @@ func NewProviderStatusHandler(
 POST /provider/online
 Authorization: Bearer PROVIDER_TOKEN
 */
+
+
 func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 
 	providerID := c.GetString("providerId")
@@ -51,16 +54,11 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
 
-	// ===========================
-	// 🔍 LOAD PROVIDER FROM DB
-	// ===========================
-
-	provider, err := h.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(providerID),
-	)
+	// Load provider
+	provider, err := h.providerRepo.FindByID(ctx, domain.ProviderID(providerID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "provider not found"})
 		return
@@ -77,40 +75,35 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 	}
 
 	// ===========================
-	// 📍 REDIS ONLINE + GEO
+	// 🔥 Redis Pipeline (1 round trip)
 	// ===========================
+	pipe := h.redis.Pipeline()
 
-	if err := h.redis.Set(ctx,
-		"provider:online:"+providerID,
-		"1",
-		0,
-	).Err(); err != nil {
+	pipe.Set(ctx, "provider:online:"+providerID, "1", 0)
 
+	pipe.GeoAdd(ctx, "providers:geo", &redis.GeoLocation{
+		Name:      providerID,
+		Longitude: req.Lng,
+		Latitude:  req.Lat,
+	})
+
+	if _, err := pipe.Exec(ctx); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "redis error"})
 		return
 	}
 
-	if err := h.redis.GeoAdd(ctx,
-		"providers:geo",
-		&redis.GeoLocation{
-			Name:      providerID,
-			Longitude: req.Lng,
-			Latitude:  req.Lat,
-		},
-	).Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "geo error"})
-		return
-	}
-	if err := h.providerRepo.SetOnlineStatus(ctx,domain.ProviderID(providerID),true,req.Lat,req.Lng); err != nil {
+	// Update Mongo
+	if err := h.providerRepo.SetOnlineStatus(
+		ctx,
+		domain.ProviderID(providerID),
+		true,
+		req.Lat,
+		req.Lng,
+	); err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db update failed"})
 		return
 	}
-
-
-
-	// ===========================
-	// ✅ RESPONSE
-	// ===========================
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":               "online",
@@ -119,9 +112,6 @@ func (h *ProviderStatusHandler) GoOnline(c *gin.Context) {
 		"wsUrl":                "/ws?room=provider:" + providerID,
 	})
 }
-
-
-
 /*
 POST /provider/offline
 */
@@ -133,7 +123,8 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 6*time.Second)
+	defer cancel()
 
 	providerOID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {
@@ -142,7 +133,7 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 	}
 
 	// ============================================
-	// 🔍 CHECK ACTIVE SERVICE
+	// 🔍 Check Active Service
 	// ============================================
 
 	activeSvc, err := h.acceptedRepo.FindActiveServiceByProvider(ctx, providerOID)
@@ -164,25 +155,32 @@ func (h *ProviderStatusHandler) GoOffline(c *gin.Context) {
 			)
 
 			if err != nil {
-				log.Println("❌ remove provider failed:", err)
+				log.Println("remove provider failed:", err)
 			}
 		}
 
-		// 🔓 Clean service redis keys SAFELY
-		h.redis.Del(ctx, "service:locked:"+activeSvc.ID.Hex())
-		h.redis.Del(ctx, "service:stop:"+activeSvc.ID.Hex())
+		// Clean service-level Redis keys
+		pipe := h.redis.Pipeline()
+		pipe.Del(ctx, "service:locked:"+activeSvc.ID.Hex())
+		pipe.Del(ctx, "service:stop:"+activeSvc.ID.Hex())
+		pipe.Exec(ctx)
 	}
 
 	// ============================================
-	// 🧹 REDIS CLEANUP (Provider level)
+	// 🔥 Provider Redis Cleanup (Pipeline)
 	// ============================================
 
-	h.redis.Del(ctx, "provider:online:"+providerID)
-	h.redis.ZRem(ctx, "providers:geo", providerID)
-	h.redis.Del(ctx, "provider:busy:"+providerID)
+	pipe := h.redis.Pipeline()
+	pipe.Del(ctx, "provider:online:"+providerID)
+	pipe.ZRem(ctx, "providers:geo", providerID)
+	pipe.Del(ctx, "provider:busy:"+providerID)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		log.Println("redis cleanup error:", err)
+	}
 
 	// ============================================
-	// 🗄 UPDATE MONGO
+	// 🗄 Update Mongo
 	// ============================================
 
 	if err := h.providerRepo.SetOnlineStatus(

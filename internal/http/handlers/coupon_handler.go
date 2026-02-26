@@ -48,10 +48,13 @@ func (h *CouponHandler) GetAvailableCoupons(c *gin.Context) {
 		limit = 20
 	}
 
+	search := c.Query("search")
+
 	data, total, err := h.couponSvc.GetAvailableCoupons(
 		c.Request.Context(),
 		userObjID.Hex(),
 		serviceID,
+		search,
 		page,
 		limit,
 	)

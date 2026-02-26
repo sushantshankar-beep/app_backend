@@ -82,6 +82,7 @@ func (s *CouponService) GetAvailableCoupons(
 	ctx context.Context,
 	userID string,
 	serviceID string,
+	search string,
 	page, limit int,
 ) ([]dto.PromoCodeListResponse, int64, error) {
 
@@ -95,7 +96,7 @@ func (s *CouponService) GetAvailableCoupons(
 		return nil, 0, errors.New("service not found")
 	}
 
-	promos, total, err := s.promoRepo.GetActiveForService(ctx,"", page, limit)
+	promos, total, err := s.promoRepo.GetActiveForService(ctx, "", search, page, limit)
 	if err != nil {
 		return nil, 0, err
 	}

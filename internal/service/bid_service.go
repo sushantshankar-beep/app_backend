@@ -176,77 +176,107 @@ const luaFindProviders = `
 -- 6 = maxSend
 -- 7 = ttlSec
 
+local serviceId = ARGV[4]
+
+-- =====================================
+-- 🔴 HARD STOP CHECK (VERY IMPORTANT)
+-- =====================================
+
+if redis.call("EXISTS", "service:stop:" .. serviceId) == 1 then
+    return {}
+end
+
+if redis.call("EXISTS", "service:locked:" .. serviceId) == 1 then
+    return {}
+end
+
+-- =====================================
+-- 📍 GEO SEARCH
+-- =====================================
+
 local results = redis.call(
-  "GEORADIUS",
-  KEYS[1],
-  ARGV[1],
-  ARGV[2],
-  ARGV[3],
-  "km",
-  "WITHDIST",
-  "COUNT",
-  300
+    "GEORADIUS",
+    KEYS[1],
+    ARGV[1],
+    ARGV[2],
+    ARGV[3],
+    "km",
+    "WITHDIST",
+    "COUNT",
+    300
 )
 
 local out = {}
 
-for i=1,#results do
-  local pid = results[i][1]
-  local dist = results[i][2]
+-- =====================================
+-- 🔁 FILTER LOOP
+-- =====================================
 
-  local skip = false
+for i = 1, #results do
 
-  -- skip busy
-  if redis.call("EXISTS", "provider:busy:"..pid) == 1 then
-    skip = true
-  end
+    local pid  = results[i][1]
+    local dist = results[i][2]
 
-  -- skip already active
-  if not skip then
-    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
-    if redis.call("EXISTS", activeKey) == 1 then
-      skip = true
+    local skip = false
+
+    -- 🚫 Busy check
+    if redis.call("EXISTS", "provider:busy:" .. pid) == 1 then
+        skip = true
     end
-  end
 
-  -- cooldown
-  if not skip then
-    local cdKey = "service:cooldown:"..ARGV[4]..":"..pid
-    if redis.call("SETNX", cdKey, "1") == 0 then
-      skip = true
-    else
-      redis.call("EXPIRE", cdKey, ARGV[5])
+    -- 🚫 Already active in this service
+    if not skip then
+        local activeKey = "service:activeProvider:" .. serviceId .. ":" .. pid
+        if redis.call("EXISTS", activeKey) == 1 then
+            skip = true
+        end
     end
-  end
 
-  -- send count
-  if not skip then
-    local scKey = "service:sendcount:"..ARGV[4]..":"..pid
-    local cnt = redis.call("INCR", scKey)
-    redis.call("EXPIRE", scKey, ARGV[7])
-
-    if cnt > tonumber(ARGV[6]) then
-      skip = true
+    -- ❄️ Cooldown logic
+    if not skip then
+        local cdKey = "service:cooldown:" .. serviceId .. ":" .. pid
+        if redis.call("SETNX", cdKey, "1") == 0 then
+            skip = true
+        else
+            redis.call("EXPIRE", cdKey, ARGV[5])
+        end
     end
-  end
 
-  if not skip then
-    -- cache distance
-    redis.call(
-      "SET",
-      "service:dist:"..ARGV[4]..":"..pid,
-      dist,
-      "EX",
-      1800
-    )
+    -- 📊 Send count limit
+    if not skip then
+        local scKey = "service:sendcount:" .. serviceId .. ":" .. pid
+        local cnt = redis.call("INCR", scKey)
 
-    -- mark active
-    local activeKey = "service:activeProvider:"..ARGV[4]..":"..pid
-    redis.call("SET", activeKey, "1", "EX", ARGV[5])
+        redis.call("EXPIRE", scKey, ARGV[7])
 
-    table.insert(out, pid)
-    table.insert(out, dist)
-  end
+        if cnt > tonumber(ARGV[6]) then
+            skip = true
+        end
+    end
+
+    -- =====================================
+    -- ✅ ACCEPT PROVIDER
+    -- =====================================
+
+    if not skip then
+
+        -- Cache distance (air distance)
+        redis.call(
+            "SET",
+            "service:dist:" .. serviceId .. ":" .. pid,
+            dist,
+            "EX",
+            1800
+        )
+
+        -- Mark active
+        local activeKey = "service:activeProvider:" .. serviceId .. ":" .. pid
+        redis.call("SET", activeKey, "1", "EX", ARGV[5])
+
+        -- Return provider + distance
+        table.insert(out, pid)
+        table.insert(out, dist)
+    end
 end
 
 return out
@@ -290,7 +320,7 @@ func (s *BiddingService) findProviders(
 
 	const (
 		cooldownSec    = 77
-		maxSendPerProv = 8
+		maxSendPerProv = 10
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
 		globalTimeout  = 30 * time.Minute

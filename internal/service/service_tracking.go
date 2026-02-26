@@ -644,7 +644,7 @@ func (s *ServiceTrackingService) UpdateLiveLocation(
 	}
 	s.socket.Emit(
 		"user:"+serviceID,
-		"service:status_updat",
+		"service:status_update",
 		map[string]interface{}{
 			"serviceId": serviceID,
 			"lat":       lat,

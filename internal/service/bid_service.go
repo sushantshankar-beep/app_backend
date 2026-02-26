@@ -1445,135 +1445,9 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
+	func (s *BiddingService) cleanupServiceKeysCancellation(serviceID string) {
 
-func (s *BiddingService) CancelSearchingServiceBeforeBid(
-	ctx context.Context,
-	serviceID string,
-	userID string,
-) error {
-
-	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
-	if err != nil {
-		return err
-	}
-
-	userOID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return err
-	}
-
-	lockKey := "service:locked:" + serviceID
-	stopKey := "service:stop:" + serviceID
-
-	pipe := s.rdb.Pipeline()
-	pipe.Set(ctx, lockKey, "1", 15*time.Minute)
-	pipe.Set(ctx, stopKey, "1", 30*time.Minute)
-
-	if _, err := pipe.Exec(ctx); err != nil {
-		return err
-	}
-
-	res, err := s.acceptedRepo.Col().UpdateOne(
-		ctx,
-		bson.M{
-			"_id":  serviceOID,
-			"user": userOID,
-			"status": bson.M{
-				"$ne": domain.StatusCancelled,
-			},
-		},
-		bson.M{
-			"$set": bson.M{
-				"status":      domain.StatusCancelled,
-				"cancelledBy": "user",
-				"cancelledAt": time.Now(),
-				"updatedAt":   time.Now(),
-			},
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	if res.MatchedCount == 0 {
-		return errors.New("service not found or already cancelled")
-	}
-
-	userRoom := "user:" + serviceID
-
-	s.socket.Emit(
-		userRoom,
-		"service:cancelled",
-		map[string]any{
-			"serviceId": serviceID,
-		},
-	)
-
-	s.socket.CloseRoom(userRoom)
-
-	var svc domain.AcceptedService
-	if err := s.acceptedRepo.Col().
-		FindOne(ctx, bson.M{"_id": serviceOID}).
-		Decode(&svc); err != nil {
-
-		log.Println("❌ cancel geo load service failed:", err)
-		goto CLEANUP
-	}
-
-	if svc.UserLocation != nil {
-
-		radiusSteps := []float64{25, 50, 100}
-
-		sent := make(map[string]struct{})
-
-		for _, radius := range radiusSteps {
-
-			res, err := s.rdb.GeoRadius(
-				ctx,
-				"providers:geo",
-				svc.UserLocation.Long,
-				svc.UserLocation.Lat,
-				&redis.GeoRadiusQuery{
-					Radius: radius,
-					Unit:   "km",
-				},
-			).Result()
-
-			if err != nil {
-				log.Println("cancel geo query error:", err)
-				continue
-			}
-
-			for _, loc := range res {
-
-				providerID := loc.Name
-
-				// ✅ prevent duplicates
-				if _, ok := sent[providerID]; ok {
-					continue
-				}
-				sent[providerID] = struct{}{}
-
-				room := "provider:" + providerID
-
-				s.socket.Emit(
-					room,
-					"service:cancelled",
-					map[string]any{
-						"serviceId": serviceID,
-						"reason":    "cancelled_by_user",
-					},
-				)
-			}
-		}
-	}
-
-CLEANUP:
-
-	go func(serviceID string) {
-
-		ctxBg := context.Background()
+		ctx := context.Background()
 
 		patterns := []string{
 			"service:cooldown:" + serviceID + ":*",
@@ -1587,34 +1461,124 @@ CLEANUP:
 
 		for _, pattern := range patterns {
 
-			iter := s.rdb.Scan(ctxBg, 0, pattern, 500).Iterator()
+			iter := s.rdb.Scan(ctx, 0, pattern, 1000).Iterator()
+			keys := make([]string, 0, 200)
 
-			batch := make([]string, 0, 100)
+			for iter.Next(ctx) {
+				keys = append(keys, iter.Val())
 
-			for iter.Next(ctxBg) {
-
-				batch = append(batch, iter.Val())
-
-				if len(batch) >= 100 {
-					s.rdb.Del(ctxBg, batch...)
-					batch = batch[:0]
+				if len(keys) >= 200 {
+					s.rdb.Del(ctx, keys...)
+					keys = keys[:0]
 				}
 			}
 
-			if len(batch) > 0 {
-				s.rdb.Del(ctxBg, batch...)
+			if len(keys) > 0 {
+				s.rdb.Del(ctx, keys...)
 			}
 		}
-
-	}(serviceID)
-
-	return nil
 }
 
+func (s *BiddingService) CancelSearchingServiceBeforeBid(
+	ctx context.Context,
+	serviceID string,
+	userID string,
+	) error {
 
+		serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+		if err != nil {
+			return err
+		}
 
+		userOID, err := primitive.ObjectIDFromHex(userID)
+		if err != nil {
+			return err
+		}
 
+		lockKey := "service:locked:" + serviceID
+		stopKey := "service:stop:" + serviceID
+		if _, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, lockKey, "1", 15*time.Minute)
+			pipe.Set(ctx, stopKey, "1", 30*time.Minute)
+			return nil
+		}); err != nil {
+			return err
+		}
+		var svc domain.AcceptedService
 
+		err = s.acceptedRepo.Col().
+			FindOneAndUpdate(
+				ctx,
+				bson.M{
+					"_id":  serviceOID,
+					"user": userOID,
+					"status": bson.M{
+						"$ne": domain.StatusCancelled,
+					},
+				},
+				bson.M{
+					"$set": bson.M{
+						"status":      domain.StatusCancelled,
+						"cancelledBy": "user",
+						"cancelledAt": time.Now(),
+						"updatedAt":   time.Now(),
+					},
+				},
+			).
+			Decode(&svc)
+
+		if err != nil {
+			return errors.New("service not found or already cancelled")
+		}
+
+		// 🔥 Notify user immediately
+		userRoom := "user:" + serviceID
+		s.socket.Emit(userRoom, "service:cancelled", map[string]any{
+			"serviceId": serviceID,
+		})
+		s.socket.CloseRoom(userRoom)
+		if svc.UserLocation != nil {
+
+			results, err := s.rdb.GeoRadius(
+				ctx,
+				"providers:geo",
+				svc.UserLocation.Long,
+				svc.UserLocation.Lat,
+				&redis.GeoRadiusQuery{
+					Radius: 100,
+					Unit:   "km",
+				},
+			).Result()
+
+			if err == nil {
+
+				seen := make(map[string]struct{}, len(results))
+
+				for _, loc := range results {
+
+					providerID := loc.Name
+					if _, exists := seen[providerID]; exists {
+						continue
+					}
+					seen[providerID] = struct{}{}
+
+					s.socket.Emit(
+						"provider:"+providerID,
+						"service:cancelled",
+						map[string]any{
+							"serviceId": serviceID,
+							"reason":    "cancelled_by_user",
+						},
+					)
+				}
+			} else {
+				log.Println("geo cancel error:", err)
+			}
+		}
+		go s.cleanupServiceKeysCancellation(serviceID)
+
+		return nil
+}
 
 func (s *BiddingService) CancelSearchingService(
 	ctx context.Context,
@@ -1653,7 +1617,7 @@ func (s *BiddingService) HandleProviderTimeout(
 		serviceID := svc.ID.Hex()
 		providerID := svc.Provider.Hex()
 		if svc.PaymentStatus == "paid" {
-			log.Println("timeout ignored — payment done", serviceID)
+			log.Println("timeout ignored payment done", serviceID)
 			return
 		}
 		lockKey := "timeout:lock:" + serviceID

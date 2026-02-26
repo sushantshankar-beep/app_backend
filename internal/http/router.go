@@ -151,6 +151,7 @@ func SetupRouter(userHandler *handlers.UserHandler,providerHandler *handlers.Pro
 		provider.GET("/earnings/today/:providerID", bookingHandler.GetProviderTodayEarnings)
 		provider.GET("/settledEarnings/:providerID", bookingHandler.GetProviderSettledEarnings)
         provider.GET("/notifications/latest-service",providerAuth,notificationHandler.ListProviderLatestService)
+        provider.POST("/updatelocation/:serviceId",serviceTrackingHandler.UpdateLiveLocation)
 
 
 	}

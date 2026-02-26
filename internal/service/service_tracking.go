@@ -615,3 +615,41 @@ func (s *ServiceTrackingService) GetInvoiceUrl(ctx context.Context,serviceID str
 
 	return invoice, nil
 }
+
+
+
+func (s *ServiceTrackingService) UpdateLiveLocation(
+	ctx context.Context,
+	serviceID string,
+	lat float64,
+	long float64,
+) error {
+
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
+
+	err = s.acceptedRepo.UpdateByID(ctx, serviceOID, bson.M{
+		"$set": bson.M{
+			"providerLocation": bson.M{
+				"lat":  lat,
+				"long": long,
+			},
+			"updatedAt": time.Now(),
+		},
+	})
+	if err != nil {
+		return err
+	}
+	s.socket.Emit(
+		"user:"+serviceID,
+		"service:status_updat",
+		map[string]interface{}{
+			"serviceId": serviceID,
+			"lat":       lat,
+			"long":      long,
+		},
+	)
+	return nil
+}

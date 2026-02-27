@@ -635,9 +635,9 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 
 		const gstPercent = 18.0
 
-        serviceCharge := serviceData.FinalPrice
-        gstAmount := (serviceCharge * gstPercent) / 100
-        finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
+		serviceCharge := serviceData.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
@@ -975,9 +975,11 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 		return nil,0, err
 	}
 
+	const gstPercent = 18.0
+
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 	for _, booking := range completedBookings {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		_, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
 		if err != nil {
 			continue
 		}
@@ -987,11 +989,15 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 			serviceName = booking.Issues[0]
 		}
 
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
+
 		earnings = append(earnings, dto.EarningDetail{
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
 			ServiceName: serviceName,
-			Amount:      transaction.Amount,
+			Amount:      finalPrice,
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
@@ -1035,16 +1041,22 @@ func (s *BookingService) GetProviderTodayEarnings(
 		return nil,0, err
 	}
 
+	const gstPercent = 18.0
+
 	var total float64
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 
 	for _, booking := range completedBookings {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		_, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
 		if err != nil {
 			continue
 		}
 
-		total += transaction.Amount
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
+
+		total += finalPrice
 
 		serviceName := ""
 		if len(booking.Issues) > 0 {
@@ -1055,7 +1067,7 @@ func (s *BookingService) GetProviderTodayEarnings(
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
 			ServiceName: serviceName,
-			Amount:      transaction.Amount,
+			Amount:      finalPrice,
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}

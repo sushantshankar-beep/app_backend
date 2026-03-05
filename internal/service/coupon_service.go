@@ -286,7 +286,7 @@ func (s *CouponService) ApplyPromoCode(
 		result.AppliedDiscount = autoResult.AppliedDiscount
 	}
 
-	disc := calcDiscount(promo.DiscountType, promo.Value, promo.MaxDiscount, result.DiscountedAmount)
+	disc := calcDiscount(promo.DiscountType, promo.Value, promo.MaxDiscount, svc.FinalPrice)
 	result.TotalDiscount += disc
 	result.DiscountedAmount -= disc
 	result.AppliedPromo = &domain.AppliedPromoSummary{

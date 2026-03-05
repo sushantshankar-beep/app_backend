@@ -190,6 +190,7 @@ type ComplaintDTO struct {
 	UserIssue       *UserComplaintDTO     `json:"userComplaint"`
 	Timeline        map[string]time.Time  `json:"timeline"`
 	Remark          string                `json:remark`
+	UserRemark      string               `json:"userRemark"`
 	CreatedAt       time.Time             `json:"createdAt"`
 	UpdatedAt       time.Time             `json:"updatedAt"`
 }

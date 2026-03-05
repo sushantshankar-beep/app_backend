@@ -635,9 +635,9 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 
 		const gstPercent = 18.0
 
-        serviceCharge := serviceData.FinalPrice
-        gstAmount := (serviceCharge * gstPercent) / 100
-        finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
+		serviceCharge := serviceData.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
@@ -758,8 +758,10 @@ func (s *BookingService) GetProviderBookingDetails(
 
 		if complaint != nil {
 			var remark string
+			var userRemark string 
 			if complaint.Assessment != nil {
 				remark = complaint.Assessment.RemarkForProvider
+				userRemark = complaint.Assessment.RemarkForUser
 			}
 
 			complaintDTO = &dto.ComplaintDTO{
@@ -771,6 +773,7 @@ func (s *BookingService) GetProviderBookingDetails(
 				CreatedAt:           complaint.CreatedAt,
 				UpdatedAt:           complaint.UpdatedAt,
 				Remark:              remark,
+				UserRemark:          userRemark,
 			}
 
 			if complaint.ProviderComplaint != nil {
@@ -975,9 +978,11 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 		return nil,0, err
 	}
 
+	const gstPercent = 18.0
+
 	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 	for _, booking := range completedBookings {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		_, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
 		if err != nil {
 			continue
 		}
@@ -987,11 +992,15 @@ func (s *BookingService) GetProviderEarnings(ctx context.Context, providerID str
 			serviceName = booking.Issues[0]
 		}
 
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
+
 		earnings = append(earnings, dto.EarningDetail{
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
 			ServiceName: serviceName,
-			Amount:      transaction.Amount,
+			Amount:      finalPrice,
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
@@ -1032,19 +1041,45 @@ func (s *BookingService) GetProviderTodayEarnings(
 			int64(limit),
 		)
 	if err != nil {
-		return nil,0, err
+		return nil, 0, err
 	}
 
-	var total float64
-	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
+	allTodayBookings, _, err := s.acceptedRepo.
+		GetProviderCompletedBookingsByDate(
+			ctx,
+			providerObjID,
+			startOfDay,
+			endOfDay,
+			0,
+			0,
+		)
+	if err != nil {
+		return nil, 0, err
+	}
 
+	const gstPercent = 18.0
+
+	var grandTotal float64
+	for _, booking := range allTodayBookings {
+		_, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		if err != nil {
+			continue
+		}
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		grandTotal += utils.RoundTo2(serviceCharge + gstAmount)
+	}
+
+	earnings := make([]dto.EarningDetail, 0, len(completedBookings))
 	for _, booking := range completedBookings {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
+		_, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
 		if err != nil {
 			continue
 		}
 
-		total += transaction.Amount
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		finalPrice := utils.RoundTo2(serviceCharge + gstAmount)
 
 		serviceName := ""
 		if len(booking.Issues) > 0 {
@@ -1055,13 +1090,13 @@ func (s *BookingService) GetProviderTodayEarnings(
 			ID:          booking.ID.Hex(),
 			ProviderId:  booking.Provider,
 			ServiceName: serviceName,
-			Amount:      transaction.Amount,
+			Amount:      finalPrice,
 			CreatedAt:   booking.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
 	return &dto.TodayEarningsResponse{
-		Total:    utils.RoundTo2(total),
+		Total:    utils.RoundTo2(grandTotal),
 		Earnings: earnings,
 	}, totalCount, nil
 }
@@ -1084,16 +1119,22 @@ func (s *BookingService) GetProviderSettledEarnings(
 		return nil, 0,err
 	}
 
-	var total float64
-	settlements := make([]dto.ProviderSettlementItem, 0)
+	allRecords, _, err := s.settlementRepo.GetProviderSettledRecords(ctx, providerObjID, 0, 0)
+	if err != nil {
+		return nil, 0, err
+	}
 
+	var grandTotal float64
+	for _, rec := range allRecords {
+		grandTotal += rec.NetAmount
+	}
+
+	settlements := make([]dto.ProviderSettlementItem, 0)
 	for _, rec := range records {
 		service, err := s.acceptedRepo.FindByID(ctx, rec.ServiceID.Hex())
 		if err != nil {
 			continue
 		}
-
-		total += rec.NetAmount
 
 		settlements = append(settlements, dto.ProviderSettlementItem{
 			ID:            rec.ServiceID.Hex(),
@@ -1105,7 +1146,7 @@ func (s *BookingService) GetProviderSettledEarnings(
 	}
 
 	return &dto.ProviderSettlementResponse{
-		Total:       utils.RoundTo2(total),
+		Total:       utils.RoundTo2(grandTotal),
 		Settlements: settlements,
 	}, totalCount, nil
 }

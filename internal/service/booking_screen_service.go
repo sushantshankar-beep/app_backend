@@ -950,16 +950,21 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 	if err != nil {
 		return nil, err
 	}
+
+	const gstPercent = 18.0
+
 	allTimeEarning := 0.0
 	todayEarning := 0.0
 	today := time.Now().Truncate(24 * time.Hour)
+
 	for _, booking := range completedBookings {
-		transaction, err := s.transactionRepo.GetTransactionByServiceID(ctx, booking.ID.Hex())
-		if err == nil && transaction != nil {
-			allTimeEarning += transaction.Amount
-			if booking.CreatedAt.Truncate(24 * time.Hour).Equal(today) {
-				todayEarning += transaction.Amount
-			}
+		serviceCharge := booking.FinalPrice
+		gstAmount := (serviceCharge * gstPercent) / 100
+		amount := utils.RoundTo2(serviceCharge + gstAmount)
+
+		allTimeEarning += amount
+		if booking.CreatedAt.Truncate(24 * time.Hour).Equal(today) {
+			todayEarning += amount
 		}
 	}
 
@@ -968,11 +973,12 @@ func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID st
 	if err != nil {
 		return nil, err
 	}
+
 	stats := &dto.DashboardStats{
-		AllTimeEarning:    allTimeEarning,
-		TodayEarning:      todayEarning,
+		AllTimeEarning:    utils.RoundTo2(allTimeEarning),
+		TodayEarning:      utils.RoundTo2(todayEarning),
 		ServicesCompleted: len(completedBookings),
-		PaymentSettlement: totalSettlement,
+		PaymentSettlement: utils.RoundTo2(totalSettlement),
 		CancelledServices: len(cancelledBookings),
 	}
 	return stats, nil

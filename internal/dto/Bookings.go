@@ -127,6 +127,8 @@ type ProviderBookingDetailDTO struct {
 	Rating               string      `json:"rating"`
 	UserLocation     UserLocation       `json:userLocation`
 	ProviderLocation ProviderLocation   `json:providerLocation`
+	Remark          string                `json:remark`
+	UserRemark      string               `json:"userRemark"`
 	Cancelled     *domain.CancelInfo `json:"cancelled"`
 	CancelledAt   *time.Time         `json:"cancelledAt"`
 	Complaint        *ComplaintDTO      `json:"complaint"`

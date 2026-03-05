@@ -623,3 +623,22 @@ func (r *AcceptedServiceRepo) Update(ctx context.Context, serviceID string, fiel
 	_, err = r.col.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": fields})
 	return err
 }
+
+func (r *AcceptedServiceRepo) GetDiscountedAmount(ctx context.Context, serviceID primitive.ObjectID) (float64, error) {
+	var result struct {
+		DiscountedAmount float64 `bson:"discountedAmount"`
+	}
+
+	err := r.col.FindOne(ctx, bson.M{
+		"_id": serviceID,
+	}).Decode(&result)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	return result.DiscountedAmount, nil
+}

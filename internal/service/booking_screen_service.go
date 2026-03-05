@@ -747,23 +747,22 @@ func (s *BookingService) GetProviderBookingDetails(
 
 	var complaintDTO *dto.ComplaintDTO
 
-	if r.ComplaintProvider != nil {
-		complaint, err := s.complaintRepo.FindByAcceptedServiceId(
-			ctx,
-			serviceObjID,
-		)
+	var remark string
+	var userRemark string 
+
+	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID )
+
 		if err != nil && err != mongo.ErrNoDocuments {
 			return nil, err
 		}
 
 		if complaint != nil {
-			var remark string
-			var userRemark string 
 			if complaint.Assessment != nil {
 				remark = complaint.Assessment.RemarkForProvider
 				userRemark = complaint.Assessment.RemarkForUser
 			}
 
+		if complaint.ProviderComplaint != nil {
 			complaintDTO = &dto.ComplaintDTO{
 				ID:                  complaint.ID.Hex(),
 				ComplaintProviderID: complaint.ID.Hex(),
@@ -774,14 +773,11 @@ func (s *BookingService) GetProviderBookingDetails(
 				UpdatedAt:           complaint.UpdatedAt,
 				Remark:              remark,
 				UserRemark:          userRemark,
-			}
-
-			if complaint.ProviderComplaint != nil {
-				complaintDTO.ProviderIssue = &dto.ProviderComplaintDTO{
+				ProviderIssue: &dto.ProviderComplaintDTO{
 					Problem:  complaint.ProviderComplaint.Problem,
 					Photos:   complaint.ProviderComplaint.Photos,
 					RaisedAt: complaint.ProviderComplaint.RaisedAt,
-				}
+				},
 			}
 		}
 	}
@@ -843,6 +839,8 @@ func (s *BookingService) GetProviderBookingDetails(
 		ProviderName:   provider.Name,
 		UserName:       user.Name,
 		Complaint:      complaintDTO,
+		Remark:     remark,
+        UserRemark: userRemark, 
 		Billing: dto.BillingDetailsDTO{
 			ServiceCharge:  utils.RoundTo2(serviceCharge),
 			GSTPercent:     gstPercent,

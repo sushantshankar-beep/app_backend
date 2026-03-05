@@ -348,8 +348,7 @@ func (s *ServiceTrackingService) sendStatusNotification(
 	// ============================================
 
 	if svc.Provider != primitive.NilObjectID &&
-		(newStatus == domain.StatusStarted ||
-			newStatus == domain.StatusCompleted) {
+		(newStatus == domain.StatusCompleted) {
 
 		go s.notify.SendToProvider(
 			context.Background(),

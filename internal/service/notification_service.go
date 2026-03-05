@@ -40,11 +40,8 @@ var ErrMissingFirebaseCred = errors.New(
 ============================================================ */
 
 type DeviceTokenRepository interface {
-	GetTokens(
-		ctx context.Context,
-		ownerID string,
-		ownerType string,
-	) ([]string, error)
+	GetTokens(ctx context.Context, ownerID, ownerType string) ([]string, error)
+	DeleteToken(ctx context.Context, token string) error
 }
 
 /* ============================================================
@@ -77,9 +74,8 @@ func InitFirebaseClient() (*messaging.Client, error) {
 		return nil, ErrMissingFirebaseCred
 	}
 
-	opt := option.WithCredentialsFile(credFile)
-
-	app, err := firebase.NewApp(ctx, nil, opt)
+	app, err := firebase.NewApp(ctx, nil,
+		option.WithCredentialsFile(credFile))
 	if err != nil {
 		return nil, err
 	}
@@ -95,108 +91,72 @@ func InitFirebaseClient() (*messaging.Client, error) {
 }
 
 /* ============================================================
-   PROVIDER
+   PUBLIC METHODS
 ============================================================ */
 
 func (f *FirebaseNotificationService) SendToProvider(
 	ctx context.Context,
-	providerID string,
-	serviceID string,
-	title string,
+	providerID,
+	serviceID,
+	title,
 	body string,
 	data map[string]string,
 ) error {
 
-	return f.send(
-		ctx,
-		providerID,
-		"provider",
-		serviceID,
-		title,
-		body,
-		data,
-	)
+	return f.send(ctx, providerID, "provider", serviceID, title, body, data)
 }
-
-/* ============================================================
-   USER
-============================================================ */
 
 func (f *FirebaseNotificationService) SendToUser(
 	ctx context.Context,
-	userID string,
-	serviceID string,
-	title string,
+	userID,
+	serviceID,
+	title,
 	body string,
 	data map[string]string,
 ) error {
 
-	return f.send(
-		ctx,
-		userID,
-		"user",
-		serviceID,
-		title,
-		body,
-		data,
-	)
+	return f.send(ctx, userID, "user", serviceID, title, body, data)
 }
 
 /* ============================================================
-   CORE SEND + SAVE
+   CORE SEND
 ============================================================ */
 
 func (f *FirebaseNotificationService) send(
 	ctx context.Context,
-	ownerID string,
-	ownerType string,
-	serviceID string,
-	title string,
+	ownerID,
+	ownerType,
+	serviceID,
+	title,
 	body string,
 	data map[string]string,
 ) error {
 
-	// -------------------------------------------------
-	// SAFE CONTEXT
-	// -------------------------------------------------
-
+	// ---------- SAFE CONTEXT ----------
 	ctx2 := ctx
 	if ctx == nil || ctx.Err() != nil {
 		ctx2 = context.Background()
 	}
 
-	ctx2, cancel := context.WithTimeout(ctx2, 6*time.Second)
+	ctx2, cancel := context.WithTimeout(ctx2, 10*time.Second)
 	defer cancel()
 
-	// -------------------------------------------------
-	// PARSE OWNER ID
-	// -------------------------------------------------
-
+	// ---------- PARSE IDS ----------
 	ownerOID, err := primitive.ObjectIDFromHex(ownerID)
 	if err != nil {
 		return err
 	}
 
-	// -------------------------------------------------
-	// PARSE SERVICE ID
-	// -------------------------------------------------
-
 	serviceOID := primitive.NilObjectID
-
 	if serviceID != "" {
-
 		serviceOID, err = primitive.ObjectIDFromHex(serviceID)
 		if err != nil {
 			return err
 		}
 	}
 
-	// -------------------------------------------------
-	// COPY PAYLOAD + FORCE serviceId
-	// -------------------------------------------------
-
+	// ---------- COPY PAYLOAD ----------
 	payload := make(map[string]string)
-
 	for k, v := range data {
 		payload[k] = v
 	}
@@ -205,51 +165,66 @@ func (f *FirebaseNotificationService) send(
 		payload["serviceId"] = serviceID
 	}
 
-	// -------------------------------------------------
-	// SAVE NOTIFICATION
-	// -------------------------------------------------
-
+	// ---------- SAVE NOTIFICATION ----------
 	notif := &domain.Notification{
 		OwnerID:   ownerOID,
 		OwnerType: ownerType,
 		ServiceID: serviceOID,
-
-		Title: title,
-		Body:  body,
-		Data:  payload,
-
-		Read:   false,
-		Status: "sent",
-
+		Title:     title,
+		Body:      body,
+		Data:      payload,
+		Read:      false,
+		Status:    "sent",
 		CreatedAt: time.Now(),
 	}
 
 	if err := f.notifRepo.Create(ctx2, notif); err != nil {
-		log.Println("❌ Notification insert failed:", err)
+		log.Println("❌ notification save failed:", err)
 	}
 
-	// -------------------------------------------------
-	// FETCH TOKENS  ✅ ownerType REMOVED
-	// -------------------------------------------------
-
-	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID,ownerType)
+	// ---------- FETCH TOKENS ----------
+	tokens, err := f.tokenRepo.GetTokens(ctx2, ownerID, ownerType)
 	if err != nil {
-		log.Printf(
-			"❌ token lookup failed owner=%s err=%v",
-			ownerID,
-			err,
-		)
 		return err
 	}
 
 	if len(tokens) == 0 {
-		log.Printf("⚠️ no tokens owner=%s", ownerID)
+		log.Println("⚠️ no device tokens found")
 		return nil
 	}
 
-	// -------------------------------------------------
+	// ============================================================
+	// ANDROID CONFIG (CUSTOM SOUND + HIGH PRIORITY)
+	// ============================================================
+
+	androidCfg := &messaging.AndroidConfig{
+		Priority: "high",
+		Notification: &messaging.AndroidNotification{
+			Sound:        "custom",        // custom.mp3 inside res/raw
+			ChannelID:    "high_priority", // must exist in app
+			Priority:     messaging.PriorityHigh,
+			DefaultSound: false,
+		},
+	}
+
+	// ============================================================
+	// IOS CONFIG (BACKGROUND + CUSTOM SOUND)
+	// ============================================================
+
+	apnsCfg := &messaging.APNSConfig{
+		Headers: map[string]string{
+			"apns-priority": "10",
+		},
+		Payload: &messaging.APNSPayload{
+			Aps: &messaging.Aps{
+				Sound:            "custom.wav", // must exist in iOS bundle
+			},
+		},
+	}
+
+	// ============================================================
 	// SINGLE TOKEN
-	// -------------------------------------------------
+	// ============================================================
 
 	if len(tokens) == 1 {
 
@@ -259,16 +234,18 @@ func (f *FirebaseNotificationService) send(
 				Title: title,
 				Body:  body,
 			},
-			Data: payload,
+			Data:    payload,
+			Android: androidCfg,
+			APNS:    apnsCfg,
 		}
 
 		_, err := f.fcm.Send(ctx2, msg)
 		return err
 	}
 
-	// -------------------------------------------------
+	// ============================================================
 	// MULTICAST
-	// -------------------------------------------------
+	// ============================================================
 
 	mmsg := &messaging.MulticastMessage{
 		Tokens: tokens,
@@ -276,21 +253,32 @@ func (f *FirebaseNotificationService) send(
 			Title: title,
 			Body:  body,
 		},
-		Data: payload,
+		Data:    payload,
+		Android: androidCfg,
+		APNS:    apnsCfg,
 	}
 
 	resp, err := f.fcm.SendMulticast(ctx2, mmsg)
 	if err != nil {
-		log.Println("❌ FCM multicast error:", err)
 		return err
 	}
 
 	log.Printf(
-		"📲 FCM multicast owner=%s success=%d fail=%d",
-		ownerID,
+		"📲 FCM multicast success=%d fail=%d",
 		resp.SuccessCount,
 		resp.FailureCount,
 	)
+
+	// ---------- CLEAN INVALID TOKENS ----------
+	for i, r := range resp.Responses {
+		if !r.Success {
+			if messaging.IsUnregistered(r.Error) ||
+				messaging.IsInvalidArgument(r.Error) {
+
+				_ = f.tokenRepo.DeleteToken(ctx2, tokens[i])
+			}
+		}
+	}
 
 	return nil
 }

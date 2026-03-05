@@ -356,6 +356,7 @@ func (s *BiddingService) findProviders(
 			continue
 		}
 		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
+		processed := make(map[string]bool)
 
 		for _, radius := range radiusSteps {
 
@@ -389,6 +390,9 @@ func (s *BiddingService) findProviders(
 			for i := 0; i < len(list); i += 2 {
 
 				pid := list[i].(string)
+				if processed[pid] {
+					continue
+				}
 
 				distStr := list[i+1].(string)
 				dist, _ := strconv.ParseFloat(distStr, 64)
@@ -409,6 +413,9 @@ func (s *BiddingService) findProviders(
 							"serviceId": serviceID,
 						},
 					)
+					if err != nil {
+						log.Println("notification error:", err)
+					}
 
 					s.socket.Emit(
 						"provider:"+providerID,

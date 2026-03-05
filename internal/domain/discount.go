@@ -54,6 +54,7 @@ type Discount struct {
 	EndAt                 *time.Time             `bson:"endAt,omitempty" json:"end_at,omitempty"`
 	CreatedAt             time.Time              `bson:"createdAt" json:"created_at"`
 	UpdatedAt             time.Time              `bson:"updatedAt" json:"updated_at"`
+	VehicleType           string                 `bson:"vehicleType" json:"vehicle_type"` 
 }
 
 func IsValidDiscountScope(s DiscountScope) bool {

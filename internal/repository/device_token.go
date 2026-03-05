@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
 )
 
 /* ============================================================
@@ -84,10 +85,18 @@ func (r *DeviceTokenRepo) GetTokens(
 	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cur, err := r.col.Find(ctx2, bson.M{
-		"ownerId":   ownerID,
-		"ownerType": ownerType,
-	})
+	// 🔽 Add sort option
+	findOptions := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	cur, err := r.col.Find(
+		ctx2,
+		bson.M{
+			"ownerId":   ownerID,
+			"ownerType": ownerType,
+		},
+		findOptions,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +108,6 @@ func (r *DeviceTokenRepo) GetTokens(
 	for cur.Next(ctx2) {
 		var dt DeviceToken
 		if err := cur.Decode(&dt); err == nil {
-
-			// 🛑 prevent duplicate token sends
 			if _, ok := seen[dt.Token]; ok {
 				continue
 			}
@@ -115,4 +122,26 @@ func (r *DeviceTokenRepo) GetTokens(
 	}
 
 	return tokens, nil
+}
+func (r *DeviceTokenRepo) DeleteToken(
+	ctx context.Context,
+	token string,
+) error {
+
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	res, err := r.col.DeleteOne(
+		ctx2,
+		bson.M{"token": token},
+	)
+	if err != nil {
+		return err
+	}
+
+	if res.DeletedCount > 0 {
+		log.Println("Token removed:", token)
+	}
+
+	return nil
 }

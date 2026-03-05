@@ -207,7 +207,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			context.Background(),
 			providerID,
 			svc.ID.Hex(),
-			"Payment Successful 💰",
+			"Payment Successful",
 			"User payment completed. Open app.",
 			map[string]string{
 				"type":      "payment_success",
@@ -226,13 +226,24 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"serviceId": svc.ID.Hex(),
 		},
 	)
+	go s.notify.SendToUser(
+		context.Background(),
+		svc.User.Hex(),
+		svc.ID.Hex(),
+		"Payment Successful",
+		"Your payment has been successfully completed.",
+		map[string]string{
+			"type":      "payment_success",
+			"serviceId": svc.ID.Hex(),
+		},
+	)
 	job := domain.InvoiceJob{
 		TxnID:     txnID,
 		UserID:    txn.UserID,
 		ServiceID: txn.ServiceID,
 	}
 	if err := s.invoiceQueue.Publish(context.Background(), job); err != nil {
-		log.Println("❌ failed to push invoice job:", err)
+		log.Println("failed to push invoice job:", err)
 	}
 
 	// ---------------- SIDE EFFECTS ----------------
@@ -274,13 +285,13 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 
 	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
 	if err != nil {
-		log.Println("❌ invalid service id:", txn.ServiceID)
+		log.Println("invalid service id:", txn.ServiceID)
 		return
 	}
 
 	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
-		log.Println("❌ accepted service:", err)
+		log.Println("accepted service:", err)
 		return
 	}
 
@@ -295,7 +306,7 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		domain.PaymentFailed,
 		"provider_assigned",
 	); err != nil {
-		log.Println("❌ update grace:", err)
+		log.Println("update grace:", err)
 	}
 
 	ttl := 300
@@ -339,7 +350,7 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		context.Background(),
 		txn.UserID,
 		svc.ID.Hex(),
-		"Payment Failed ❌",
+		"Payment Failed",
 		msg,
 		map[string]string{
 			"type":      "payment_failed",

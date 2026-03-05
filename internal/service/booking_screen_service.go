@@ -857,10 +857,10 @@ func (s *BookingService) GetProviderBookingDetails(
 	}, nil
 }
 
-func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, page, limit int) ([]dto.UserExpenseDTO, float64,int64, error) {
+func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, page, limit int) ([]dto.UserExpenseDTO, float64, int64, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, 0,0, err
+		return nil, 0, 0, err
 	}
 
 	_, err = s.userRepo.GetByID(ctx, userObjID)
@@ -870,13 +870,13 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, pag
 
 	skip := int64((page - 1) * limit)
 
-	services, total ,err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID,skip,int64(limit))
+	// 🔹 Paginated services
+	services, total, err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID, skip, int64(limit))
 	if err != nil {
-		return nil, 0, 0,err
+		return nil, 0, 0, err
 	}
 
 	result := make([]dto.UserExpenseDTO, 0, len(services))
-	var totalExpense float64
 
 	for _, service := range services {
 		transaction, err := s.transactionRepo.GetLatestPaidTransactionByServiceID(ctx, service.ID.Hex())
@@ -890,7 +890,7 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, pag
 
 		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(service.Provider.Hex()))
 		if err != nil {
-			return nil, 0, 0,err
+			return nil, 0, 0, err
 		}
 
 		expense := dto.UserExpenseDTO{
@@ -907,12 +907,29 @@ func (s *BookingService) GetUserExpenses(ctx context.Context, userID string, pag
 		}
 
 		result = append(result, expense)
-		totalExpense += utils.RoundTo2(transaction.Amount)
 	}
 
-	return result, totalExpense, total,nil
-}
+	// 🔹 Get ALL services (no pagination) for total expense
+	allServices, _, err := s.acceptedRepo.GetCompletedServicesByUser(ctx, userID, 0, 1000000)
+	if err != nil {
+		return nil, 0, 0, err
+	}
 
+	var totalExpense float64
+
+	for _, service := range allServices {
+		transaction, err := s.transactionRepo.GetLatestPaidTransactionByServiceID(ctx, service.ID.Hex())
+		if err != nil {
+			continue
+		}
+
+		if transaction.Status == string(domain.PaymentPaid) {
+			totalExpense += utils.RoundTo2(transaction.Amount)
+		}
+	}
+
+	return result, totalExpense, total, nil
+}
 func (s *BookingService) GetProviderDashboard(ctx context.Context, providerID string) (*dto.DashboardStats, error) {
 	providerObjID, err := primitive.ObjectIDFromHex(providerID)
 	if err != nil {

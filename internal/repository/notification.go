@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"fmt"
 )
 
 /* ============================================================
@@ -126,9 +127,11 @@ func (r *NotificationRepo) FindByService(
 				"Booking Cancelled",
 				"Payment Completed",
 				"Complaint Raised",
+				"Payment Successful",
 			},
 		},
 	}
+	fmt.Println(filter)
 	opts := options.Find().
 		SetSort(bson.M{"createdAt": -1}).
 		SetLimit(limit).

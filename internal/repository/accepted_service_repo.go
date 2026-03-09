@@ -327,15 +327,13 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 
 	var bookings []domain.AcceptedService
 
-	filter := bson.M{
+	countFilter := bson.M{
 		"user":   userID,
 		"status": bson.M{"$in": status},
-	}
-
-	countFilter := bson.M{
-		"user":     userID,
-		"status":   bson.M{"$in": status},
-		"provider": bson.M{"$ne": primitive.NilObjectID},
+		"$or": []bson.M{
+			{"provider": bson.M{"$ne": primitive.NilObjectID}},
+			{"cancelledByProvider": true},
+		},
 	}
 
 	total, err := r.col.CountDocuments(ctx, countFilter)
@@ -351,7 +349,7 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 
 	cursor, err := r.col.Find(
 		ctx,
-		filter,
+		countFilter,
 		opts,
 	)
 	if err != nil {
@@ -373,11 +371,17 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService,int64, error) {
 
 	filter := bson.M{
-		"$or": []bson.M{
-			{"provider": providerID},
-		},
-		"status": bson.M{"$in": status},
-	}
+        "$or": []bson.M{
+            {
+                "provider": providerID,
+                "status":   bson.M{"$in": status},
+            },
+            {
+                "cancelledProviderID": providerID.Hex(),
+                "cancelledByProvider": true,
+            },
+        },
+    }
 
 	total, err := r.col.CountDocuments(ctx, filter)
 	if err != nil {

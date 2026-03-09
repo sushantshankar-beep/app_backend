@@ -246,9 +246,17 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
 
-		if r.Cancelled != nil && r.CancelledAt != nil {
-			cancelled = r.Cancelled
-			cancelledAt = r.CancelledAt
+		serviceData := &r
+		if r.Provider.IsZero() {
+			snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
+			if err == nil && snap != nil {
+				serviceData = &snap.Service
+			}
+		}
+
+		if serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
+			cancelled = serviceData.Cancelled
+			cancelledAt = serviceData.CancelledAt
 		}
 
 		providerRaisedComplaint := false
@@ -478,9 +486,17 @@ func (s *BookingService) GetUserBookingDetails(
 	var cancelled *domain.CancelInfo
 	var cancelledAt *time.Time
 
-	if r.Cancelled != nil && r.CancelledAt != nil {
-		cancelled = r.Cancelled
-		cancelledAt = r.CancelledAt
+	serviceData := r
+	if r.Provider.IsZero() {
+		snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
+		if err == nil && snap != nil {
+			serviceData = &snap.Service
+		}
+	}
+
+	if serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
+		cancelled = serviceData.Cancelled
+		cancelledAt = serviceData.CancelledAt
 	}
 	var distanceKm float64
 	var etaMinutes int64
@@ -521,6 +537,13 @@ func (s *BookingService) GetUserBookingDetails(
 		}
 	}
 
+	timestamps := r.Timestamps
+    if r.Status == domain.StatusCompleted && timestamps != nil {
+      cleaned := *timestamps
+      cleaned.CancelledAt = nil
+      timestamps = &cleaned
+  }
+
 
 	return &dto.UserBookingDetailDTO{
 		ID:                 r.ID,
@@ -538,7 +561,7 @@ func (s *BookingService) GetUserBookingDetails(
 		Issues:             r.Issues,
 		DistanceKm:         distanceKm,
 		EtaMinutes:         etaMinutes,
-		Timestamps:         r.Timestamps,
+		Timestamps:         timestamps,
 		UserName:           user.Name,
 		ProviderID:         providerID,
 		ProviderName:       providerName,
@@ -582,17 +605,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 
     raw,total, err := s.acceptedRepo.GetBookingsByProviderAndStatus(ctx, providerObjID, sStatus,skip,int64(limit))
 	if err != nil {
-        return nil, 0,err
-	}
-
-	snaps, _ := s.snapshotRepo.GetByProviderAndStatus(
-		ctx,
-		providerObjID,
-		sStatus,
-	)
-
-	for _, snap := range snaps {
-		raw = append(raw, snap.Service)
+		return nil, 0, err
 	}
 
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
@@ -600,13 +613,11 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 	for _, r := range raw {
 
 		serviceData := &r
-		useSnapshot := false
 
-		if r.CancelledProviderID == providerID {
+		if r.CancelledByProvider && r.CancelledProviderID == providerID {
 			snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
 			if err == nil && snap != nil {
 				serviceData = &snap.Service
-				useSnapshot = true
 			}
 		}
 
@@ -621,9 +632,9 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		}
 
 		providerIDStr := serviceData.Provider.Hex()
-		if providerIDStr == "" {
+if providerIDStr == "" {
 			providerIDStr = providerID
-		}
+}
 
 		provider, err := s.providerRepo.FindByID(
 			ctx,
@@ -642,7 +653,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
 
-		if useSnapshot && serviceData.Cancelled != nil {
+		if serviceData.Cancelled != nil {
 			cancelled = serviceData.Cancelled
 			if serviceData.CancelledAt != nil {
 				cancelledAt = serviceData.CancelledAt
@@ -720,14 +731,13 @@ func (s *BookingService) GetProviderBookingDetails(
 
 	serviceData := r
 	targetProviderID := providerID
-	useSnapshot := false
 
-	if r.CancelledProviderID == providerID {
+	if r.CancelledByProvider && r.CancelledProviderID == providerID {
 		snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
 		if err == nil && snap != nil {
 			serviceData = &snap.Service
-			useSnapshot = true
 		}
+		targetProviderID = r.CancelledProviderID
 	} else if r.Provider.Hex() == providerID {
 		targetProviderID = r.Provider.Hex()
 	}
@@ -748,19 +758,19 @@ func (s *BookingService) GetProviderBookingDetails(
 	var complaintDTO *dto.ComplaintDTO
 
 	var remark string
-	var userRemark string 
+	var userRemark string
 
 	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID )
 
-		if err != nil && err != mongo.ErrNoDocuments {
-			return nil, err
-		}
+	if err != nil && err != mongo.ErrNoDocuments {
+		return nil, err
+	}
 
-		if complaint != nil {
-			if complaint.Assessment != nil {
-				remark = complaint.Assessment.RemarkForProvider
-				userRemark = complaint.Assessment.RemarkForUser
-			}
+	if complaint != nil {
+		if complaint.Assessment != nil {
+			remark = complaint.Assessment.RemarkForProvider
+			userRemark = complaint.Assessment.RemarkForUser
+		}
 
 		if complaint.ProviderComplaint != nil {
 			complaintDTO = &dto.ComplaintDTO{
@@ -807,17 +817,19 @@ func (s *BookingService) GetProviderBookingDetails(
 	var cancelled *domain.CancelInfo
 	var cancelledAt *time.Time
 
-	if useSnapshot && serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
+	if serviceData.Cancelled != nil && serviceData.CancelledAt != nil {
 		cancelled = serviceData.Cancelled
 		cancelledAt = serviceData.CancelledAt
 	}
 
 	timestamps := serviceData.Timestamps
-	if !useSnapshot && r.Timestamps.CancelledAt != nil {
-		ts := r.Timestamps
-		ts.CancelledAt = nil
-		timestamps = ts
-	}
+    if r.Status == domain.StatusCompleted && 
+    !(r.CancelledByProvider && r.CancelledProviderID == providerID) &&
+       timestamps != nil {
+       cleaned := *timestamps
+       cleaned.CancelledAt = nil
+       timestamps = &cleaned
+    }
 
 	return &dto.ProviderBookingDetailDTO{
 		ID:             serviceData.ID,

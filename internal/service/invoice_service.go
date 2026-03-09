@@ -152,7 +152,7 @@ func (s *InvoiceService) GenerateInternal(ctx context.Context,userID string, ser
 			FuelType:      service.FuelType,
 		},
 		ServiceInfo: domain.ServiceInfo{
-			Type:          service.ServiceType,
+			Type:          trimTo50Chars(service.ServiceType),
 			Status:        service.Status,
 			PaymentStatus: service.PaymentStatus,
 		},
@@ -222,4 +222,11 @@ func (s *InvoiceService) GetInvoicePDF(
 	}
 
 	return invoice.PDFUrl, nil
+}
+
+func trimTo50Chars(s string) string {
+	if len(s) > 50 {
+		return s[:50] + "..."
+	}
+	return s
 }

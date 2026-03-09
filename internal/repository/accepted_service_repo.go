@@ -327,22 +327,20 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 
 	var bookings []domain.AcceptedService
 
-	filter := bson.M{
+	countFilter := bson.M{
 		"user":   userID,
 		"status": bson.M{"$in": status},
-	}
-
-	countFilter := bson.M{
-		"user":     userID,
-		"status":   bson.M{"$in": status},
-		"provider": bson.M{"$ne": primitive.NilObjectID},
+		"$or": []bson.M{
+			{"provider": bson.M{"$ne": primitive.NilObjectID}},
+			{"cancelledByProvider": true},
+		},
 	}
 
 	total, err := r.col.CountDocuments(ctx, countFilter)
 	if err != nil {
 		return nil, 0, err
 	}
- 
+
 	opts := options.Find().
 		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
 		SetSkip(skip).
@@ -351,7 +349,7 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 
 	cursor, err := r.col.Find(
 		ctx,
-		filter,
+		countFilter,
 		opts,
 	)
 	if err != nil {
@@ -362,21 +360,27 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 	if err := cursor.All(ctx, &bookings); err != nil {
 		return nil, 0, err
 	}
-	
+
 	if bookings == nil {
 		return []domain.AcceptedService{}, total,nil
 	}
-	
+
 	return bookings,total, nil
 }
 
 func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService,int64, error) {
 
 	filter := bson.M{
-		"$or": []bson.M{
-			{"provider": providerID},
-		},
 		"status": bson.M{"$in": status},
+		"$or": []bson.M{
+			{
+				"provider": providerID,
+			},
+			{
+				"cancelledProviderID": providerID.Hex(),
+				"cancelledByProvider": true,
+			},
+		},
 	}
 
 	total, err := r.col.CountDocuments(ctx, filter)
@@ -385,7 +389,7 @@ func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context
 	}
 
 	var bookings []domain.AcceptedService
-	
+
 	opts := options.Find().
 		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
 		SetSkip(skip).
@@ -570,7 +574,7 @@ func (r *AcceptedServiceRepo) GetProviderCompletedBookingsByDate(
 
 
 	opts := options.Find().SetSort(bson.M{"createdAt": -1}).SetSkip(skip).
-	SetLimit(limit)
+		SetLimit(limit)
 
 	var bookings []domain.AcceptedService
 	cursor, err := r.col.Find(ctx, filter, opts)

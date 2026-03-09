@@ -84,8 +84,8 @@
       .header {
         background: #266ddf;
         color: #fff;
-        padding: 30px;
-        margin: 30px 30px 0;
+        padding: 18px;
+        margin: 18px 20px 0;
         display: flex;
         border-radius: 10px;
         justify-content: space-between;
@@ -116,38 +116,40 @@
 
       .cards {
         display: flex;
-        gap: 20px;
-        padding: 30px 0;
-        margin: 0 30px -10px;
+        gap: 14px;
+        padding: 12px 0;
+        margin: 0 20px 2px;
         background: #fff;
       }
 
       .card {
         flex: 1;
         background: #f8fafc;
-        padding: 12px 24px;
+        padding: 14px 20px;
         border-radius: 8px;
         border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       }
 
       .card h3 {
-        margin: 0 0 16px;
+        margin: 0 0 10px;
         color: #475569;
-        font-size: 13px;
+        font-size: 12px;
         display: flex;
         align-items: center;
         gap: 6px;
       }
 
       .card h3::before {
-        content: "📋";
+        content: "◆";
         font-size: 16px;
+        margin-right: 8px;
+        color: #266ddf;
       }
 
       .card p {
-        margin: 12px 0;
-        font-size: 14px;
+        margin: 6px 0;
+        font-size: 12px;
         color: #475569;
         display: flex;
         align-items: center;
@@ -162,13 +164,15 @@
       }
 
       .icon {
-        color: #475569;
-        font-size: 14px;
+        color: #266ddf;
+        font-size: 16px;
+        font-weight: bold;
+        margin-right: 4px;
       }
 
       .gst-section {
-        margin-top: 16px;
-        padding-top: 12px;
+        margin-top: 8px;
+        padding-top: 8px;
       }
 
       .gst-label {
@@ -182,9 +186,9 @@
       }
 
       .vehicle {
-        margin: 0 30px 20px;
+        margin: 0 20px 10px;
         background: #f8fafc;
-        padding: 24px;
+        padding: 16px;
         border-radius: 8px;
         border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -216,8 +220,8 @@
       }
 
       table {
-        width: calc(100% - 60px);
-        margin: 0 30px 20px;
+        width: calc(100% - 40px);
+        margin: 0 20px 10px;
         border-collapse: separate;
         border-spacing: 0;
         font-size: 12px;
@@ -281,15 +285,15 @@
       }
 
       .notes {
-        margin: 0 30px 20px;
+        margin: 0 20px 10px;
         background: #f8fafc;
-        padding: 24px;
+        padding: 16px;
         border-radius: 8px;
         border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         font-size: 13px;
         color: #374151;
-        line-height: 1.6;
+        line-height: 1.5;
       }
 
       .notes b {
@@ -310,8 +314,8 @@
       }
 
       .footer {
-        margin-top: 30px;
-        padding: 20px;
+        margin-top: 10px;
+        padding: 12px;
         text-align: center;
         font-weight: 700;
         background: linear-gradient(
@@ -323,9 +327,8 @@
           #3b82f6
         );
         color: #000;
-        font-size: 14px;
+        font-size: 13px;
       }
-
       @media print {
         body {
           background: #fff;
@@ -333,6 +336,29 @@
         }
         .invoice {
           box-shadow: none;
+        }
+        .notes {
+          page-break-inside: avoid;
+          break-inside: avoid;
+          page-break-before: auto;
+        }
+        table {
+          page-break-inside: auto;
+        }
+        tr {
+          page-break-inside: avoid;
+          break-inside: avoid;
+          page-break-after: auto;
+        }
+        .vehicle {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        thead {
+          display: table-header-group;
+        }
+        tfoot {
+          display: table-footer-group;
         }
       }
     </style>
@@ -362,9 +388,9 @@
         <div class="card">
           <h3>From</h3>
           <p><b>{{.Company.Name}}</b></p>
-          <p><span class="icon">📍</span>{{.Company.Address}}</p>
-          <p><span class="icon">✉️</span>{{.Company.Email}}</p>
-          <p><span class="icon">📞</span>{{.Company.Phone}}</p>
+           <p><span class="icon">⦿</span>{{.Company.Address}}</p>
+           <p><span class="icon">✉</span>{{.Company.Email}}</p>
+           <p><span class="icon">☎</span>{{.Company.Phone}}</p>
           <div class="gst-section">
             <div class="gst-label">GST Number</div>
             <p><b>{{.Company.GST}}</b></p>
@@ -372,11 +398,11 @@
         </div>
 
         <div class="card">
-          <h3>Bill To</h3>
-          <p><b>{{.Customer.Name}}</b></p>
-          <p><span class="icon">✉️</span>{{.Customer.Email}}</p>
-          <p><span class="icon">📞</span>{{.Customer.Phone}}</p>
-        </div>
+           <h3>Bill To</h3>
+           <p><b>{{.Customer.Name}}</b></p>
+           <p><span class="icon">✉</span>{{.Customer.Email}}</p>
+           <p><span class="icon">☎</span>{{.Customer.Phone}}</p>
+         </div>
       </div>
 
       <div class="vehicle">
@@ -428,7 +454,6 @@
           <tr class="service-row">
             <td>{{.Service.ID}}</td>
             <td>{{.Service.Type}}</td>
-            <td>{{.Service.Status}}</td>
             <td>{{.Service.PaymentStatus}}</td>
             <td>{{.Service.PaymentMode}}</td>
             <td>₹ {{.Pricing.ServiceCharge}}</td>
@@ -479,11 +504,12 @@
         <b>Notes</b>
         <ol>
           <li>
-            This invoice is issued on behalf of Transport Service Provider.
-            Indsystems IT Private Limited acts in the capacity of an Electronic
-            Commerce Operator as per Section 9(5) of the Central Goods & Service
-            Tax Act, 2017 & corresponding Integrated Goods & Service Tax Act,
-            2017.
+            This invoice is issued on behalf of vehicle-related services.
+            Vahanwire Technologies Pvt. Ltd. acts in the capacity of an
+            Electronic Commerce Operator (ECO) in accordance with Section 9(5)
+            of the Central Goods and Services Tax Act, 2017 and the
+            corresponding provisions of the Integrated Goods and Services Tax
+            Act, 2017.
           </li>
           <li>
             This is an electronically generated invoice and does not require a

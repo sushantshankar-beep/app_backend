@@ -1,32 +1,32 @@
 <!doctype html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <title>Invoice</title>
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap"
-      rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700&display=swap"
+    rel="stylesheet"
     />
     <style>
-      * {
+    * {
         box-sizing: border-box;
         font-family: "Roboto", sans-serif;
-      }
-      body {
+    }
+    body {
         margin: 0;
         background: #e5e7eb;
         padding: 30px;
-      }
+    }
 
-      .invoice {
+    .invoice {
         max-width: 900px;
         margin: auto;
         background: #fff;
         overflow: hidden;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-      }
+    }
 
-      .brand-bar {
+    .brand-bar {
         background: #fff;
         height: 90px;
         display: flex;
@@ -36,9 +36,9 @@
         font-size: 26px;
         font-weight: bold;
         position: relative;
-      }
+    }
 
-      .brand-bar::after {
+    .brand-bar::after {
         content: "";
         position: absolute;
         bottom: 0;
@@ -46,42 +46,42 @@
         right: 0;
         height: 2.5px;
         background: linear-gradient(
-          90deg,
-          #ef4444,
-          #f97316,
-          #facc15,
-          #22c55e,
-          #3b82f6
+        90deg,
+        #ef4444,
+        #f97316,
+        #facc15,
+        #22c55e,
+        #3b82f6
         );
-      }
+    }
 
-      .logo {
+    .logo {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-      }
+    }
 
-      .logo img {
+    .logo img {
         max-width: 45px;
         height: auto;
-      }
+    }
 
-      .logo span {
+    .logo span {
         font-size: 28px;
         font-weight: bold;
         margin-top: 4px;
-      }
+    }
 
-      .logo-icon {
+    .logo-icon {
         font-size: 32px;
         font-weight: bold;
         background: linear-gradient(135deg, #ef4444, #f97316, #facc15);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
-      }
+    }
 
-      .header {
+    .header {
         background: #266ddf;
         color: #fff;
         padding: 18px;
@@ -90,201 +90,201 @@
         border-radius: 10px;
         justify-content: space-between;
         align-items: center;
-      }
+    }
 
-      .header h1 {
+    .header h1 {
         margin: 0;
         font-size: 40px;
         font-weight: 600;
-      }
+    }
 
-      .header .right {
+    .header .right {
         text-align: right;
         font-size: 13px;
-      }
+    }
 
-      .header .right .label {
+    .header .right .label {
         font-size: 12px;
         opacity: 0.9;
-      }
+    }
 
-      .header .right .number {
+    .header .right .number {
         font-size: 20px;
         font-weight: bold;
         margin: 4px 0 8px;
-      }
+    }
 
-      .cards {
+    .cards {
         display: flex;
         gap: 14px;
         padding: 12px 0;
         margin: 0 20px 2px;
         background: #fff;
-      }
+    }
 
-      .card {
+    .card {
         flex: 1;
         background: #f8fafc;
         padding: 14px 20px;
         border-radius: 8px;
         border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-      }
+    }
 
-      .card h3 {
+    .card h3 {
         margin: 0 0 10px;
         color: #475569;
         font-size: 12px;
         display: flex;
         align-items: center;
         gap: 6px;
-      }
+    }
 
-      .card h3::before {
+    .card h3::before {
         content: "◆";
         font-size: 16px;
         margin-right: 8px;
-        color: #266ddf;
-      }
+        color: #111827;
+    }
 
-      .card p {
+    .card p {
         margin: 6px 0;
         font-size: 12px;
         color: #475569;
         display: flex;
         align-items: center;
         gap: 8px;
-      }
+    }
 
-      .card p b {
+    .card p b {
         font-size: 15px;
         color: #111827;
         display: block;
         margin-bottom: 8px;
-      }
+    }
 
-      .icon {
-        color: #266ddf;
+    .icon {
+        color: #111827;
         font-size: 16px;
         font-weight: bold;
         margin-right: 4px;
-      }
+    }
 
-      .gst-section {
+    .gst-section {
         margin-top: 8px;
         padding-top: 8px;
-      }
+    }
 
-      .gst-label {
+    .gst-label {
         color: #6b7280;
         font-size: 14px;
         margin-bottom: 4px;
-      }
+    }
 
-      .gst-section p b {
+    .gst-section p b {
         font-size: 14px;
-      }
+    }
 
-      .vehicle {
+    .vehicle {
         margin: 0 20px 10px;
         background: #f8fafc;
         padding: 16px;
         border-radius: 8px;
         border: 1px solid #efefef;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-      }
+    }
 
-      .vehicle h3 {
+    .vehicle h3 {
         margin: 0 0 20px;
         font-size: 17px;
         color: #111827;
-      }
+    }
 
-      .vehicle-grid {
+    .vehicle-grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 20px 16px;
         font-size: 14px;
-      }
+    }
 
-      .label {
+    .label {
         color: 111827;
         font-size: 12px;
         margin-bottom: 6px;
-      }
+    }
 
-      .value {
+    .value {
         font-weight: 600;
         color: #1e293b;
         font-size: 13px;
-      }
+    }
 
-      table {
-        width: calc(100% - 40px);
-        margin: 0 20px 10px;
-        border-collapse: separate;
-        border-spacing: 0;
-        font-size: 12px;
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
-      }
+    table {
+      width: calc(100% - 40px);
+      margin: 0 20px 10px;
+      border-collapse: collapse;
+     
+      font-size: 11px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
 
-      thead {
+    thead {
         background: #e9f0fc;
-      }
+    }
 
-      th {
-        text-align: left;
-        padding: 12px 6px;
-        font-weight: 600;
-        color: #374151;
-        font-size: 12px;
-      }
+    th {
+      text-align: left;
+      padding: 10px 5px;
+      font-weight: 600;
+      color: #374151;
+      font-size: 11px;
+    }
 
-      td {
-        padding: 12px 6px;
-        border-top: 1px solid #e5e7eb;
-        color: #111827;
-      }
+    td {
+      padding: 10px 5px;
+      border-top: 1px solid #e5e7eb;
+      color: #111827;
+    }
 
-      .pricing-row-table {
+    .pricing-row-table {
         background: #f8fafc;
         font-size: 12px;
-      }
+    }
 
-      .service-row td {
+    .service-row td {
         font-weight: 600;
-      }
+    }
 
-      .pricing-row-table td {
-        padding: 14px 12px;
-        color: #374151;
-        border-top: none;
-      }
+    .pricing-row-table td {
+      padding: 10px 8px;
+      color: #374151;
+      border-top: none;
+    }
 
-      .pricing-row-table td:first-child {
+    .pricing-row-table td:first-child {
         text-align: left;
-      }
+    }
 
-      .first-pricing-row td {
+    .first-pricing-row td {
         border-top: 1px solid #e5e7eb;
-      }
+    }
 
-      .total-row {
+    .total-row {
         font-weight: bold;
         background: #f2f2f2;
-      }
+    }
 
-      .total-row td {
+    .total-row td {
         font-size: 13px;
         color: #111827;
         font-weight: 600;
-      }
+    }
 
-      .notes {
+    .notes {
         margin: 0 20px 10px;
         background: #f8fafc;
         padding: 16px;
@@ -294,234 +294,233 @@
         font-size: 13px;
         color: #374151;
         line-height: 1.5;
-      }
+    }
 
-      .notes b {
+    .notes b {
         display: block;
         margin-bottom: 12px;
         color: #111827;
         font-size: 17px;
-      }
+    }
 
-      .notes ol {
+    .notes ol {
         margin: 0;
         padding-left: 20px;
-      }
+    }
 
-      .notes li {
+    .notes li {
         margin: 8px 0;
         font-size: 12px;
-      }
+    }
 
-      .footer {
-        margin-top: 10px;
+    .footer {
+        margin-top: 12px;
         padding: 12px;
         text-align: center;
         font-weight: 700;
         background: linear-gradient(
-          90deg,
-          #ef4444,
-          #f97316,
-          #facc15,
-          #22c55e,
-          #3b82f6
+        90deg,
+        #ef4444,
+        #f97316,
+        #facc15,
+        #22c55e,
+        #3b82f6
         );
         color: #000;
         font-size: 13px;
-      }
-      @media print {
+    }
+    @media print {
         body {
-          background: #fff;
-          padding: 0;
+        background: #fff;
+        padding: 0;
         }
         .invoice {
-          box-shadow: none;
+        box-shadow: none;
         }
         .notes {
-          page-break-inside: avoid;
-          break-inside: avoid;
-          page-break-before: auto;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-before: auto;
         }
         table {
-          page-break-inside: auto;
+        page-break-inside: auto;
         }
         tr {
-          page-break-inside: avoid;
-          break-inside: avoid;
-          page-break-after: auto;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: auto;
         }
         .vehicle {
-          page-break-inside: avoid;
-          break-inside: avoid;
+        page-break-inside: avoid;
+        break-inside: avoid;
         }
         thead {
-          display: table-header-group;
+        display: table-header-group;
         }
         tfoot {
-          display: table-footer-group;
+        display: table-footer-group;
         }
-      }
+    }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <div class="invoice">
-      <div class="brand-bar">
+    <div class="brand-bar">
         <div class="logo">
-          <img
+        <img
             src="https://vahanwire-bucket-for-dev-qa.s3.amazonaws.com/app_backend/1769620076723_Group_1171276772_(3).png"
             alt="Logo"
-          />
-          <span>Vahanwire</span>
+        />
+        <span>Vahanwire</span>
         </div>
-      </div>
+    </div>
 
-      <div class="header">
+    <div class="header">
         <h1>Invoice</h1>
         <div class="right">
-          <div class="label">Invoice Number</div>
-          <div class="number">{{.InvoiceNumber}}</div>
-          <div>Date : {{.InvoiceDate}}</div>
+        <div class="label">Invoice Number</div>
+        <div class="number">{{.InvoiceNumber}}</div>
+        <div>Date : {{.InvoiceDate}}</div>
         </div>
-      </div>
+    </div>
 
-      <div class="cards">
+    <div class="cards">
         <div class="card">
-          <h3>From</h3>
-          <p><b>{{.Company.Name}}</b></p>
-           <p><span class="icon">⦿</span>{{.Company.Address}}</p>
-           <p><span class="icon">✉</span>{{.Company.Email}}</p>
-           <p><span class="icon">☎</span>{{.Company.Phone}}</p>
-          <div class="gst-section">
+        <h3>From</h3>
+        <p><b>{{.Company.Name}}</b></p>
+        <p><span class="icon">⦿</span>{{.Company.Address}}</p>
+        <p><span class="icon">✉</span>{{.Company.Email}}</p>
+        <p><span class="icon">☎</span>{{.Company.Phone}}</p>
+        <div class="gst-section">
             <div class="gst-label">GST Number</div>
             <p><b>{{.Company.GST}}</b></p>
-          </div>
+        </div>
         </div>
 
         <div class="card">
-           <h3>Bill To</h3>
-           <p><b>{{.Customer.Name}}</b></p>
-           <p><span class="icon">✉</span>{{.Customer.Email}}</p>
-           <p><span class="icon">☎</span>{{.Customer.Phone}}</p>
-         </div>
-      </div>
+        <h3>Bill To</h3>
+        <p><b>{{.Customer.Name}}</b></p>
+        <p><span class="icon">✉</span>{{.Customer.Email}}</p>
+        <p><span class="icon">☎</span>{{.Customer.Phone}}</p>
+        </div>
+    </div>
 
-      <div class="vehicle">
+    <div class="vehicle">
         <h3>Vehicle Information</h3>
         <div class="vehicle-grid">
-          <div>
+        <div>
             <div class="label">Vehicle Type</div>
             <div class="value">{{.Vehicle.Type}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Vehicle Number</div>
             <div class="value">{{.Vehicle.Number}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Brand</div>
             <div class="value">{{.Vehicle.Brand}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Model</div>
             <div class="value">{{.Vehicle.Model}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Year</div>
             <div class="value">{{.Vehicle.Year}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Fuel</div>
             <div class="value">{{.Vehicle.Fuel}}</div>
-          </div>
-          <div>
+        </div>
+        <div>
             <div class="label">Problem</div>
             <div class="value">{{.Service.Type}}</div>
-          </div>
         </div>
-      </div>
+        </div>
+    </div>
 
-      <table>
+    <table>
         <thead>
-          <tr>
-            <th>Booking ID</th>
-            <th>Service Type</th>
-            <th>Status</th>
-            <th>Payment</th>
-            <th>Payment Mode</th>
-            <th>Amount</th>
-          </tr>
+        <tr>
+           <th>Booking ID</th>
+           <th>Service Type</th>
+           <th>Payment</th>
+           <th>Payment Mode</th>
+           <th>Amount</th>
+         </tr>
         </thead>
         <tbody>
-          <tr class="service-row">
-            <td>{{.Service.ID}}</td>
-            <td>{{.Service.Type}}</td>
-            <td>{{.Service.PaymentStatus}}</td>
-            <td>{{.Service.PaymentMode}}</td>
+        <tr class="service-row">
+          <td>{{.Service.ID}}</td>
+          <td>{{.Service.Type}}</td>
+          <td>{{.Service.PaymentStatus}}</td>
+          <td>{{.Service.PaymentMode}}</td>
+          <td>₹ {{.Pricing.ServiceCharge}}</td>
+        </tr>
+        <tr class="pricing-row-table first-pricing-row">
+            <td colspan="4">Service Charge</td>
             <td>₹ {{.Pricing.ServiceCharge}}</td>
-          </tr>
-          <tr class="pricing-row-table first-pricing-row">
-            <td colspan="5">Service Charge</td>
-            <td>₹ {{.Pricing.ServiceCharge}}</td>
-          </tr>
-          {{if .Pricing.AppliedPromo}}
-          <tr class="pricing-row-table" id="promo-row">
-            <td colspan="5">
-              PromoCode Amount (<span id="promo-code"
+        </tr>
+        {{if .Pricing.AppliedPromo}}
+        <tr class="pricing-row-table" id="promo-row">
+            <td colspan="4">
+            PromoCode Amount (<span id="promo-code"
                 >{{.Pricing.AppliedPromo.Code}}</span
-              >)
+            >)
             </td>
             <td>
-              -₹
-              <span id="promo-amt">{{.Pricing.AppliedPromo.DiscountAmt}}</span>
+            -₹
+            <span id="promo-amt">{{.Pricing.AppliedPromo.DiscountAmt}}</span>
             </td>
-          </tr>
-          {{end}} {{if .Pricing.AppliedDiscount}}
-          <tr class="pricing-row-table" id="discount-row">
-            <td colspan="5">
-              Discount Amount (<span id="discount-code"
+        </tr>
+        {{end}} {{if .Pricing.AppliedDiscount}}
+        <tr class="pricing-row-table" id="discount-row">
+            <td colspan="4">
+            Discount Amount (<span id="discount-code"
                 >{{.Pricing.AppliedDiscount.Code}}</span
-              >)
+            >)
             </td>
             <td>
-              -₹
-              <span id="discount-amt"
+            -₹
+            <span id="discount-amt"
                 >{{.Pricing.AppliedDiscount.DiscountAmt}}</span
-              >
+            >
             </td>
-          </tr>
-          {{end}}
-          <tr class="pricing-row-table">
-            <td colspan="5">GST (18%)</td>
+        </tr>
+        {{end}}
+        <tr class="pricing-row-table">
+            <td colspan="4">GST (18%)</td>
             <td>₹ {{.Pricing.GST}}</td>
-          </tr>
-          <tr class="pricing-row-table total-row">
-            <td colspan="5">Total Amount</td>
+        </tr>
+        <tr class="pricing-row-table total-row">
+            <td colspan="4">Total Amount</td>
             <td>₹ {{.Pricing.Total}}</td>
-          </tr>
+        </tr>
         </tbody>
-      </table>
+    </table>
 
-      <div class="notes">
+    <div class="notes">
         <b>Notes</b>
         <ol>
-          <li>
+        <li>
             This invoice is issued on behalf of vehicle-related services.
             Vahanwire Technologies Pvt. Ltd. acts in the capacity of an
             Electronic Commerce Operator (ECO) in accordance with Section 9(5)
             of the Central Goods and Services Tax Act, 2017 and the
             corresponding provisions of the Integrated Goods and Services Tax
             Act, 2017.
-          </li>
-          <li>
+        </li>
+        <li>
             This is an electronically generated invoice and does not require a
             digital signature.
-          </li>
+        </li>
         </ol>
-      </div>
+    </div>
 
-      <div class="footer">
+    <div class="footer">
         This is a computer-generated invoice. For any queries, contact us at
         support@vahanwire.com
-      </div>
     </div>
-  </body>
+    </div>
+</body>
 </html>

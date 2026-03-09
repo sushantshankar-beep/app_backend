@@ -316,10 +316,10 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{25, 50, 100}
+	radiusSteps := []float64{20, 40, 100}
 
 	const (
-		cooldownSec    = 77
+		cooldownSec    = 30
 		maxSendPerProv = 10
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
@@ -330,10 +330,68 @@ func (s *BiddingService) findProviders(
 
 	for {
 
+		// --------------------------------------------------
+		// AUTO CANCEL AFTER 30 MINUTES
+		// --------------------------------------------------
+
 		if time.Since(startedAt) > globalTimeout {
+
 			log.Println("⏱ bidding timeout", serviceID)
+
+			now := time.Now()
+
+			// stop dispatch loop
+			s.rdb.Set(ctx, stopKey, "1", 10*time.Minute)
+
+			// update service status
+			_, err := s.acceptedRepo.Col().UpdateByID(
+				ctx,
+				serviceOID,
+				bson.M{
+					"$set": bson.M{
+						"status": "cancelled",
+						"cancelled.by": "system",
+						"cancelled.reason": "No provider accepted the service",
+						"timestamps.cancelledAt": now,
+						"updatedAt": now,
+					},
+				},
+			)
+
+			if err != nil {
+				log.Println("cancel update error:", err)
+			}
+
+			// websocket emit to user
+			s.socket.Emit(
+				"user:"+serviceID,
+				"service:cancelled",
+				map[string]any{
+					"serviceId": serviceID,
+					"reason":    "No provider available",
+				},
+			)
+
+			// optional push notification
+			go s.notify.SendToUser(
+				context.Background(),
+				string(user.ID),
+				serviceID,
+				"Service Cancelled",
+				"No provider accepted your request. Please try again.",
+				map[string]string{
+					"serviceId": serviceID,
+				},
+			)
+
+			// close websocket room
+			s.socket.Emit("user:"+serviceID, "service:closed", nil)
+			s.socket.CloseRoom("user:" + serviceID)
+
 			return
 		}
+
+		// --------------------------------------------------
 
 		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
 			s.rdb.Exists(ctx, lockKey).Val() == 1 {
@@ -351,11 +409,14 @@ func (s *BiddingService) findProviders(
 		if current.Status != domain.StatusSearching {
 			return
 		}
+
 		if s.rdb.Exists(ctx, "service:bidWindow:"+serviceID).Val() == 1 {
 			time.Sleep(1 * time.Second)
 			continue
 		}
+
 		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
+
 		processed := make(map[string]bool)
 
 		for _, radius := range radiusSteps {
@@ -390,6 +451,7 @@ func (s *BiddingService) findProviders(
 			for i := 0; i < len(list); i += 2 {
 
 				pid := list[i].(string)
+
 				if processed[pid] {
 					continue
 				}
@@ -403,6 +465,7 @@ func (s *BiddingService) findProviders(
 						return
 					}
 
+					// push notification
 					go s.notify.SendToProvider(
 						context.Background(),
 						providerID,
@@ -413,18 +476,16 @@ func (s *BiddingService) findProviders(
 							"serviceId": serviceID,
 						},
 					)
-					if err != nil {
-						log.Println("notification error:", err)
-					}
 
+					// websocket emit
 					s.socket.Emit(
 						"provider:"+providerID,
 						"bid:request",
 						map[string]any{
 							"user": map[string]any{
-								"name": user.Name,
-								"profileUrl":user.ImageUrl,
-								"rating":user.Rating,
+								"name":       user.Name,
+								"profileUrl": user.ImageUrl,
+								"rating":     user.Rating,
 							},
 							"serviceId": serviceID,
 							"vehicle": map[string]any{
@@ -440,7 +501,7 @@ func (s *BiddingService) findProviders(
 							"distanceKm":  round2(distance),
 							"etaMin":      estimateETA(distance),
 							"radiusKm":    r,
-							"expiresIn":   60,
+							"expiresIn":   30,
 						},
 					)
 
@@ -1283,6 +1344,9 @@ func (s *BiddingService) CancelService(
 		FindOne(ctx, bson.M{"_id": serviceOID}).
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
+	}
+	if svc.Status == domain.StatusStarted {
+		return errors.New("service already started, cancellation not allowed")
 	}
 
 	if svc.User.Hex() != userID {

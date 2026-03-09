@@ -336,6 +336,100 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		"method":   data["mode"],
 	})
 }
+func (s *PaymentService) verifyWithPayU(txnID string) (string, error) {
+
+	fmt.Println("🔍 VERIFY WITH PAYU CALLING FOR TXN:", txnID)
+
+	key := strings.TrimSpace(s.key)
+	salt := strings.TrimSpace(s.salt)
+
+	hashStr := fmt.Sprintf("%s|verify_payment|%s|%s", key, txnID, salt)
+	hash := sha512Hash(hashStr)
+
+	fmt.Println("🔐 HASH STRING:", hashStr)
+	fmt.Println("🔐 HASH:", hash)
+
+	resp, err := s.http.R().
+		SetHeader("Accept", "application/json").
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetFormData(map[string]string{
+			"key":     key,
+			"command": "verify_payment",
+			"var1":    txnID,
+			"hash":    hash,
+		}).
+		Post("https://info.payu.in/merchant/postservice.php")
+
+	if err != nil {
+		fmt.Println("❌ PAYU REQUEST ERROR:", err)
+		return "", err
+	}
+
+	body := string(resp.Body())
+
+	fmt.Println("📦 PAYU RAW RESPONSE ↓↓↓")
+	fmt.Println(body)
+
+	// ---------------------------------------------------
+	// PAYU SOMETIMES RETURNS PHP SERIALIZED RESPONSE
+	// ---------------------------------------------------
+	if strings.HasPrefix(body, "a:") {
+
+		fmt.Println("⚠ PHP SERIALIZED RESPONSE DETECTED")
+
+		if strings.Contains(body, `"status";s:7:"success"`) ||
+			strings.Contains(body, `"status";s:7:"success"`) ||
+			strings.Contains(body, `status";s:7:"success"`) {
+
+			fmt.Println("✅ PAYMENT STATUS: success (parsed from PHP response)")
+			return "success", nil
+		}
+
+		if strings.Contains(body, `"status";s:6:"failed"`) {
+			fmt.Println("❌ PAYMENT STATUS: failure")
+			return "failure", nil
+		}
+
+		if strings.Contains(body, `"status";s:7:"pending"`) {
+			fmt.Println("⏳ PAYMENT STATUS: pending")
+			return "pending", nil
+		}
+
+		return "", errors.New("unable to parse PHP serialized PayU response")
+	}
+
+	// ---------------------------------------------------
+	// NORMAL JSON RESPONSE
+	// ---------------------------------------------------
+	var result map[string]any
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		fmt.Println("❌ JSON PARSE ERROR:", err)
+		return "", err
+	}
+
+	fmt.Println("📦 PARSED RESPONSE:", result)
+
+	txns, ok := result["transaction_details"].(map[string]any)
+	if !ok {
+		return "", errors.New("transaction_details not found")
+	}
+
+	txnData, ok := txns[txnID].(map[string]any)
+	if !ok {
+		return "", errors.New("txn not found in PayU response")
+	}
+
+	fmt.Println("📦 TXN DATA:", txnData)
+
+	status, ok := txnData["status"].(string)
+	if !ok {
+		return "", errors.New("status field missing")
+	}
+
+	fmt.Println("✅ PAYU STATUS:", status)
+
+	return status, nil
+}
 func (s *PaymentService) VerifyPayment(
 	ctx context.Context,
 	txnID string,
@@ -345,22 +439,36 @@ func (s *PaymentService) VerifyPayment(
 	if err != nil {
 		return nil, errors.New("no payment found")
 	}
-	ttl := s.getRetryTTL(ctx, txnID)
 
-	reason := domain.PaymentFailReason(txn.FailReason)
+	// 🔴 If still pending → verify with PayU
+	if txn.Status == "pending" {
 
-	resp := map[string]any{
+		status, err := s.verifyWithPayU(txnID)
+
+		if err == nil && status == "success" {
+
+			// mark paid if webhook missed
+			s.repo.UpdateTxn(ctx, txnID, bson.M{
+				"status": "paid",
+			})
+
+			go s.afterPaymentSuccess(txnID)
+
+			txn.Status = "paid"
+		}
+	}
+
+	ttl := s.getRetryTTL(ctx, txn.ServiceID)
+
+	return map[string]any{
 		"serviceId": txn.ServiceID,
 		"txnid":     txn.TxnID,
 		"amount":    txn.Amount,
 		"status":    txn.Status,
-		"reason":    txn.FailReason,
 		"retryTtl":  ttl,
-		"userMsg":   userMessageForReason(reason),
-	}
-
-	return resp, nil
+	}, nil
 }
+
 func userMessageForReason(r domain.PaymentFailReason) string {
 
 	switch r {

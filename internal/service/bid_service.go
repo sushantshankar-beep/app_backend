@@ -316,14 +316,14 @@ func (s *BiddingService) findProviders(
 		return
 	}
 
-	radiusSteps := []float64{20, 40, 100}
+	radiusSteps := []float64{25, 50, 100}
 
 	const (
 		cooldownSec    = 30
 		maxSendPerProv = 10
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
-		globalTimeout  = 30 * time.Minute
+		globalTimeout  = 10 * time.Minute
 	)
 
 	startedAt := time.Now()
@@ -551,7 +551,7 @@ func (s *BiddingService) PlaceBid(
 	}
 	providerLock := "service:providerBidLock:" + serviceID + ":" + providerID
 
-	ok, err := s.rdb.SetNX(ctx, providerLock, "1", 60*time.Second).Result()
+	ok, err := s.rdb.SetNX(ctx, providerLock, "1", 30*time.Second).Result()
 	if err != nil {
 		return "", err
 	}
@@ -565,7 +565,7 @@ func (s *BiddingService) PlaceBid(
 
 	windowKey := "service:bidWindow:" + serviceID
 
-	started, err := s.rdb.SetNX(ctx, windowKey, "1", 60*time.Second).Result()
+	started, err := s.rdb.SetNX(ctx, windowKey, "1", 30*time.Second).Result()
 	if err != nil {
 		return "", err
 	}
@@ -890,7 +890,7 @@ func (s *BiddingService) RejectBid(
 			"distanceKm":  round2(dist),
 			"etaMin":      estimateETA(dist),
 			"rebid":       true,
-			"expiresIn":   60,
+			"expiresIn":   30,
 		},
 	)
 
@@ -914,7 +914,7 @@ func (s *BiddingService) RejectBid(
 		"distanceKm":  dist,
 		"etaMin":      estimateETA(dist),
 		"rebid":       true,
-		"expiresIn":   60,
+		"expiresIn":   30,
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -1307,7 +1307,7 @@ func (s *BiddingService) findProvidersFixedPrice(
 							"distanceKm": distance,
 							"etaMin":     estimateETA(distance),
 							"radiusKm":   r,
-							"expiresIn":  60,
+							"expiresIn":  30,
 						},
 					)
 

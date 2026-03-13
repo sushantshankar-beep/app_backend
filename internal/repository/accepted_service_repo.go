@@ -371,17 +371,18 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService,int64, error) {
 
 	filter := bson.M{
-		"status": bson.M{"$in": status},
-		"$or": []bson.M{
-			{
-				"provider": providerID,
-			},
-			{
-				"cancelledProviderID": providerID.Hex(),
-				"cancelledByProvider": true,
-			},
-		},
-	}
+        "$or": []bson.M{
+            {
+                "provider": providerID,
+                "status":   bson.M{"$in": status},
+            },
+            {   
+                "cancelledProviderID": providerID.Hex(),
+                "cancelledByProvider": true,
+                "status":              domain.StatusCancelled,
+            },
+        },
+    }
 
 	total, err := r.col.CountDocuments(ctx, filter)
 	if err != nil {

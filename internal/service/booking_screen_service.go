@@ -616,11 +616,13 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		serviceData := &r
 
 		if r.CancelledByProvider && r.CancelledProviderID == providerID {
-			snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
-			if err == nil && snap != nil {
-				serviceData = &snap.Service
-			}
-		}
+            snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
+            if err == nil && snap != nil {
+                snapCopy := snap.Service  
+                serviceData = &snapCopy
+            }
+        }
+        
 
 		userObjID, err := primitive.ObjectIDFromHex(serviceData.User.Hex())
 		if err != nil {

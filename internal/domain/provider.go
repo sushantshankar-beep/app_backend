@@ -48,5 +48,6 @@ type Provider struct {
 	KycStatus            KYCStatus          `bson:"-" json:"kycStatus"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`
+	AppVersion 			 string 			`bson:"appVersion" json:"appVersion"`
 }
 

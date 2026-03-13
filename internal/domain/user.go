@@ -42,4 +42,5 @@ type User struct {
 	IsNew               bool                 `bson:"isNew" json:"isNew"`
 	PrimaryVehicleID    *primitive.ObjectID  `bson:"primaryVehicleId,omitempty" json:"primaryVehicleId,omitempty"`
 	FallbackVehicleIDs  []primitive.ObjectID `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`
+	AppVersion        string             	 `bson:"appVersion"`
 }

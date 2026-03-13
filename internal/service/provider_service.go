@@ -21,6 +21,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+
 type ProviderService struct {
 	repo                ports.ProviderRepository
 	counterRepo         *repository.CounterRepo
@@ -176,7 +177,7 @@ func (s *ProviderService) VerifyOTP(
 func (s *ProviderService) GetProfile(
 	ctx context.Context,
 	id domain.ProviderID,
-) (*domain.Provider, error) {
+) (map[string]any, error) {
 
 	provider, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -196,9 +197,30 @@ func (s *ProviderService) GetProfile(
 		}
 	}
 
-	return provider, nil
-}
+	// version comparison
+	forceUpdate := false
 
+	if provider.AppVersion != "" {
+		cmp, err := compareVersions(provider.AppVersion, MinSupportedVersion)
+		if err == nil && cmp == -1 {
+			forceUpdate = true
+		}
+	}
+
+	// convert provider struct → map
+	data := bson.M{}
+	bytes, _ := bson.Marshal(provider)
+	_ = bson.Unmarshal(bytes, &data)
+
+	// add version fields
+	data["currentVersion"] = CurrentAppVersion
+	data["forceUpdate"] = forceUpdate
+	data["responseMsg"] = ResponseMsg
+	data["androidStoreUrl"] = AndroidStoreURL
+	data["iosStoreUrl"] = IOSStoreURL
+
+	return data, nil
+}
 func (s *ProviderService) CreateOrUpdateProfile(
 	ctx context.Context,
 	id domain.ProviderID,
@@ -242,6 +264,7 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	assignString(&provider.City, req["city"])
 	assignString(&provider.VehicleNumber, req["vehicleNumber"])
 	assignString(&provider.Description, req["description"])
+	assignString(&provider.AppVersion, req["appVersion"])
 
 	if provider.Name != oldName || 
 	   provider.CompanyName != oldCompanyName || 

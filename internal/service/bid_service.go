@@ -130,8 +130,7 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 	if err := s.acceptedRepo.Create(ctx, svc); err != nil {
 		return "", err
 	}
-	fmt.Println("AFTER INSERT svc.ID =", svc.ID.Hex())
-
+	serviceID := svc.ID.Hex()
 	// here i have store all details which i have to send in socket in redis
 	s.rdb.HSet(ctx, "service:meta:"+svc.ID.Hex(), map[string]any{
 		"userId":        userID,
@@ -143,24 +142,28 @@ func (s *BiddingService) StartSearch(ctx context.Context,userID domain.UserID,ve
 		"model" :         model,
 		"serviceType":   serviceType,
 	})
-
+	searchCtx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 
 	// 🔥 Start provider discovery
-	go s.findProviders(
-		svc.ID.Hex(),
-		lat,
-		lng,
-		issues,
-		vehicleType,
-		vehicleNumber,
-		brand,
-		modelYear,
-		fuelType,
-		serviceType,
-		model,
-	)
+	go func() {
+		defer cancel()
+		s.findProviders(
+			searchCtx,
+			serviceID,
+			lat,
+			lng,
+			issues,
+			vehicleType,
+			vehicleNumber,
+			brand,
+			modelYear,
+			fuelType,
+			serviceType,
+			model,
+		)
+	}()
 
-	return svc.ID.Hex(), nil
+	return serviceID, nil
 }
 
 /* ================= FIND PROVIDERS ================= */
@@ -282,6 +285,7 @@ end
 return out
 `
 func (s *BiddingService) findProviders(
+	ctx context.Context,
 	serviceID string,
 	lat, lng float64,
 	issues []string,
@@ -293,9 +297,6 @@ func (s *BiddingService) findProviders(
 	serviceType string,
 	model string,
 ) {
-
-	ctx := context.Background()
-
 	stopKey := "service:stop:" + serviceID
 	lockKey := "service:locked:" + serviceID
 
@@ -315,18 +316,20 @@ func (s *BiddingService) findProviders(
 	if err != nil {
 		return
 	}
-
-	radiusSteps := []float64{25, 50, 100}
-
 	const (
-		cooldownSec    = 30
+		cooldownSec    = 35
 		maxSendPerProv = 10
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
 		globalTimeout  = 10 * time.Minute
+		maxRadius      = 100 // km
 	)
 
 	startedAt := time.Now()
+	type Candidate struct {
+		ID       string
+		Distance float64
+	}
 
 	for {
 
@@ -336,14 +339,10 @@ func (s *BiddingService) findProviders(
 
 		if time.Since(startedAt) > globalTimeout {
 
-			log.Println("⏱ bidding timeout", serviceID)
+			log.Println("bidding timeout", serviceID)
 
 			now := time.Now()
-
-			// stop dispatch loop
 			s.rdb.Set(ctx, stopKey, "1", 10*time.Minute)
-
-			// update service status
 			_, err := s.acceptedRepo.Col().UpdateByID(
 				ctx,
 				serviceOID,
@@ -383,14 +382,16 @@ func (s *BiddingService) findProviders(
 					"serviceId": serviceID,
 				},
 			)
-
-			// close websocket room
 			s.socket.Emit("user:"+serviceID, "service:closed", nil)
 			s.socket.CloseRoom("user:" + serviceID)
 
 			return
 		}
-
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		// --------------------------------------------------
 
 		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
@@ -414,98 +415,101 @@ func (s *BiddingService) findProviders(
 			time.Sleep(1 * time.Second)
 			continue
 		}
+		res, err := s.rdb.Eval(
+			ctx,
+			luaFindProviders,
+			[]string{"providers:geo"},
+			lng,
+			lat,
+			maxRadius,
+			serviceID,
+			cooldownSec,
+			maxSendPerProv,
+			ttlSec,
+		).Result()
 
-		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
+		if err != nil {
+			log.Println("lua geo error:", err)
+			time.Sleep(roundDelay)
+			continue
+		}
 
-		processed := make(map[string]bool)
+		list, ok := res.([]interface{})
+		if !ok || len(list) == 0 {
+			time.Sleep(roundDelay)
+			continue
+		}
 
-		for _, radius := range radiusSteps {
+		candidates := make([]Candidate, 0, len(list)/2)
+
+		for i := 0; i < len(list); i += 2 {
+
+			pid := list[i].(string)
+			distStr := list[i+1].(string)
+
+			dist, _ := strconv.ParseFloat(distStr, 64)
+
+			candidates = append(candidates, Candidate{
+				ID:       pid,
+				Distance: dist,
+			})
+		}
+
+		// progressive dispatch
+		batchSizes := []int{15, 30, 60, 100}
+		index := 0
+		for _, batch := range batchSizes {
 
 			if s.rdb.Exists(ctx, stopKey).Val() == 1 {
 				return
 			}
 
-			res, err := s.rdb.Eval(
-				ctx,
-				luaFindProviders,
-				[]string{"providers:geo"},
-				lng,
-				lat,
-				radius,
-				serviceID,
-				cooldownSec,
-				maxSendPerProv,
-				ttlSec,
-			).Result()
-
-			if err != nil {
-				log.Println("lua geo error:", err)
-				continue
+			end := index + batch
+			if end > len(candidates) {
+				end = len(candidates)
 			}
 
-			list, ok := res.([]interface{})
-			if !ok || len(list) == 0 {
-				continue
-			}
+			for _, p := range candidates[index:end] {
 
-			for i := 0; i < len(list); i += 2 {
-
-				pid := list[i].(string)
-
-				if processed[pid] {
-					continue
+				payload := map[string]any{
+					"user": map[string]any{
+						"name":       user.Name,
+						"profileUrl": user.ImageUrl,
+						"rating":     user.Rating,
+					},
+					"serviceId": serviceID,
+					"vehicle": map[string]any{
+						"type":   vehicleType,
+						"number": vehicleNumber,
+						"brand":  brand,
+						"year":   modelYear,
+						"fuel":   fuelType,
+						"model":  model,
+					},
+					"serviceType": serviceType,
+					"issues":      issues,
+					"distanceKm":  round2(p.Distance),
+					"etaMin":      estimateETA(p.Distance),
+					"expiresIn":   30,
 				}
 
-				distStr := list[i+1].(string)
-				dist, _ := strconv.ParseFloat(distStr, 64)
+				s.socket.Emit("provider:"+p.ID, "bid:request", payload)
+				go s.notify.SendToProvider(
+					context.Background(),
+					p.ID,
+					serviceID,
+					"New Service Request",
+					"Nearby user needs help. Open app to bid.",
+					map[string]string{
+						"serviceId": serviceID,
+					},
+				)
+			}
 
-				go func(providerID string, distance float64, r float64) {
+			index = end
 
-					if s.rdb.Exists(ctx, stopKey).Val() == 1 {
-						return
-					}
-
-					// push notification
-					go s.notify.SendToProvider(
-						context.Background(),
-						providerID,
-						serviceID,
-						"New Service Request",
-						"Nearby user needs help. Open app to bid.",
-						map[string]string{
-							"serviceId": serviceID,
-						},
-					)
-
-					// websocket emit
-					s.socket.Emit(
-						"provider:"+providerID,
-						"bid:request",
-						map[string]any{
-							"user": map[string]any{
-								"name":       user.Name,
-								"profileUrl": user.ImageUrl,
-								"rating":     user.Rating,
-							},
-							"serviceId": serviceID,
-							"vehicle": map[string]any{
-								"type":   vehicleType,
-								"number": vehicleNumber,
-								"brand":  brand,
-								"year":   modelYear,
-								"fuel":   fuelType,
-								"model":  model,
-							},
-							"serviceType": serviceType,
-							"issues":      issues,
-							"distanceKm":  round2(distance),
-							"etaMin":      estimateETA(distance),
-							"radiusKm":    r,
-							"expiresIn":   30,
-						},
-					)
-
-				}(pid, dist, radius)
+			if index >= len(candidates) {
+				break
 			}
 		}
 
@@ -753,10 +757,7 @@ func (s *BiddingService) AcceptBid(
 		)
 
 		if err != nil || res.ModifiedCount == 0 {
-
-			// 🔄 rollback redis locks
 			s.rdb.Del(ctx, serviceKey, busyKey)
-
 			return map[string]string{
 				"message": "provider already assigned in some other service",
 				"bidId":   bidID,
@@ -824,7 +825,7 @@ func (s *BiddingService) RejectBid(
 	price int,
 ) error {
 
-	log.Printf("👎 rejected provider=%s service=%s", providerID, serviceID)
+	log.Printf("rejected provider=%s service=%s", providerID, serviceID)
 	if s.rdb.Exists(ctx, "provider:busy:"+providerID).Val() == 1 {
 		log.Println("⚠ RejectBid skipped — provider busy", providerID)
 		return nil
@@ -843,10 +844,8 @@ func (s *BiddingService) RejectBid(
 		)
 		return nil
 	}
-
-	if s.rdb.Exists(ctx, "service:locked:"+serviceID).Val() == 0 {
-		s.rdb.Del(ctx, "service:bidWindow:"+serviceID)
-	}
+	windowKey := "service:bidWindow:" + serviceID
+	s.rdb.Set(ctx, windowKey, "1", 30*time.Second)
 
 	keys := []string{
 		"service:providerBidLock:" + serviceID + ":" + providerID,
@@ -1209,25 +1208,18 @@ func (s *BiddingService) findProvidersFixedPrice(
 	radiusSteps := []float64{25, 50, 100}
 
 	const (
-		cooldownSec    = 77
-		maxSendPerProv = 8
+		cooldownSec    = 35
+		maxSendPerProv = 10
 		ttlSec         = 7200
 		roundDelay     = 5 * time.Second
 		globalTimeout  = 30 * time.Minute
 	)
 
-	startedAt := time.Now()
-
 	for {
-
-		if time.Since(startedAt) > globalTimeout {
-			log.Println("⏱ fixed-price timeout", serviceID)
-			return
-		}
 
 		if s.rdb.Exists(ctx, stopKey).Val() == 1 ||
 			s.rdb.Exists(ctx, lockKey).Val() == 1 {
-			log.Println("🛑 fixed-price dispatch stopped", serviceID)
+			log.Println("fixed-price dispatch stopped", serviceID)
 			return
 		}
 
@@ -1345,8 +1337,11 @@ func (s *BiddingService) CancelService(
 		Decode(&svc); err != nil {
 		return errors.New("service not found")
 	}
-	if svc.Status == domain.StatusStarted {
-		return errors.New("service already started, cancellation not allowed")
+	if svc.Status == domain.StatusStarted ||
+	   svc.Status == domain.StatusReachedLocation ||
+	   svc.Status == domain.StatusOTPVerified {
+
+		return errors.New("service already started, cancellation not allow")
 	}
 
 	if svc.User.Hex() != userID {
@@ -1458,37 +1453,56 @@ func (s *BiddingService) CancelService(
 		}
 	}
 
+	log.Println("checking refund for service:", serviceID)
+
 	paymentTxn, err := s.paymentRepo.FindByServiceID(ctx, serviceID)
-	if err == nil {
 
-		refundLock := "refund:lock:" + paymentTxn.MihPayID
+	if err == nil && paymentTxn != nil {
 
-		ok, _ := s.rdb.SetNX(ctx, refundLock, "1", 24*time.Hour).Result()
+		log.Println(
+			"payment txn found",
+			"txnID:", paymentTxn.TxnID,
+			"status:", paymentTxn.Status,
+			"mihpayid:", paymentTxn.MihPayID,
+		)
 
-		if ok {
+		if paymentTxn.Status == "paid" && paymentTxn.MihPayID != "" {
 
-			job := domain.RefundJob{
-				ServiceID: serviceID,
-				MihPayID:  paymentTxn.MihPayID,
-				Amount:   paymentTxn.Amount,
-				Retries:  0,
+			refundLock := "refund:lock:" + paymentTxn.MihPayID
+
+			ok, _ := s.rdb.SetNX(ctx, refundLock, "1", 24*time.Hour).Result()
+
+			if ok {
+
+				log.Println("refund queued:", paymentTxn.MihPayID)
+
+				job := domain.RefundJob{
+					ServiceID: serviceID,
+					MihPayID:  paymentTxn.MihPayID,
+					Amount:    paymentTxn.Amount,
+					Retries:   0,
+				}
+
+				b, _ := json.Marshal(job)
+
+				s.rdb.RPush(ctx, "refund:queue", b)
+
+				s.refundRepo.Create(ctx, &domain.RefundTransaction{
+					TxnID:     paymentTxn.TxnID,
+					MihPayID:  paymentTxn.MihPayID,
+					ServiceID: serviceID,
+					UserID:    paymentTxn.UserID,
+					Amount:    paymentTxn.Amount,
+					Status:    "pending",
+					Reason:    reason,
+					CreatedAt: now,
+					UpdatedAt: now,
+				})
 			}
 
-			b, _ := json.Marshal(job)
+		} else {
 
-			s.rdb.RPush(ctx, "refund:queue", b)
-
-			s.refundRepo.Create(ctx, &domain.RefundTransaction{
-				TxnID:     paymentTxn.TxnID,
-				MihPayID:  paymentTxn.MihPayID,
-				ServiceID: serviceID,
-				UserID:    paymentTxn.UserID,
-				Amount:    paymentTxn.Amount,
-				Status:    "pending",
-				Reason:    reason,
-				CreatedAt: now,
-				UpdatedAt: now,
-			})
+			log.Println("refund skipped — payment not completed")
 		}
 	}
 
@@ -1613,9 +1627,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 				bson.M{
 					"_id":  serviceOID,
 					"user": userOID,
-					"status": bson.M{
-						"$ne": domain.StatusCancelled,
-					},
 				},
 				bson.M{
 					"$set": bson.M{
@@ -1634,9 +1645,6 @@ func (s *BiddingService) CancelSearchingServiceBeforeBid(
 
 		// 🔥 Notify user immediately
 		userRoom := "user:" + serviceID
-		s.socket.Emit(userRoom, "service:cancelled", map[string]any{
-			"serviceId": serviceID,
-		})
 		s.socket.CloseRoom(userRoom)
 		if svc.UserLocation != nil {
 

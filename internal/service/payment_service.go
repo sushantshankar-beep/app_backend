@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	"regexp"
 	"app_backend/internal/domain"
 	"app_backend/internal/events"
 	"app_backend/internal/ports"
@@ -336,7 +336,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		"method":   data["mode"],
 	})
 }
-func (s *PaymentService) verifyWithPayU(txnID string) (string, error) {
+func (s *PaymentService) verifyWithPayU(txnID string) (map[string]string, error) {
 
 	fmt.Println("🔍 VERIFY WITH PAYU CALLING FOR TXN:", txnID)
 
@@ -362,7 +362,7 @@ func (s *PaymentService) verifyWithPayU(txnID string) (string, error) {
 
 	if err != nil {
 		fmt.Println("❌ PAYU REQUEST ERROR:", err)
-		return "", err
+		return nil, err
 	}
 
 	body := string(resp.Body())
@@ -370,65 +370,85 @@ func (s *PaymentService) verifyWithPayU(txnID string) (string, error) {
 	fmt.Println("📦 PAYU RAW RESPONSE ↓↓↓")
 	fmt.Println(body)
 
-	// ---------------------------------------------------
-	// PAYU SOMETIMES RETURNS PHP SERIALIZED RESPONSE
-	// ---------------------------------------------------
+	result := map[string]string{}
+
+	/* ---------------------------------------------------
+	   PHP SERIALIZED RESPONSE
+	--------------------------------------------------- */
+
 	if strings.HasPrefix(body, "a:") {
 
 		fmt.Println("⚠ PHP SERIALIZED RESPONSE DETECTED")
 
-		if strings.Contains(body, `"status";s:7:"success"`) ||
-			strings.Contains(body, `"status";s:7:"success"`) ||
-			strings.Contains(body, `status";s:7:"success"`) {
-
-			fmt.Println("✅ PAYMENT STATUS: success (parsed from PHP response)")
-			return "success", nil
+		if strings.Contains(body, `"status";s:7:"success"`) {
+			result["status"] = "success"
 		}
 
 		if strings.Contains(body, `"status";s:6:"failed"`) {
-			fmt.Println("❌ PAYMENT STATUS: failure")
-			return "failure", nil
+			result["status"] = "failure"
 		}
 
 		if strings.Contains(body, `"status";s:7:"pending"`) {
-			fmt.Println("⏳ PAYMENT STATUS: pending")
-			return "pending", nil
+			result["status"] = "pending"
 		}
 
-		return "", errors.New("unable to parse PHP serialized PayU response")
+		// Extract mihpayid
+		re := regexp.MustCompile(`mihpayid";s:\d+:"(\d+)"`)
+		match := re.FindStringSubmatch(body)
+		if len(match) > 1 {
+			result["mihpayid"] = match[1]
+		}
+
+		// Extract payment mode
+		reMode := regexp.MustCompile(`mode";s:\d+:"([A-Z]+)"`)
+		matchMode := reMode.FindStringSubmatch(body)
+		if len(matchMode) > 1 {
+			result["mode"] = matchMode[1]
+		}
+
+		// Extract bank_ref_num
+		reBank := regexp.MustCompile(`bank_ref_num";s:\d+:"(\d+)"`)
+		matchBank := reBank.FindStringSubmatch(body)
+		if len(matchBank) > 1 {
+			result["bank_ref_num"] = matchBank[1]
+		}
+
+		fmt.Println("✅ PARSED PHP RESULT:", result)
+
+		return result, nil
 	}
 
-	// ---------------------------------------------------
-	// NORMAL JSON RESPONSE
-	// ---------------------------------------------------
-	var result map[string]any
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+	/* ---------------------------------------------------
+	   JSON RESPONSE
+	--------------------------------------------------- */
+
+	var parsed map[string]any
+
+	if err := json.Unmarshal(resp.Body(), &parsed); err != nil {
 		fmt.Println("❌ JSON PARSE ERROR:", err)
-		return "", err
+		return nil, err
 	}
 
-	fmt.Println("📦 PARSED RESPONSE:", result)
+	fmt.Println("📦 PARSED JSON:", parsed)
 
-	txns, ok := result["transaction_details"].(map[string]any)
+	txns, ok := parsed["transaction_details"].(map[string]any)
 	if !ok {
-		return "", errors.New("transaction_details not found")
+		return nil, errors.New("transaction_details missing")
 	}
 
-	txnData, ok := txns[txnID].(map[string]any)
+	txn, ok := txns[txnID].(map[string]any)
 	if !ok {
-		return "", errors.New("txn not found in PayU response")
+		return nil, errors.New("txn not found in PayU response")
 	}
 
-	fmt.Println("📦 TXN DATA:", txnData)
+	result["status"] = fmt.Sprintf("%v", txn["status"])
+	result["mihpayid"] = fmt.Sprintf("%v", txn["mihpayid"])
+	result["mode"] = fmt.Sprintf("%v", txn["mode"])
+	result["bank_ref_num"] = fmt.Sprintf("%v", txn["bank_ref_num"])
 
-	status, ok := txnData["status"].(string)
-	if !ok {
-		return "", errors.New("status field missing")
-	}
+	fmt.Println("✅ FINAL VERIFY RESULT:", result)
 
-	fmt.Println("✅ PAYU STATUS:", status)
-
-	return status, nil
+	return result, nil
 }
 func (s *PaymentService) VerifyPayment(
 	ctx context.Context,
@@ -440,23 +460,73 @@ func (s *PaymentService) VerifyPayment(
 		return nil, errors.New("no payment found")
 	}
 
-	// 🔴 If still pending → verify with PayU
+	// ------------------------------------------------
+	// If transaction still pending → verify with PayU
+	// ------------------------------------------------
+
 	if txn.Status == "pending" {
 
-		status, err := s.verifyWithPayU(txnID)
+		result, err := s.verifyWithPayU(txnID)
 
-		if err == nil && status == "success" {
+		if err == nil {
 
-			// mark paid if webhook missed
-			s.repo.UpdateTxn(ctx, txnID, bson.M{
-				"status": "paid",
-			})
+			status := strings.ToLower(result["status"])
 
-			go s.afterPaymentSuccess(txnID)
+			// ----------------------------------------
+			// SUCCESS CASE
+			// ----------------------------------------
 
-			txn.Status = "paid"
+			if status == "success" {
+
+				update := bson.M{
+					"status": "paid",
+				}
+
+				if v := result["mihpayid"]; v != "" {
+					update["mihpayid"] = v
+				}
+
+				if v := result["mode"]; v != "" {
+					update["method"] = v
+				}
+
+				if v := result["bank_ref_num"]; v != "" {
+					update["bank_ref_num"] = v
+				}
+
+				err = s.repo.UpdateTxn(ctx, txnID, update)
+				if err != nil {
+					return nil, err
+				}
+
+				// run success flow
+				go s.afterPaymentSuccess(txnID)
+
+				txn.Status = "paid"
+			}
+
+			// ----------------------------------------
+			// FAILURE CASE
+			// ----------------------------------------
+
+			if status == "failure" {
+
+				err = s.repo.UpdateTxn(ctx, txnID, bson.M{
+					"status": "failed",
+				})
+
+				if err == nil {
+					go s.afterPaymentFailed(txnID)
+				}
+
+				txn.Status = "failed"
+			}
 		}
 	}
+
+	// ------------------------------------------------
+	// Retry TTL
+	// ------------------------------------------------
 
 	ttl := s.getRetryTTL(ctx, txn.ServiceID)
 

@@ -48,7 +48,7 @@ type Provider struct {
 	KycStatus            KYCStatus          `bson:"kycStatus" json:"kycStatus"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`
-	CurrentAppVersion        string            `bson:"currentVerison" json:"currentVerison"`
+	CurrentAppVersion        string            `bson:"currentVersion" json:"currentVersion"`
 	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
 	ResponseMsg        string            `bson:"responseMsg" json:"responseMsg"`
 	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	
 	"time"
 
 	"app_backend/internal/domain"
@@ -368,48 +369,65 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 	return bookings,total, nil
 }
 
-func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService,int64, error) {
+func (r *AcceptedServiceRepo) GetBookingsByProviderAndStatus(ctx context.Context, providerID primitive.ObjectID, status []domain.ServiceStatus, skip, limit int64) ([]domain.AcceptedService, int64, error) {
 
-	filter := bson.M{
-        "$or": []bson.M{
-            {
-                "provider": providerID,
-                "status":   bson.M{"$in": status},
-            },
-            {   
-                "cancelledProviderID": providerID.Hex(),
-                "cancelledByProvider": true,
-                "status":              domain.StatusCancelled,
-            },
-        },
+    isCancelledQuery := false
+    for _, s := range status {
+        if s == domain.StatusCancelled {
+            isCancelledQuery = true
+            break
+        }
     }
 
-	total, err := r.col.CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, 0, err
-	}
+    var filter bson.M
 
-	var bookings []domain.AcceptedService
+    if isCancelledQuery {
+        filter = bson.M{
+            "$or": []bson.M{
+                {
+                    "provider": providerID,
+                    "status":   domain.StatusCancelled,
+                },
+                {
+                    "cancelledProviderID": providerID.Hex(),
+                    "cancelledByProvider": true,
+                    "status":              domain.StatusCancelled,
+                },
+            },
+        }
+    } else {
+        filter = bson.M{
+            "provider": providerID,
+            "status":   bson.M{"$in": status},
+        }
+    }
 
-	opts := options.Find().
-		SetSort(bson.D{{Key: "createdAt", Value: -1}}).
-		SetSkip(skip).
-		SetLimit(limit)
+    total, err := r.col.CountDocuments(ctx, filter)
+    if err != nil {
+        return nil, 0, err
+    }
 
-	cursor, err := r.col.Find(ctx, filter, opts)
+    var bookings []domain.AcceptedService
 
-	if err != nil {
-		return nil,0, err
-	}
-	if err := cursor.All(ctx, &bookings); err != nil {
-		return nil,0, err
-	}
+    opts := options.Find().
+        SetSort(bson.D{{Key: "createdAt", Value: -1}}).
+        SetSkip(skip).
+        SetLimit(limit)
 
-	if bookings == nil {
-		return []domain.AcceptedService{}, total, nil
-	}
+    cursor, err := r.col.Find(ctx, filter, opts)
+    if err != nil {
+        return nil, 0, err
+    }
 
-	return bookings, total, nil
+    if err := cursor.All(ctx, &bookings); err != nil {
+        return nil, 0, err
+    }
+
+    if bookings == nil {
+        return []domain.AcceptedService{}, total, nil
+    }
+
+    return bookings, total, nil
 }
 
 func (r *AcceptedServiceRepo) UpdateComplaintByUser(

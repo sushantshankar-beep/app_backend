@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"time"
-
 	"app_backend/internal/domain"
 	"app_backend/internal/repository"
 	"app_backend/internal/socket"
@@ -17,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ServiceTrackingService struct {
@@ -448,6 +448,7 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		)
 		gst := svc.FinalPrice * 18 / 100
 		totalAmount := svc.FinalPrice + gst
+
 		user, err := s.userRepo.GetByID(ctx, svc.User)
 		if err != nil {
 			return nil, err
@@ -456,7 +457,25 @@ func (s *ServiceTrackingService) UpdateStatus(ctx context.Context,serviceID stri
 		if err != nil {
 			return nil, err
 		}
-		newTotalExpense := user.TotalExpense + totalAmount
+		var discountData struct {
+			DiscountedAmount float64 `bson:"discountedAmount"`
+		}
+
+		err1 := s.acceptedRepo.Col().
+			FindOne(ctx, bson.M{"_id": svc.ID}).
+			Decode(&discountData)
+
+		if err1 != nil && err1 != mongo.ErrNoDocuments {
+			return nil, err1
+		}
+
+		var newTotalExpense float64
+
+		if discountData.DiscountedAmount > 0 {
+			newTotalExpense = user.TotalExpense + discountData.DiscountedAmount
+		} else {
+			newTotalExpense = user.TotalExpense + totalAmount
+		}
 		if err := s.userRepo.UpdateTotalExpense(ctx,userObjID,newTotalExpense); err != nil {
 			return nil, err
 		}

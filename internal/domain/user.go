@@ -42,4 +42,9 @@ type User struct {
 	IsNew               bool                 `bson:"isNew" json:"isNew"`
 	PrimaryVehicleID    *primitive.ObjectID  `bson:"primaryVehicleId,omitempty" json:"primaryVehicleId,omitempty"`
 	FallbackVehicleIDs  []primitive.ObjectID `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`
+	CurrentAppVersion        string            `bson:"currentVerison" json:"currentVerison"`
+	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
+	ResponseMsg          string            `bson:"responseMsg" json:"responseMsg"`
+	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`
+	IOSStoreURL        string 				`bson:"iosStoreUrl" json:"iosStoreUrl"`
 }

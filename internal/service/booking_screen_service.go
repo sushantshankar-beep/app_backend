@@ -306,6 +306,7 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 			domain.StatusReachedLocation,
 			domain.StatusOTPVerified,
 			domain.StatusInProgress,
+			"searching_after_cancel",
 		}, nil
 
 	case "completed":

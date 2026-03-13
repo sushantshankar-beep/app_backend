@@ -12,7 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
+	"strconv"
+	"strings"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -28,6 +29,78 @@ type UserService struct {
 	amcRepo *repository.AMCRepo
 	vehicleRepo *repository.VehicleRepo
 	db *mongo.Database
+}
+type Version struct {
+	Major int
+	Minor int
+	Patch int
+}
+func parseVersion(v string) (Version, error) {
+
+	parts := strings.Split(v, ".")
+
+	version := Version{}
+
+	if len(parts) > 0 {
+		major, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return version, err
+		}
+		version.Major = major
+	}
+
+	if len(parts) > 1 {
+		minor, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return version, err
+		}
+		version.Minor = minor
+	}
+
+	if len(parts) > 2 {
+		patch, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return version, err
+		}
+		version.Patch = patch
+	}
+
+	return version, nil
+}
+func compareVersions(v1, v2 string) (int, error) {
+
+	ver1, err := parseVersion(v1)
+	if err != nil {
+		return 0, err
+	}
+
+	ver2, err := parseVersion(v2)
+	if err != nil {
+		return 0, err
+	}
+
+	if ver1.Major > ver2.Major {
+		return 1, nil
+	}
+	if ver1.Major < ver2.Major {
+		return -1, nil
+	}
+
+	if ver1.Minor > ver2.Minor {
+		return 1, nil
+	}
+	if ver1.Minor < ver2.Minor {
+		return -1, nil
+	}
+
+	if ver1.Patch > ver2.Patch {
+		return 1, nil
+	}
+	if ver1.Patch < ver2.Patch {
+		return -1, nil
+	}
+
+	return 0, nil
 }
 var mongoDB *mongo.Database
 func NewUserService(users ports.UserRepository, otp ports.OTPStore, token ports.TokenService, q *worker.OTPQueue, counter *repository.CounterRepo,vehicleRepo *repository.VehicleRepo,db *mongo.Database) *UserService {
@@ -95,6 +168,11 @@ func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.Object
 		"primaryVehicleId":    user.PrimaryVehicleID,
 		"fallbackVehicleIds":  user.FallbackVehicleIDs,
 		"vehicleCount":        vehicleCount,
+		"currentVersion":  user.CurrentAppVersion,
+		"forceUpdate":     user.ForceUpdate,
+		"responseMsg":     user.ResponseMsg,
+		"androidStoreUrl": user.AndroidStoreURL,
+		"iosStoreUrl":     user.IOSStoreURL,
 	}
 	if user.VehicleID != nil {
 		result["vehicleId"] = user.VehicleID
@@ -191,7 +269,6 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "selectedCity", req["selectedCity"])
 	setString(update, "appStateStatus", req["appStateStatus"])
 	setString(update, "image_url", req["imageUrl"])
-	
 	if val, ok := req["isActive"]; ok {
 		setString(update, "isActive", val)
 	}

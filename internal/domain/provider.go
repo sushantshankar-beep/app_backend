@@ -45,8 +45,13 @@ type Provider struct {
 	IsActive             ProviderStatus            `bson:"isActive,omitempty" json:"isActive,omitempty"`
 	ComplaintsCount      int                `bson:"complaintsCount" json:"complaintsCount"`
 	Rating               string             `bson:"rating" json:"rating"`
-	KycStatus            KYCStatus          `bson:"-" json:"kycStatus"`
+	KycStatus            KYCStatus          `bson:"kycStatus" json:"kycStatus"`
 	CreatedAt            time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`
+	CurrentAppVersion        string            `bson:"currentVersion" json:"currentVersion"`
+	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
+	ResponseMessage          string            `bson:"responseMessage" json:"responseMessage"`
+	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`
+	IStoreLink        string 				`bson:"iosStoreUrl" json:"iosStoreUrl"`
 }
 

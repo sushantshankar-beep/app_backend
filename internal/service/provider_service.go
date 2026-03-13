@@ -21,6 +21,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+
 type ProviderService struct {
 	repo                ports.ProviderRepository
 	counterRepo         *repository.CounterRepo
@@ -182,6 +183,7 @@ func (s *ProviderService) GetProfile(
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(provider)
 
 	provider.KycStatus = domain.KYC_PENDING
 
@@ -198,7 +200,6 @@ func (s *ProviderService) GetProfile(
 
 	return provider, nil
 }
-
 func (s *ProviderService) CreateOrUpdateProfile(
 	ctx context.Context,
 	id domain.ProviderID,

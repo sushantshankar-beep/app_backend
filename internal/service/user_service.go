@@ -19,14 +19,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
-const (
-	CurrentAppVersion    = "1.0.1"
-	MinSupportedVersion  = "1.0.0"
-
-	ResponseMsg          = "Latest update is available"
-	AndroidStoreURL      = "https://play.google.com/store/apps/details?id=com.vahanwire"
-	IOSStoreURL          = "https://apps.apple.com/app/idxxxx"
-)
 
 type UserService struct {
 	users   ports.UserRepository
@@ -153,14 +145,6 @@ func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.Object
 	if user.FallbackVehicleIDs != nil {
 		vehicleCount += int64(len(user.FallbackVehicleIDs))
 	}
-	forceUpdate := false
-
-	if user.AppVersion != "" {
-		cmp, err := compareVersions(user.AppVersion, MinSupportedVersion)
-		if err == nil && cmp == -1 {
-			forceUpdate = true
-		}
-	}
 	result := map[string]interface{}{
 		"id":                  user.ID,
 		"userCode":            user.UserCode,
@@ -184,12 +168,11 @@ func (s *UserService) GetProfile(ctx context.Context, userObjID primitive.Object
 		"primaryVehicleId":    user.PrimaryVehicleID,
 		"fallbackVehicleIds":  user.FallbackVehicleIDs,
 		"vehicleCount":        vehicleCount,
-		"appVersion":      user.AppVersion,
-		"currentVersion":  CurrentAppVersion,
-		"forceUpdate":     forceUpdate,
-		"responseMsg":     ResponseMsg,
-		"androidStoreUrl": AndroidStoreURL,
-		"iosStoreUrl":     IOSStoreURL,
+		"currentVersion":  user.CurrentAppVersion,
+		"forceUpdate":     user.ForceUpdate,
+		"responseMsg":     user.ResponseMsg,
+		"androidStoreUrl": user.AndroidStoreURL,
+		"iosStoreUrl":     user.IOSStoreURL,
 	}
 	if user.VehicleID != nil {
 		result["vehicleId"] = user.VehicleID
@@ -286,8 +269,6 @@ func (s *UserService) CreateOrUpdateProfile(ctx context.Context, userID domain.U
 	setString(update, "selectedCity", req["selectedCity"])
 	setString(update, "appStateStatus", req["appStateStatus"])
 	setString(update, "image_url", req["imageUrl"])
-	setString(update, "appVersion", req["appVersion"])
-	
 	if val, ok := req["isActive"]; ok {
 		setString(update, "isActive", val)
 	}

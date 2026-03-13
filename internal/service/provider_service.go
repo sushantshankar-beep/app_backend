@@ -177,12 +177,13 @@ func (s *ProviderService) VerifyOTP(
 func (s *ProviderService) GetProfile(
 	ctx context.Context,
 	id domain.ProviderID,
-) (map[string]any, error) {
+) (*domain.Provider, error) {
 
 	provider, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(provider)
 
 	provider.KycStatus = domain.KYC_PENDING
 
@@ -197,29 +198,7 @@ func (s *ProviderService) GetProfile(
 		}
 	}
 
-	// version comparison
-	forceUpdate := false
-
-	if provider.AppVersion != "" {
-		cmp, err := compareVersions(provider.AppVersion, MinSupportedVersion)
-		if err == nil && cmp == -1 {
-			forceUpdate = true
-		}
-	}
-
-	// convert provider struct → map
-	data := bson.M{}
-	bytes, _ := bson.Marshal(provider)
-	_ = bson.Unmarshal(bytes, &data)
-
-	// add version fields
-	data["currentVersion"] = CurrentAppVersion
-	data["forceUpdate"] = forceUpdate
-	data["responseMsg"] = ResponseMsg
-	data["androidStoreUrl"] = AndroidStoreURL
-	data["iosStoreUrl"] = IOSStoreURL
-
-	return data, nil
+	return provider, nil
 }
 func (s *ProviderService) CreateOrUpdateProfile(
 	ctx context.Context,
@@ -264,7 +243,6 @@ func (s *ProviderService) CreateOrUpdateProfile(
 	assignString(&provider.City, req["city"])
 	assignString(&provider.VehicleNumber, req["vehicleNumber"])
 	assignString(&provider.Description, req["description"])
-	assignString(&provider.AppVersion, req["appVersion"])
 
 	if provider.Name != oldName || 
 	   provider.CompanyName != oldCompanyName || 

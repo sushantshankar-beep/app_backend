@@ -42,7 +42,7 @@ type User struct {
 	IsNew               bool                 `bson:"isNew" json:"isNew"`
 	PrimaryVehicleID    *primitive.ObjectID  `bson:"primaryVehicleId,omitempty" json:"primaryVehicleId,omitempty"`
 	FallbackVehicleIDs  []primitive.ObjectID `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`
-	CurrentAppVersion        string            `bson:"currentVerison" json:"currentVerison"`
+	CurrentAppVersion        string            `bson:"currentVersion" json:"currentVersion"`
 	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
 	ResponseMsg          string            `bson:"responseMsg" json:"responseMsg"`
 	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`

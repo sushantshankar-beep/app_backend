@@ -227,4 +227,5 @@ type RefundDTO struct {
 	Reason    string    `json:"reason"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	CompletedAt time.Time `json:"completedAt"`
 }

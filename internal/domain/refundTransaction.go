@@ -18,6 +18,7 @@ type RefundTransaction struct {
 	Reason   string             `bson:"reason"`
 	CreatedAt time.Time         `bson:"createdAt"`
 	UpdatedAt time.Time         `bson:"updatedAt"`
+	Timeline          RefundTimeline     `bson:"timeline"`
 }
 
 type PayURefundResponse struct {
@@ -26,4 +27,13 @@ type PayURefundResponse struct {
 	Status    int    `json:"status"`
 	Mihpayid  int64  `json:"mihpayid"`
 	RequestID string `json:"request_id"`
+}
+
+
+type RefundTimeline struct {
+	Initiated     time.Time `bson:"initiated,omitempty" json:"initiated,omitempty"`
+	UnderProcess  time.Time `bson:"underProcess,omitempty" json:"under_process,omitempty"`
+	StatusChecked time.Time `bson:"statusChecked,omitempty" json:"status_checked,omitempty"`
+	Completed     time.Time `bson:"completed,omitempty" json:"completed,omitempty"`
+	Failed        time.Time `bson:"failed,omitempty" json:"failed,omitempty"`
 }

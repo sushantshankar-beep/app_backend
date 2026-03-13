@@ -534,6 +534,7 @@ func (s *BookingService) GetUserBookingDetails(
 				Reason:    refund.Reason,
 				CreatedAt: refund.CreatedAt,
 				UpdatedAt: refund.UpdatedAt,
+				CompletedAt: refund.Timeline.Completed,
 			}
 		}
 	}

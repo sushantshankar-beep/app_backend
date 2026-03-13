@@ -616,13 +616,12 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		serviceData := &r
 
 		if r.CancelledByProvider && r.CancelledProviderID == providerID {
-            snap, err := s.snapshotRepo.GetByServiceID(ctx, r.ID)
+            snap, err := s.snapshotRepo.GetByServiceIDAndProvider(ctx, r.ID,providerID)
             if err == nil && snap != nil {
                 snapCopy := snap.Service  
                 serviceData = &snapCopy
             }
         }
-        
 
 		userObjID, err := primitive.ObjectIDFromHex(serviceData.User.Hex())
 		if err != nil {
@@ -635,17 +634,14 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		}
 
 		providerIDStr := serviceData.Provider.Hex()
-if providerIDStr == "" {
-			providerIDStr = providerID
-}
+        if providerIDStr == "" || serviceData.Provider.IsZero() {
+              providerIDStr = providerID
+        }
 
 		provider, err := s.providerRepo.FindByID(
 			ctx,
 			domain.ProviderID(providerIDStr),
 		)
-		if err != nil {
-			continue
-		}
 
 		const gstPercent = 18.0
 

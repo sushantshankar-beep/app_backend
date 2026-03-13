@@ -50,8 +50,7 @@ type Provider struct {
 	UpdatedAt            time.Time          `bson:"updatedAt" json:"updatedAt"`
 	CurrentAppVersion        string            `bson:"currentVerison" json:"currentVerison"`
 	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
-	ResponseMessage          string            `bson:"responseMessage" json:"responseMessage"`
+	ResponseMsg        string            `bson:"responseMsg" json:"responseMsg"`
 	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`
 	IStoreLink        string 				`bson:"iosStoreUrl" json:"iosStoreUrl"`
 }
-

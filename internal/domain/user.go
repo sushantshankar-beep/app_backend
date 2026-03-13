@@ -44,7 +44,7 @@ type User struct {
 	FallbackVehicleIDs  []primitive.ObjectID `bson:"fallbackVehicleIds,omitempty" json:"fallbackVehicleIds,omitempty"`
 	CurrentAppVersion        string            `bson:"currentVerison" json:"currentVerison"`
 	ForceUpdate         bool  				`bson:"forceUpdate" json:"forceUpdate"`
-	ResponseMsg          string            `bson:"responseMessage" json:"responseMessage"`
+	ResponseMsg          string            `bson:"responseMsg" json:"responseMsg"`
 	AndroidStoreURL    string               `bson:"androidStoreUrl" json:"androidStoreUrl"`
 	IOSStoreURL        string 				`bson:"iosStoreUrl" json:"iosStoreUrl"`
 }

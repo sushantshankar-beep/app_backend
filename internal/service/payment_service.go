@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"regexp"
+	"log"
 	"app_backend/internal/domain"
 	"app_backend/internal/events"
 	"app_backend/internal/ports"
@@ -28,7 +29,14 @@ import (
 	"app_backend/internal/queue"
 	"app_backend/internal/s3"
 )
+type PaymentJob struct {
+	TxnID string
+	Type  string 
+}
 
+type PaymentWorkerPool struct {
+	queue chan PaymentJob
+}
 type PaymentService struct {
 	repo        *repository.PaymentRepository
 	transactionRepo *repository.PaymentRepository
@@ -50,6 +58,7 @@ type PaymentService struct {
 	invoiceQueue        *queue.InvoiceQueue
 	biddingSvc           *BiddingService
 	couponSvc 		  *CouponService
+	paymentPool *PaymentWorkerPool
 }
 
 func NewPaymentService(
@@ -93,6 +102,75 @@ func NewPaymentService(
 	}
 }
 
+/* =========== payment worker ============= */
+
+func (s *PaymentService) StartPaymentWorkers(n int) {
+
+	s.paymentPool = &PaymentWorkerPool{
+		queue: make(chan PaymentJob, 1000), // buffer
+	}
+
+	for i := 0; i < n; i++ {
+		go s.paymentWorker(i, s.paymentPool.queue)
+	}
+}
+
+func (s *PaymentService) paymentWorker(id int, jobs <-chan PaymentJob) {
+
+	for job := range jobs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Println("🔥 payment worker panic recovered:", r)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			lockKey := "payment:job:lock:" + job.TxnID
+
+			ok, _ := s.redis.SetNX(ctx, lockKey, "1", 5*time.Minute).Result()
+			if !ok {
+				return // already processed
+			}
+
+			var err error
+			for i := 0; i < 3; i++ {
+
+				switch job.Type {
+				case "success":
+					err = s.afterPaymentSuccess(job.TxnID)
+
+				case "failed":
+					err = s.afterPaymentFailed(job.TxnID)
+				}
+
+				if err == nil {
+					return 
+				}
+
+				fmt.Println("retry payment job:", job.TxnID, "attempt:", i+1)
+
+				time.Sleep(time.Duration(i+1) * time.Second)
+			}
+			log.Println("payment job failed permanently:", job.TxnID)
+		}()
+	}
+}
+
+func (s *PaymentService) enqueuePaymentJob(txnID string, typ string) {
+	if s.paymentPool == nil {
+		log.Println("payment pool not initialized")
+		return
+	}
+	select {
+	case s.paymentPool.queue <- PaymentJob{
+		TxnID: txnID,
+		Type:  typ,
+	}:
+	default:
+		log.Println("entering default payment queue full:", txnID)
+	}
+}
 
 func sha512Hash(input string) string {
 	h := sha512.Sum512([]byte(input))
@@ -280,7 +358,6 @@ func classifyPayUFailure(data map[string]string) domain.PaymentFailReason {
 
 
 func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]string) error {
-	fmt.Println("🔥 PAYU RAW WEBHOOK DATA ↓↓↓")
 	for k, v := range data {
 		fmt.Println(k, "=", v)
 	}
@@ -301,15 +378,10 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 		data["productinfo"],
 		data["amount"],
 		data["txnid"],
-		data["key"], // USE key from webhook, not config
+		data["key"],
 	)
 
 	calculated := sha512Hash(verifyStr)
-
-	fmt.Println("🔐 VERIFY STRING:", verifyStr)
-	fmt.Println("🔐 CALCULATED HASH:", calculated)
-	fmt.Println("🔐 PAYU HASH:", data["hash"])
-
 	if calculated != data["hash"] {
 		return errors.New("hash verification failed")
 	}
@@ -317,14 +389,14 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, data map[string]str
 	status := "failed"
 	if data["status"] == "success" {
 		status = "paid"
-		go s.afterPaymentSuccess(txn.TxnID)
+		s.enqueuePaymentJob(txn.TxnID, "success")
 	} else {
 		reason := classifyPayUFailure(data)
 		_ = s.repo.UpdateTxn(ctx, txn.TxnID, bson.M{
 		"status":     status,
 		"failReason": reason,
 	})
-		go s.afterPaymentFailed(txn.TxnID)
+		s.enqueuePaymentJob(txn.TxnID, "failed")
 	}
 	s.redis.Del(ctx, "payment:reserve:"+txn.ServiceID)
 

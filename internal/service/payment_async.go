@@ -22,7 +22,7 @@ import (
 /*
 AFTER PAYMENT SUCCESS
 */
-func (s *PaymentService) afterPaymentSuccess(txnID string) {
+func (s *PaymentService) afterPaymentSuccess(txnID string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
@@ -30,12 +30,12 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	// ---------------- LOAD TXN ----------------
 	txn, err := s.repo.GetByTxnID(ctx, txnID)
 	if err != nil || txn.InvoiceGenerated {
-		return
+		return err
 	}
 
 	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
 	if err != nil {
-		return
+		return err
 	}
 
 	if txn.AppliedPromo != nil && txn.AppliedPromo.PromoID != "" {
@@ -45,7 +45,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 		userOID, err := primitive.ObjectIDFromHex(txn.UserID)
 		if err != nil {
 			log.Println("invalid user id:", txn.UserID)
-			return
+			return err
 		}
 
 		if user, err := s.userRepo.GetByID(ctx, userOID); err == nil {
@@ -59,7 +59,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	userOID, err := primitive.ObjectIDFromHex(txn.UserID)
 		if err != nil {
 			log.Println("invalid user id:", txn.UserID)
-			return
+			return err
 	}
 	
 	if _, err := s.userRepo.UpdateByID(ctx, userOID, bson.M{"isNew": false}); err != nil {
@@ -101,7 +101,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	)
 	if err != nil {
 		log.Println("failed to update payment status:", err)
-		return
+		return err
 	}
 
 
@@ -110,7 +110,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
 		log.Println("failed to load service:", err)
-		return
+		return err
 	}
 	providerMissing := false
 
@@ -198,11 +198,6 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 			"payment:success",
 			providerPayload,
 		)
-
-		// 🔔 PUSH NOTIFICATION
-
-		
-
 		go s.notify.SendToProvider(
 			context.Background(),
 			providerID,
@@ -266,6 +261,7 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 	}
 
 	log.Println("DONEEEEE payment success")
+	return nil
 }
 
 
@@ -274,25 +270,25 @@ func (s *PaymentService) afterPaymentSuccess(txnID string) {
 /*
 AFTER PAYMENT FAILURE
 */
-func (s *PaymentService) afterPaymentFailed(txnID string) {
+func (s *PaymentService) afterPaymentFailed(txnID string) error{
 
 	ctx := context.Background()
 
 	txn, err := s.repo.GetByTxnID(ctx, txnID)
 	if err != nil {
-		return
+		return err
 	}
 
 	serviceOID, err := primitive.ObjectIDFromHex(txn.ServiceID)
 	if err != nil {
 		log.Println("invalid service id:", txn.ServiceID)
-		return
+		return err
 	}
 
 	svc, err := s.acceptedServiceRepo.GetByID(ctx, serviceOID)
 	if err != nil {
 		log.Println("accepted service:", err)
-		return
+		return err
 	}
 
 	reason := domain.PaymentFailReason(txn.FailReason)
@@ -355,10 +351,10 @@ func (s *PaymentService) afterPaymentFailed(txnID string) {
 		map[string]string{
 			"type":      "payment_failed",
 			"serviceId": svc.ID.Hex(),
-			"payload":   string(userBytes), // ✅ SAME AS SOCKET
+			"payload":   string(userBytes),
 		},
 	)
-
+	return nil
 }
 
 

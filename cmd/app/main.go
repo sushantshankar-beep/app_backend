@@ -197,6 +197,8 @@ func main() {
 		refundRepo,
 		zoneSvc,
 	)
+
+	biddingSvc.StartCleanupWorkers(3)
 	watchdog := worker.NewSearchWatchdog( ports.AcceptedServiceRepository(acceptedServiceRepo), biddingSvc)
 	watchdog.Start()
 	ctx := context.Background()
@@ -204,30 +206,27 @@ func main() {
 	go invoiceWorker.Start(ctx)
 
 	paymentSvc := service.NewPaymentService(
-	paymentRepo,
-	invoiceRepo,
-	emitter,
-	ports.AcceptedServiceRepository(acceptedServiceRepo),
-	userRepo,
-	ports.ProviderRepo(providerRepo),
-	ports.NotificationService(notificationSvc),
-	bus,
-	cfg.PayUKey,
-	cfg.PayUSalt,
-	cfg.PayUBaseURL,
-	cfg.BaseURL,
-	rdb,
-	refundRepo,
-	invoiceUploader,
-	invoiceQueue, 
-	biddingSvc,
-	couponSvc,
-)
+		paymentRepo,
+		invoiceRepo,
+		emitter,
+		ports.AcceptedServiceRepository(acceptedServiceRepo),
+		userRepo,
+		ports.ProviderRepo(providerRepo),
+		ports.NotificationService(notificationSvc),
+		bus,
+		cfg.PayUKey,
+		cfg.PayUSalt,
+		cfg.PayUBaseURL,
+		cfg.BaseURL,
+		rdb,
+		refundRepo,
+		invoiceUploader,
+		invoiceQueue, 
+		biddingSvc,
+		couponSvc,
+	)
+	paymentSvc.StartPaymentWorkers(5)
 
-
-
-
-	//Refund async worker
 	refundWorker := worker.NewRefundWorker(
 		rdb,
 		paymentSvc,

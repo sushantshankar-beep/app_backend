@@ -20,6 +20,13 @@ import (
 	"encoding/json" 
 	"math"
 )
+type CleanupJob struct {
+	ServiceID string
+}
+
+type CleanupWorkerPool struct {
+	queue chan CleanupJob
+}
 
 type BiddingService struct {
 	rdb          *redis.Client
@@ -32,7 +39,8 @@ type BiddingService struct {
 	notify       ports.NotificationService
 	paymentRepo *repository.PaymentRepository
 	refundRepo   *repository.RefundRepo
-	zoneService  *ZoneService 
+	zoneService  *ZoneService
+	cleanupPool *CleanupWorkerPool
 	
 }
 
@@ -47,7 +55,7 @@ func NewBiddingService(
 	notify ports.NotificationService,
 	paymentRepo *repository.PaymentRepository,
 	refundRepo   *repository.RefundRepo,
-	zoneService *ZoneService, 
+	zoneService *ZoneService,
 ) *BiddingService {
 	return &BiddingService{
 		rdb:          rdb,
@@ -64,6 +72,75 @@ func NewBiddingService(
 	}
 }
 var ErrServiceAlreadyAssigned = errors.New("service already assigned")
+
+
+func (s *BiddingService) StartCleanupWorkers(workerCount int) {
+
+	s.cleanupPool = &CleanupWorkerPool{
+		queue: make(chan CleanupJob, 1000),
+	}
+
+	for i := 0; i < workerCount; i++ {
+		go s.cleanupWorker(i, s.cleanupPool.queue)
+	}
+}
+
+/* ==============CANCEL WORKER =================== */
+
+func (s *BiddingService) cleanupWorker(id int, jobs <-chan CleanupJob) {
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for job := range jobs {
+
+		<-ticker.C
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Println("worker panic recovered:", r)
+				}
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			lockKey := "cleanup:lock:" + job.ServiceID
+			ok, _ := s.rdb.SetNX(ctx, lockKey, "1", 5*time.Minute).Result()
+			if !ok {
+				return
+			}
+			for i := 0; i < 3; i++ {
+
+				err := s.cleanupServiceKeysCancellation(job.ServiceID)
+
+				if err == nil {
+					return
+				}
+
+				log.Println("retry cleanup:", job.ServiceID, "attempt:", i+1)
+
+				time.Sleep(time.Duration(i+1) * time.Second)
+			}
+
+			log.Println("cleanup failed:", job.ServiceID)
+
+		}()
+	}
+}
+/* ============= QUEUE DECLEARATION ================== */
+func (s *BiddingService) enqueueCleanup(serviceID string) {
+
+	if s.cleanupPool == nil {
+		log.Println("cleanup pool not initialized")
+		return
+	}
+
+	select {
+	case s.cleanupPool.queue <- CleanupJob{ServiceID: serviceID}:
+	default:
+		log.Println("entering into default cleanup queue full:", serviceID)
+	}
+}
 
 /* ================= START SEARCH ================= */
 
@@ -1560,7 +1637,7 @@ func (s *BiddingService) CancelService(
 
 	return nil
 }
-	func (s *BiddingService) cleanupServiceKeysCancellation(serviceID string) {
+	func (s *BiddingService) cleanupServiceKeysCancellation(serviceID string) error{
 
 		ctx := context.Background()
 
@@ -1592,101 +1669,102 @@ func (s *BiddingService) CancelService(
 				s.rdb.Del(ctx, keys...)
 			}
 		}
+		return nil
 }
 
 func (s *BiddingService) CancelSearchingServiceBeforeBid(
 	ctx context.Context,
 	serviceID string,
 	userID string,
-	) error {
+) error {
 
-		serviceOID, err := primitive.ObjectIDFromHex(serviceID)
-		if err != nil {
-			return err
-		}
+	serviceOID, err := primitive.ObjectIDFromHex(serviceID)
+	if err != nil {
+		return err
+	}
 
-		userOID, err := primitive.ObjectIDFromHex(userID)
-		if err != nil {
-			return err
-		}
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
 
-		lockKey := "service:locked:" + serviceID
-		stopKey := "service:stop:" + serviceID
-		if _, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-			pipe.Set(ctx, lockKey, "1", 15*time.Minute)
-			pipe.Set(ctx, stopKey, "1", 30*time.Minute)
-			return nil
-		}); err != nil {
-			return err
-		}
-		var svc domain.AcceptedService
+	lockKey := "service:locked:" + serviceID
+	stopKey := "service:stop:" + serviceID
 
-		err = s.acceptedRepo.Col().
-			FindOneAndUpdate(
-				ctx,
-				bson.M{
-					"_id":  serviceOID,
-					"user": userOID,
+	if _, err := s.rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Set(ctx, lockKey, "1", 15*time.Minute)
+		pipe.Set(ctx, stopKey, "1", 30*time.Minute)
+		return nil
+	}); err != nil {
+		return err
+	}
+	var svc domain.AcceptedService
+
+	err = s.acceptedRepo.Col().
+		FindOneAndUpdate(
+			ctx,
+			bson.M{
+				"_id":  serviceOID,
+				"user": userOID,
+			},
+			bson.M{
+				"$set": bson.M{
+					"status":      domain.StatusCancelled,
+					"cancelledBy": "user",
+					"cancelledAt": time.Now(),
+					"updatedAt":   time.Now(),
 				},
-				bson.M{
-					"$set": bson.M{
-						"status":      domain.StatusCancelled,
-						"cancelledBy": "user",
-						"cancelledAt": time.Now(),
-						"updatedAt":   time.Now(),
-					},
-				},
-			).
-			Decode(&svc)
+			},
+		).
+		Decode(&svc)
+
+	if err != nil {
+		return errors.New("service not found or already cancelled")
+	}
+	userRoom := "user:" + serviceID
+	s.socket.CloseRoom(userRoom)
+	if svc.UserLocation != nil {
+
+		results, err := s.rdb.GeoRadius(
+			ctx,
+			"providers:geo",
+			svc.UserLocation.Long,
+			svc.UserLocation.Lat,
+			&redis.GeoRadiusQuery{
+				Radius: 100,
+				Unit:   "km",
+			},
+		).Result()
 
 		if err != nil {
-			return errors.New("service not found or already cancelled")
-		}
+			log.Println("geo cancel error:", err)
+		} else {
 
-		// 🔥 Notify user immediately
-		userRoom := "user:" + serviceID
-		s.socket.CloseRoom(userRoom)
-		if svc.UserLocation != nil {
+			seen := make(map[string]struct{}, len(results))
 
-			results, err := s.rdb.GeoRadius(
-				ctx,
-				"providers:geo",
-				svc.UserLocation.Long,
-				svc.UserLocation.Lat,
-				&redis.GeoRadiusQuery{
-					Radius: 100,
-					Unit:   "km",
-				},
-			).Result()
+			for _, loc := range results {
 
-			if err == nil {
+				providerID := loc.Name
 
-				seen := make(map[string]struct{}, len(results))
-
-				for _, loc := range results {
-
-					providerID := loc.Name
-					if _, exists := seen[providerID]; exists {
-						continue
-					}
-					seen[providerID] = struct{}{}
-
-					s.socket.Emit(
-						"provider:"+providerID,
-						"service:cancelled",
-						map[string]any{
-							"serviceId": serviceID,
-							"reason":    "cancelled_by_user",
-						},
-					)
+				if _, exists := seen[providerID]; exists {
+					continue
 				}
-			} else {
-				log.Println("geo cancel error:", err)
+				seen[providerID] = struct{}{}
+
+				s.socket.Emit(
+					"provider:"+providerID,
+					"service:cancelled",
+					map[string]any{
+						"serviceId": serviceID,
+						"reason":    "cancelled_by_user",
+					},
+				)
 			}
 		}
-		go s.cleanupServiceKeysCancellation(serviceID)
+	}
+	s.enqueueCleanup(serviceID)
 
-		return nil
+	return nil
 }
 
 func (s *BiddingService) CancelSearchingService(

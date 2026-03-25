@@ -57,6 +57,14 @@ func (h *UserVehicleHandler) SaveVehicle(c *gin.Context) {
 		return
 	}
 
+	requiredFields := []string{"vehicleNumber", "vehicleType", "brand", "model", "modelYear", "fueltype"}
+	for _, field := range requiredFields {
+		if req[field] == "" {
+			c.JSON(400, gin.H{"error": field + " is required"})
+			return
+		}
+	}
+
 	v, err := h.svc.SaveVehicleForUser(
 		c.Request.Context(),
 		userObjID,

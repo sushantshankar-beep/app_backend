@@ -29,6 +29,23 @@ func (h *UserHandler) SendOTP(c *gin.Context) {
 		return
 	}
 
+	if len(req.Phone) != 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone must be 10 digits"})
+		return
+	}
+
+	if req.Phone[0] < '6' || req.Phone[0] > '9' {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone must start with 6-9"})
+		return
+	}
+	
+	for _, ch := range req.Phone {
+		if ch < '0' || ch > '9' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone must contain only digits"})
+			return
+		}
+	}
+
 	if err := h.svc.SendOTP(c, req.Phone); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -44,6 +61,23 @@ func (h *UserHandler) VerifyOTP(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
+	}
+
+	if len(req.Phone) != 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone must be 10 digits"})
+		return
+	}
+
+	if req.Phone[0] < '6' || req.Phone[0] > '9' {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone must start with 6-9"})
+		return
+	}
+
+	for _, ch := range req.Phone {
+		if ch < '0' || ch > '9' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone must contain only digits"})
+			return
+		}
 	}
 
 	resp, err := h.svc.VerifyOTP(c.Request.Context(), req.Phone, req.Code)

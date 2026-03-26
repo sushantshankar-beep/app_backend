@@ -4,10 +4,10 @@ package handlers
 
 import (
 	"net/http"
-
+    "fmt"
 	"app_backend/internal/domain"
 	"app_backend/internal/service"
-
+    "strings"
 	"github.com/gin-gonic/gin"
 	"log"
 )
@@ -34,13 +34,35 @@ func (h *BiddingHandler) FindMechanics(c *gin.Context) {
 		ModelYear     int      `json:"modelYear" binding:"required"`
 		FuelType      string   `json:"fuelType" binding:"required"`
 		ServiceType   string   `json:"serviceType" binding:"required"`
-		Issues        []string `json:"issues"`
+		Issues        []string `json:"issues" binding:"required"`
 		Model         string   `json:"model" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	stringFields := map[string]string{
+		"vehicleType":   req.VehicleType,
+		"vehicleNumber": req.VehicleNumber,
+		"brand":         req.Brand,
+		"fuelType":      req.FuelType,
+		"serviceType":   req.ServiceType,
+		"model":         req.Model,
+	}
+	for field, val := range stringFields {
+		if strings.TrimSpace(val) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": field + " is required"})
+			return
+		}
+	}
+
+	for i, issue := range req.Issues {
+		if strings.TrimSpace(issue) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("issues[%d] is invalid", i)})
+			return
+		}
 	}
 
 	userID := c.GetString("userId")
@@ -82,6 +104,13 @@ func (h *BiddingHandler) PlaceBid(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
+		})
+		return
+	}
+
+    if req.Price < 1 || req.Price > 100000 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "price must be between 1 and 100000",
 		})
 		return
 	}

@@ -50,12 +50,29 @@ func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
 	upiID := strings.TrimSpace(c.PostForm("upiId"))
 	gstNumber := strings.ToUpper(strings.TrimSpace(c.PostForm("gstNumber")))
 
-	// Validation
-	if accountHolderName == "" || accountNumber == "" || ifsc == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "account holder name, account number and IFSC are required",
-		})
-		return
+	requiredStrings := map[string]string{
+		"accountHolderName": accountHolderName,
+		"accountNumber":     accountNumber,
+		"ifsc":              ifsc,
+		"branchName":        branchName,
+	}
+	for field, val := range requiredStrings {
+		if val == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": field + " is required"})
+			return
+		}
+	}
+	
+	requiredFiles := map[string][]string{
+		"aadhaarFront": aadhaarFront,
+		"aadhaarBack":  aadhaarBack,
+		"pan":          pan,
+	}
+	for field, urls := range requiredFiles {
+		if len(urls) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": field + " is required"})
+			return
+		}
 	}
 
 	if !validation.IsValidAccountNumber(accountNumber) {

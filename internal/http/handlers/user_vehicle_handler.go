@@ -5,6 +5,7 @@ import (
 	"app_backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"strings"
 )
 
 type UserVehicleHandler struct {
@@ -57,10 +58,17 @@ func (h *UserVehicleHandler) SaveVehicle(c *gin.Context) {
 		return
 	}
 
-	requiredFields := []string{"vehicleNumber", "vehicleType", "brand", "model", "modelYear", "fueltype"}
+	requiredFields := []string{"vehicleNumber", "vehicleType", "brand", "model", "modelYear", "fuelType"}
 	for _, field := range requiredFields {
-		if req[field] == "" {
+		if strings.TrimSpace(req[field]) == "" {
 			c.JSON(400, gin.H{"error": field + " is required"})
+			return
+		}
+	}
+
+	for _, ch := range req["modelYear"] {
+		if ch < '0' || ch > '9' {
+			c.JSON(400, gin.H{"error": "modelYear must contain only digits"})
 			return
 		}
 	}

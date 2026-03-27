@@ -27,7 +27,7 @@ func GeneratePDF(html string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func GenerateAgreementPDF(provider *domain.Provider, agreement *domain.Agreement) ([]byte, error) {
+func GenerateAgreementPDF(provider *domain.Provider, agreement *domain.Agreement, accountHolderName string) ([]byte, error) {
 	var htmlBuilder strings.Builder
 
 	styles := `
@@ -59,9 +59,9 @@ func GenerateAgreementPDF(provider *domain.Provider, agreement *domain.Agreement
 
 	htmlBuilder.WriteString(fmt.Sprintf("<h1>%s</h1>", agreement.Title))
 
-	htmlBuilder.WriteString(fmt.Sprintf("<p><strong>BETWEEN:</strong></p>"))
+	htmlBuilder.WriteString("<p><strong>BETWEEN:</strong></p>")
 	htmlBuilder.WriteString(fmt.Sprintf("<p>%s</p>", agreement.AgreementOf))
-	htmlBuilder.WriteString(fmt.Sprintf("<p><strong>AND</strong></p>"))
+	htmlBuilder.WriteString("<p><strong>AND</strong></p>")
 
 	ist, _ := time.LoadLocation("Asia/Kolkata")
 
@@ -92,17 +92,18 @@ func GenerateAgreementPDF(provider *domain.Provider, agreement *domain.Agreement
 				</tr>
 			</table>
 		</div>
-	`, provider.Name, provider.CompanyName, provider.City, agreementDate)
+	`, accountHolderName, provider.CompanyName, provider.City, agreementDate)
 
 	htmlBuilder.WriteString(providerDetails)
 
 	for _, p := range agreement.Paragraphs {
 		content := p.Content
 
-		content = strings.ReplaceAll(content, "{provider.name}", provider.Name)
+		content = strings.ReplaceAll(content, "{provider.name}", accountHolderName)
 		content = strings.ReplaceAll(content, "{provider.companyName}", provider.CompanyName)
 		content = strings.ReplaceAll(content, "{provider.city}", provider.City)
 		content = strings.ReplaceAll(content, "{provider.dateTime}",agreementDate)
+
 
 		htmlBuilder.WriteString("<div class='paragraph-container'>")
 

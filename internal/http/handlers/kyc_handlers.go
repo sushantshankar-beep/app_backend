@@ -62,18 +62,6 @@ func (h *KYCHandler) CreateOrUpdateKYC(c *gin.Context) {
 			return
 		}
 	}
-	
-	requiredFiles := map[string][]string{
-		"aadhaarFront": aadhaarFront,
-		"aadhaarBack":  aadhaarBack,
-		"pan":          pan,
-	}
-	for field, urls := range requiredFiles {
-		if len(urls) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": field + " is required"})
-			return
-		}
-	}
 
 	if !validation.IsValidAccountNumber(accountNumber) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account number"})

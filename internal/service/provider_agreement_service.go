@@ -13,12 +13,14 @@ import (
 type AgreementService struct {
 	agreementRepo *repository.AgreementRepo
 	providerRepo  *repository.ProviderRepo
+	kycRepo *repository.KYCRepo
 }
 
-func NewAgreementService(ar *repository.AgreementRepo, pr *repository.ProviderRepo) *AgreementService {
+func NewAgreementService(ar *repository.AgreementRepo, pr *repository.ProviderRepo, kycRepo *repository.KYCRepo) *AgreementService {
 	return &AgreementService{
 		agreementRepo: ar,
 		providerRepo:  pr,
+		kycRepo: kycRepo,
 	}
 }
 
@@ -30,6 +32,11 @@ func (s *AgreementService) GetProviderAgreement(ctx context.Context, providerID 
 	}
 
 	provider, err := s.providerRepo.FindByID(ctx, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("provider not found: %w", err)
+	}
+
+	kyc, err := s.kycRepo.FindByProvider(ctx, string(providerID))
 	if err != nil {
 		return nil, fmt.Errorf("provider not found: %w", err)
 	}
@@ -48,7 +55,7 @@ func (s *AgreementService) GetProviderAgreement(ctx context.Context, providerID 
 
 	templateData := map[string]interface{}{
 		"provider": map[string]string{
-			"name":        provider.Name,
+			"name":        kyc.Bank.AccountHolderName,
 			"companyName": provider.CompanyName,
 		},
 		"agreement": map[string]string{

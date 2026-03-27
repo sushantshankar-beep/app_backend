@@ -11,12 +11,14 @@ import (
 type KYCService struct {
 	kycRepo      *repository.KYCRepo
 	providerRepo *repository.ProviderRepo
+	providerSvc  *ProviderService
 }
 
-func NewKYCService(kycRepo *repository.KYCRepo, providerRepo *repository.ProviderRepo) *KYCService {
+func NewKYCService(kycRepo *repository.KYCRepo, providerRepo *repository.ProviderRepo, providerSvc *ProviderService) *KYCService {
 	return &KYCService{
 		kycRepo:      kycRepo,
 		providerRepo: providerRepo,
+		providerSvc:  providerSvc,
 	}
 }
 
@@ -34,16 +36,21 @@ func (s *KYCService) CreateOrUpdateKYC(
 	existing, _ := s.kycRepo.FindByProviderID(ctx, providerID)
 
 	req.ProviderID = objID
-	req.Status = domain.KYC_PENDING
+	
+	if existing == nil {
+		req.Status = domain.KYC_PENDING
+	} else {
+		req.ID = existing.ID
+		req.Status = existing.Status 
+	}
 
 	if existing != nil {
-		req.ID = existing.ID
-
 		existingDocs := make(map[domain.DocumentType]domain.KYCDocument)
 		for _, doc := range existing.Documents {
 			existingDocs[doc.Type] = doc
 		}
 
+		newDocsUploaded := false
 		for i := range req.Documents {
 			if existingDoc, ok := existingDocs[req.Documents[i].Type]; ok {
 				req.Documents[i].ID = existingDoc.ID
@@ -52,6 +59,11 @@ func (s *KYCService) CreateOrUpdateKYC(
 			}
 
 			req.Documents[i].Verified = domain.VERIFICATION_PENDING
+			newDocsUploaded = true
+		}
+
+		if newDocsUploaded {
+			req.Status = domain.KYC_PENDING
 		}
 
 		for docType, doc := range existingDocs {
@@ -84,6 +96,11 @@ func (s *KYCService) CreateOrUpdateKYC(
 		return nil, err
 	}
 
+	if provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerID)); err == nil && provider != nil {
+		_ = s.providerSvc.generateAndUploadAgreement(ctx, provider)
+		_ = s.providerRepo.UpdateAgreement(ctx, provider)
+	}
+   
 	return req, nil
 }
 

@@ -597,7 +597,13 @@ func (s *ProviderService) generateAndUploadAgreement(ctx context.Context, provid
 		return fmt.Errorf("failed to fetch agreement template: %w", err)
 	}
 
-	pdfBytes, err := utils.GenerateAgreementPDF(provider, agreement)
+	accountHolderName := provider.Name
+	kyc, err := s.kycRepo.FindByProviderID(ctx, string(provider.ID))
+	if err == nil && kyc != nil && kyc.Bank.AccountHolderName != "" {
+		accountHolderName = kyc.Bank.AccountHolderName
+	}
+
+	pdfBytes, err := utils.GenerateAgreementPDF(provider, agreement, accountHolderName)
 	if err != nil {
 		return fmt.Errorf("failed to generate PDF: %w", err)
 	}

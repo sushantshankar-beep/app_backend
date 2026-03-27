@@ -118,7 +118,6 @@ func main() {
 	)
 	notificationQuerySvc := service.NewNotificationQueryService(notificationRepo)
 
-	kycService := service.NewKYCService(kycRepo,providerRepo)
 	userVehicleService := service.NewUserVehicleService(
 		carBrandModelRepo,
 		bikeBrandModelRepo,
@@ -171,13 +170,15 @@ func main() {
 		agreementPdfUploader,
 		db,
 	)
+
+	kycService := service.NewKYCService(kycRepo, providerRepo, providerSvc)
 	snapshotRepo := repository.NewSnapshotRepo(db)
 	locationSvc := service.NewLocationService(locationRepo)
 	complaintSvc := service.NewComplaintService(complaintRepo, userRepo, providerRepo,acceptedServiceRepo,notificationSvc)
 	homepageSvc := service.NewHomepageService(homepageRepo,rdb)
 	metaSvc := service.NewMetaService(rdb, vehicleBrandRepo, serviceMasterRepo)
 	amcValidationSvc := service.NewAMCValidationService(amcRepo)
-	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo)
+	agreementSvc := service.NewAgreementService(providerAgreementRepo,providerRepo,kycRepo)
 	couponSvc := service.NewCouponService(promoRepo,discountRepo,acceptedServiceRepo,promoUsageRepo,userRepo)
 	bookingSvc := service.NewBookingService(acceptedServiceRepo, userRepo, providerRepo, serviceCatalogRepo,paymentRepo,settlementRepo,complaintRepo,snapshotRepo,couponSvc,refundRepo)
 	zoneSvc := service.NewZoneService(zoneRepo,rdb)

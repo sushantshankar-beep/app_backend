@@ -49,7 +49,11 @@ func (s *ComplaintService) RaiseComplaint(
 	if strings.TrimSpace(problem) == "" {
 		return nil, errors.New("problem is required")
 	}
-
+    
+	if len(photoURLs) == 0 {
+		return nil, errors.New("at least one photo is required")
+	}
+	
 	acceptedService, err := s.acceptedSvcRepo.FindByID(ctx, acceptedServiceID.Hex())
 	if err != nil {
 		return nil, errors.New("accepted service not found")

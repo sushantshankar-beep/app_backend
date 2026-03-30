@@ -232,10 +232,14 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			providerIDStr = r.CancelledProviderID
 		}
 
-		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerIDStr))
-
-		if err != nil {
-			continue
+		var providerName, providerProfileUrl, providerRating string
+		if r.PaymentStatus != domain.PaymentFailed && providerIDStr != "" {
+			provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerIDStr))
+			if err == nil {
+				providerName = provider.Name
+				providerProfileUrl = provider.ProfileURL
+				providerRating = provider.Rating
+			}
 		}
 
 		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
@@ -277,10 +281,10 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			Status:             string(r.Status),
 			FinalPrice:         tx.Amount,
 			UserName:           user.Name,
-			ProviderName:       provider.Name,
-			ProviderProfileUrl: provider.ProfileURL,
+			ProviderName:       providerName,
+			ProviderProfileUrl: providerProfileUrl,
 			VehicleType:        r.VehicleType,
-			Rating:             provider.Rating,
+			Rating:             providerRating,
 			Issues:             r.Issues,
 			CreatedAt:          r.CreatedAt,
 			UpdatedAt:          r.UpdatedAt,
@@ -317,6 +321,7 @@ func mapStatus(status string) ([]domain.ServiceStatus, error) {
 	case "cancelled":
 		return []domain.ServiceStatus{
 			domain.StatusCancelled,
+			domain.StatusProviderAssigned,
 		}, nil
 
 	default:
@@ -381,7 +386,7 @@ func (s *BookingService) GetUserBookingDetails(
 		providerIDStr = r.CancelledProviderID
 	}
 
-	if providerIDStr != "" {
+	if providerIDStr != "" && r.PaymentStatus != domain.PaymentFailed {
 		provider, err := s.providerRepo.FindByID(
 			ctx,
 			domain.ProviderID(providerIDStr),

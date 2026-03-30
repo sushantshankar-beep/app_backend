@@ -328,12 +328,45 @@ func (r *AcceptedServiceRepo) GetBookingsByUserAndStatus(ctx context.Context, us
 
 	var bookings []domain.AcceptedService
 
+	var normalStatuses []domain.ServiceStatus
+	var specialProviderAssigned bool
+
+	for _, s := range status {
+		if s == domain.StatusProviderAssigned {
+			specialProviderAssigned = true
+		} else {
+			normalStatuses = append(normalStatuses, s)
+		}
+	}
+
+	var statusCond bson.M
+	if specialProviderAssigned && len(normalStatuses) > 0 {
+		statusCond = bson.M{
+			"$or": []bson.M{
+				{"status": bson.M{"$in": normalStatuses}},
+				{"status": domain.StatusProviderAssigned, "paymentStatus": "failed"},
+			},
+		}
+	} else if specialProviderAssigned {
+		statusCond = bson.M{
+			"status":        domain.StatusProviderAssigned,
+			"paymentStatus": "failed",
+		}
+	} else {
+		statusCond = bson.M{"status": bson.M{"$in": status}}
+	}
+
 	countFilter := bson.M{
-		"user":   userID,
-		"status": bson.M{"$in": status},
-		"$or": []bson.M{
-			{"provider": bson.M{"$ne": primitive.NilObjectID}},
-			{"cancelledByProvider": true},
+		"user": userID,
+		"$and": []bson.M{
+			statusCond,
+			{
+				"$or": []bson.M{
+					{"provider": bson.M{"$ne": primitive.NilObjectID}},
+					{"cancelledByProvider": true},
+					{"paymentStatus": "failed"},
+				},
+			},
 		},
 	}
 

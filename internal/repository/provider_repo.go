@@ -275,3 +275,30 @@ func (r *ProviderRepo) IncrementComplaintCount(ctx context.Context, providerID p
     _, err := r.col.UpdateOne(ctx, filter, update)
     return err
 }
+
+func (r *ProviderRepo) GetProvidersByIDs(ctx context.Context, ids []string) ([]domain.Provider, error) {
+
+	objIDs := make([]primitive.ObjectID, 0)
+
+	for _, id := range ids {
+		oid, err := primitive.ObjectIDFromHex(id)
+		if err == nil {
+			objIDs = append(objIDs, oid)
+		}
+	}
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"_id": bson.M{"$in": objIDs},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var providers []domain.Provider
+	if err := cursor.All(ctx, &providers); err != nil {
+		return nil, err
+	}
+
+	return providers, nil
+}

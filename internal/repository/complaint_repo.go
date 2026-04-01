@@ -127,3 +127,51 @@ func (r *ComplaintRepo) GetNextSequence(ctx context.Context, sequenceName string
     
     return result.Seq, nil
 }
+
+func (r *ComplaintRepo) GetComplaintsByServiceIDs(
+	ctx context.Context,
+	services []domain.AcceptedService,
+) ([]domain.Complaint, error) {
+
+	ids := make([]primitive.ObjectID, 0)
+
+	for _, s := range services {
+		ids = append(ids, s.ID)
+	}
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"acceptedServiceId": bson.M{"$in": ids},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var complaints []domain.Complaint
+	if err := cursor.All(ctx, &complaints); err != nil {
+		return nil, err
+	}
+
+	return complaints, nil
+}
+
+func (r *ComplaintRepo) GetComplaintsByServiceIDsObj(
+	ctx context.Context,
+	ids []primitive.ObjectID,
+) ([]domain.Complaint, error) {
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"acceptedService": bson.M{"$in": ids},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var complaints []domain.Complaint
+	if err := cursor.All(ctx, &complaints); err != nil {
+		return nil, err
+	}
+
+	return complaints, nil
+}

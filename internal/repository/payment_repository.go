@@ -155,3 +155,21 @@ func (r *PaymentRepository) MarkInvoiceGenerated(
 
 	return res.ModifiedCount == 1, nil
 }
+
+func (r *PaymentRepository) GetTransactionsByServiceIDs(ctx context.Context, ids []string) ([]domain.PaymentTransaction, error) {
+
+	cursor, err := r.txnCol.Find(ctx, bson.M{
+		"serviceId": bson.M{"$in": ids},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var txs []domain.PaymentTransaction
+	if err := cursor.All(ctx, &txs); err != nil {
+		return nil, err
+	}
+
+	return txs, nil
+}

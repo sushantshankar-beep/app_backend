@@ -261,3 +261,21 @@ func (r *UserRepo) IncrementComplaintCount(ctx context.Context, userID primitive
     _, err := r.col.UpdateOne(ctx, filter, update)
     return err
 }
+
+func (r *UserRepo) GetUsersByIDs(ctx context.Context, ids []primitive.ObjectID) ([]domain.User, error) {
+
+	cursor, err := r.col.Find(ctx, bson.M{
+		"_id": bson.M{"$in": ids},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var users []domain.User
+	if err := cursor.All(ctx, &users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}

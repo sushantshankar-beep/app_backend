@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
+	"sync"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -223,6 +223,57 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		return nil,0, err
 	}
 
+	providerIDs := make([]string, 0)
+	serviceIDs := make([]string, 0)
+
+	for _, r := range raw {
+		if !r.Provider.IsZero() {
+			providerIDs = append(providerIDs, r.Provider.Hex())
+		}
+		serviceIDs = append(serviceIDs, r.ID.Hex())
+	}
+
+	var (
+		providers    []domain.Provider
+		transactions []domain.PaymentTransaction
+		complaints   []domain.Complaint
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		providers, _ = s.providerRepo.GetProvidersByIDs(ctx, providerIDs)
+	}()
+
+	go func() {
+		defer wg.Done()
+		transactions, _ = s.transactionRepo.GetTransactionsByServiceIDs(ctx, serviceIDs)
+	}()
+
+	go func() {
+		defer wg.Done()
+		complaints, _ = s.complaintRepo.GetComplaintsByServiceIDs(ctx, raw)
+	}()
+
+	wg.Wait()
+
+	providerMap := make(map[string]domain.Provider)
+	for _, p := range providers {
+		providerMap[string(p.ID)] = p
+	}
+
+	txMap := make(map[string]domain.PaymentTransaction)
+	for _, t := range transactions {
+		txMap[t.ServiceID] = t
+	}
+
+	complaintMap := make(map[primitive.ObjectID]domain.Complaint)
+	for _, c := range complaints {
+		complaintMap[c.AcceptedService] = c
+	}
+
 	result := make([]dto.UserBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
@@ -242,10 +293,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 			}
 		}
 
-		tx, err := s.transactionRepo.GetTransactionByServiceID(ctx, r.ID.Hex())
-		if err != nil {
-			continue
-		}
+		tx := txMap[r.ID.Hex()]
 
 		var cancelled *domain.CancelInfo
 		var cancelledAt *time.Time
@@ -264,8 +312,7 @@ func (s *BookingService) GetUserBookings(ctx context.Context, userID, status str
 		}
 
 		providerRaisedComplaint := false
-		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, r.ID)
-		if err == nil && complaint != nil && complaint.ProviderComplaint != nil {
+		if c, ok := complaintMap[r.ID]; ok && c.ProviderComplaint != nil {
 			providerRaisedComplaint = true
 		}
 
@@ -615,6 +662,45 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		return nil, 0, err
 	}
 
+	userIDs := make([]primitive.ObjectID, 0)
+	serviceIDs := make([]primitive.ObjectID, 0)
+
+	for _, r := range raw {
+		userIDs = append(userIDs, r.User)
+		serviceIDs = append(serviceIDs, r.ID)
+	}
+
+	var (
+		users      []domain.User
+		complaints []domain.Complaint
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		users, _ = s.userRepo.GetUsersByIDs(ctx, userIDs)
+	}()
+
+	go func() {
+		defer wg.Done()
+		complaints, _ = s.complaintRepo.GetComplaintsByServiceIDsObj(ctx, serviceIDs)
+	}()
+
+	wg.Wait()
+
+	userMap := make(map[string]domain.User)
+
+    for _, u := range users {
+ 	  userMap[string(u.ID)] = u
+}
+
+	complaintMap := make(map[primitive.ObjectID]domain.Complaint)
+	for _, c := range complaints {
+		complaintMap[c.AcceptedService] = c
+	}
+
 	result := make([]dto.ProviderBookingDTO, 0, len(raw))
 
 	for _, r := range raw {
@@ -629,13 +715,8 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
             }
         }
 
-		userObjID, err := primitive.ObjectIDFromHex(serviceData.User.Hex())
-		if err != nil {
-			continue
-		}
-
-		user, err := s.userRepo.GetByID(ctx, userObjID)
-		if err != nil {
+		user, ok := userMap[serviceData.User.Hex()]
+		if !ok {
 			continue
 		}
 
@@ -644,10 +725,10 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
               providerIDStr = providerID
         }
 
-		provider, err := s.providerRepo.FindByID(
-			ctx,
-			domain.ProviderID(providerIDStr),
-		)
+		provider, err := s.providerRepo.FindByID(ctx, domain.ProviderID(providerID))
+        if err != nil {
+	       return nil, 0, err
+     }
 
 		const gstPercent = 18.0
 
@@ -666,8 +747,7 @@ func (s *BookingService) GetProviderBookings(ctx context.Context, providerID, st
 		}
 
 		userRaisedComplaint := false
-		complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceData.ID)
-		if err == nil && complaint != nil && complaint.UserComplaint != nil {
+		if c, ok := complaintMap[serviceData.ID]; ok && c.UserComplaint != nil {
 			userRaisedComplaint = true
 		}
 
@@ -747,29 +827,66 @@ func (s *BookingService) GetProviderBookingDetails(
 		targetProviderID = r.Provider.Hex()
 	}
 
-	provider, err := s.providerRepo.FindByID(
-		ctx,
-		domain.ProviderID(targetProviderID),
-	)
-	if err != nil {
-		return nil, err
+	providerCh := make(chan struct {
+		p   *domain.Provider
+		err error
+	}, 1)
+	userCh := make(chan struct {
+		u   *domain.User
+		err error
+	}, 1)
+	complaintCh := make(chan struct {
+		c   *domain.Complaint
+		err error
+	}, 1)
+
+	go func() {
+		p, err := s.providerRepo.FindByID(ctx, domain.ProviderID(targetProviderID))
+		providerCh <- struct {
+			p   *domain.Provider
+			err error
+		}{p, err}
+	}()
+
+	go func() {
+		u, err := s.userRepo.GetByID(ctx, serviceData.User)
+		userCh <- struct {
+			u   *domain.User
+			err error
+		}{u, err}
+	}()
+
+	go func() {
+		c, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID)
+		complaintCh <- struct {
+			c   *domain.Complaint
+			err error
+		}{c, err}
+	}()
+
+	providerRes := <-providerCh
+	if providerRes.err != nil {
+		return nil, providerRes.err
 	}
 
-	user, err := s.userRepo.GetByID(ctx, serviceData.User)
-	if err != nil {
-		return nil, err
+	userRes := <-userCh
+	if userRes.err != nil {
+		return nil, userRes.err
 	}
+
+	complaintRes := <-complaintCh
+	if complaintRes.err != nil && complaintRes.err != mongo.ErrNoDocuments {
+		return nil, complaintRes.err
+	}
+
+	provider := providerRes.p
+	user := userRes.u
+	complaint := complaintRes.c
 
 	var complaintDTO *dto.ComplaintDTO
 
 	var remark string
 	var userRemark string
-
-	complaint, err := s.complaintRepo.FindByAcceptedServiceId(ctx, serviceObjID )
-
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, err
-	}
 
 	if complaint != nil {
 		if complaint.Assessment != nil {
